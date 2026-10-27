@@ -42,7 +42,7 @@ func boolOption(description string, get func(*Config) bool, set func(*Config, bo
 	}
 }
 
-func smoothInputSourcesOption(description string, get func(*Config) SmoothInputSources, set func(*Config, SmoothInputSources)) optionDesc {
+func inputSourcesOption(option, description string, allowed SmoothInputSources, get func(*Config) SmoothInputSources, set func(*Config, SmoothInputSources)) optionDesc {
 	applySources := func(cfg *Config, sources, present SmoothInputSources) {
 		current := get(cfg)
 		set(cfg, (current&^present)|sources)
@@ -50,10 +50,10 @@ func smoothInputSourcesOption(description string, get func(*Config) SmoothInputS
 	return optionDesc{
 		kind:        "table",
 		description: description,
-		get:         func(L *lua.LState, cfg *Config) lua.LValue { return smoothInputSourcesTable(L, get(cfg)) },
-		format:      func(cfg *Config) string { return FormatSmoothInputSources(get(cfg)) },
+		get:         func(L *lua.LState, cfg *Config) lua.LValue { return inputSourcesTable(L, get(cfg), allowed) },
+		format:      func(cfg *Config) string { return formatInputSources(get(cfg), allowed) },
 		applyText: func(cfg *Config, raw string) error {
-			sources, present, err := parseSmoothInputSourcesText(raw)
+			sources, present, err := parseInputSourcesText(raw, option, allowed)
 			if err != nil {
 				return err
 			}
@@ -61,15 +61,12 @@ func smoothInputSourcesOption(description string, get func(*Config) SmoothInputS
 			return nil
 		},
 		apply: func(cfg *Config, value lua.LValue) error {
-			if table, ok := value.(*lua.LTable); ok {
-				sources, present, err := parseSmoothInputSourcesTable(table)
-				if err != nil {
-					return err
-				}
-				applySources(cfg, sources, present)
-				return nil
+			sources, present, err := parseInputSourcesValue(value, option, allowed)
+			if err != nil {
+				return err
 			}
-			return fmt.Errorf("expected table")
+			applySources(cfg, sources, present)
+			return nil
 		},
 	}
 }
@@ -346,10 +343,9 @@ func registerOption(name string, desc optionDesc) {
 
 var configOptions = map[string]optionDesc{
 	"mouse_text_select":      boolOption("Enable text selection with the left mouse button.", func(c *Config) bool { return c.MouseTextSelect }, func(c *Config, v bool) { c.MouseTextSelect = v }),
-	"smooth_scroll":          smoothInputSourcesOption("Animate scrolling for selected inputs; assignments update only specified mouse, trackpad, and keyboard fields.", func(c *Config) SmoothInputSources { return c.SmoothScrollSources }, func(c *Config, v SmoothInputSources) { c.SmoothScrollSources = v }),
-	"smooth_zoom":            smoothInputSourcesOption("Animate zooming for selected inputs; assignments update only specified mouse, trackpad, and keyboard fields.", func(c *Config) SmoothInputSources { return c.SmoothZoomSources }, func(c *Config, v SmoothInputSources) { c.SmoothZoomSources = v }),
-	"invert_scroll":          boolOption("Invert horizontal and vertical discrete mouse-wheel scrolling.", func(c *Config) bool { return c.InvertScroll }, func(c *Config, v bool) { c.InvertScroll = v }),
-	"invert_smooth_scroll":   boolOption("Invert horizontal and vertical smooth wheel or trackpad scrolling.", func(c *Config) bool { return c.InvertSmoothScroll }, func(c *Config, v bool) { c.InvertSmoothScroll = v }),
+	"smooth_scroll":          inputSourcesOption("smooth_scroll", "Animate scrolling for selected inputs; assignments update only specified mouse, trackpad, and keyboard fields.", SmoothInputAll, func(c *Config) SmoothInputSources { return c.SmoothScrollSources }, func(c *Config, v SmoothInputSources) { c.SmoothScrollSources = v }),
+	"smooth_zoom":            inputSourcesOption("smooth_zoom", "Animate zooming for selected inputs; assignments update only specified mouse, trackpad, and keyboard fields.", SmoothInputAll, func(c *Config) SmoothInputSources { return c.SmoothZoomSources }, func(c *Config, v SmoothInputSources) { c.SmoothZoomSources = v }),
+	"invert_scroll":          inputSourcesOption("invert_scroll", "Invert horizontal and vertical wheel scrolling for selected inputs; true or false sets both, and a table updates only the mouse and trackpad fields it names.", SmoothInputWheel, func(c *Config) SmoothInputSources { return c.InvertScrollSources }, func(c *Config, v SmoothInputSources) { c.InvertScrollSources = v }),
 	"open_in_new_window":     boolOption("On macOS, open a document Finder or `open` sends to a running onon in a new window rather than the current one.", func(c *Config) bool { return c.OpenInNewWindow }, func(c *Config, v bool) { c.OpenInNewWindow = v }),
 	"session_database":       boolOption("Persist per-document view state, marks, and recent files.", func(c *Config) bool { return c.SessionDatabase }, func(c *Config, v bool) { c.SessionDatabase = v }),
 	"alt_colors_keep_images": boolOption("Keep raster images in their own colors in alternate-color mode.", func(c *Config) bool { return c.AltColorsKeepImages }, func(c *Config, v bool) { c.AltColorsKeepImages = v }),

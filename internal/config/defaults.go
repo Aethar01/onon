@@ -53,8 +53,6 @@ func Default() Config {
 		CopyOnSelect:          true,
 		SmoothScrollSources:   SmoothInputAll,
 		SmoothZoomSources:     SmoothInputAll,
-		InvertScroll:          false,
-		InvertSmoothScroll:    false,
 		SmoothScrollDampening: 0.8,
 		SmoothZoomDampening:   0.8,
 		AutoscrollSpeedFactor: 1,

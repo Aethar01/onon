@@ -13,6 +13,11 @@ const (
 	smoothAnimationFrame  = 16 * time.Millisecond
 	smoothScrollSnap      = 0.25
 	modalSmoothScrollSnap = 0.01
+	// trackpadWheelGap is how long after a trackpad's last wheel event a
+	// whole-number one is still taken as the trackpad's. Swipes now and then
+	// report a whole delta, and reading one as a mouse wheel would invert it
+	// or stop animating it mid-swipe.
+	trackpadWheelGap = 250 * time.Millisecond
 )
 
 type smoothScrollState struct {
@@ -62,6 +67,10 @@ func (a *App) smoothZoomInputEnabled(source smoothInputSource) bool {
 	return a.config.SmoothZoomSources.Has(smoothInputSourceMask(source))
 }
 
+func (a *App) scrollInverted(source smoothInputSource) bool {
+	return a.config.InvertScrollSources.Has(smoothInputSourceMask(source))
+}
+
 func withSmoothInputSource(a *App, source smoothInputSource, run func()) {
 	previous := a.inputSource
 	a.inputSource = source
@@ -69,8 +78,10 @@ func withSmoothInputSource(a *App, source smoothInputSource, run func()) {
 	run()
 }
 
-func wheelInputSource(e *sdl.MouseWheelEvent) smoothInputSource {
-	if hasFractionalWheelDelta(e.X) || hasFractionalWheelDelta(e.Y) {
+func (a *App) wheelInputSource(e *sdl.MouseWheelEvent) smoothInputSource {
+	followsTrackpad := a.lastTrackpadWheel != 0 && e.Timestamp-a.lastTrackpadWheel < uint64(trackpadWheelGap)
+	if hasFractionalWheelDelta(e.X) || hasFractionalWheelDelta(e.Y) || followsTrackpad {
+		a.lastTrackpadWheel = e.Timestamp
 		return smoothInputSourceTrackpad
 	}
 	return smoothInputSourceMouse
@@ -160,7 +171,7 @@ func modalWheelRows(e *sdl.MouseWheelEvent) float64 {
 }
 
 func (a *App) handleAnimatedMouseWheel(e *sdl.MouseWheelEvent) {
-	source := wheelInputSource(e)
+	source := a.wheelInputSource(e)
 	if !a.smoothScrollInputEnabled(source) {
 		a.cancelSmoothScroll()
 		withSmoothInputSource(a, source, func() { a.handleSDLMouseWheel(e) })
@@ -185,7 +196,7 @@ func (a *App) handleAnimatedMouseWheel(e *sdl.MouseWheelEvent) {
 		return
 	}
 
-	wx, wy = invertWheelDeltas(wx, wy, a.config.InvertSmoothScroll)
+	wx, wy = invertWheelDeltas(wx, wy, a.scrollInverted(source))
 	// SDL wheel units may be fractional for continuous devices. Scaling the
 	// float delta keeps the target precise while preserving scroll_step as the
 	// distance of one ordinary wheel unit.
@@ -194,7 +205,7 @@ func (a *App) handleAnimatedMouseWheel(e *sdl.MouseWheelEvent) {
 
 func (a *App) runDiscreteMouseWheel(wx, wy float32) {
 	a.cancelSmoothScroll()
-	wx, wy = invertWheelDeltas(wx, wy, a.config.InvertScroll)
+	wx, wy = invertWheelDeltas(wx, wy, a.scrollInverted(a.currentSmoothInputSource()))
 	a.dispatchDiscreteWheel(wx, wy)
 	a.pendingRedraw = true
 }

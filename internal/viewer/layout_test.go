@@ -212,10 +212,10 @@ func TestTrackpadSmoothingCanBeSelectedWithoutMouseWheelSmoothing(t *testing.T) 
 	}
 }
 
-func TestInvertSmoothScrollInvertsBothWheelAxes(t *testing.T) {
+func TestInvertScrollInvertsBothTrackpadAxes(t *testing.T) {
 	app := testLayoutApp(5)
 	app.pageStep = 64
-	app.config.InvertSmoothScroll = true
+	app.config.InvertScrollSources = config.SmoothInputTrackpad
 	app.config.SmoothScrollDampening = 0.35
 	app.mouseBindings = map[string]string{
 		"wheel_up":    "scroll_up",
@@ -235,6 +235,40 @@ func TestInvertSmoothScrollInvertsBothWheelAxes(t *testing.T) {
 	}
 	assertClose(t, state.targetX, 16)
 	assertClose(t, state.targetY, 132)
+}
+
+func TestInvertScrollTreatsMouseAndTrackpadSeparately(t *testing.T) {
+	app := testLayoutApp(5)
+	app.pageStep = 64
+	app.config.SmoothScrollSources = 0
+	app.config.InvertScrollSources = config.SmoothInputMouse
+	app.mouseBindings = map[string]string{
+		"wheel_up":   "scroll_up",
+		"wheel_down": "scroll_down",
+	}
+	app.recomputeLayout(1000, 100)
+
+	app.scrollY = 100
+	app.handleAnimatedMouseWheel(&sdl.MouseWheelEvent{Y: 1})
+	assertClose(t, app.scrollY, 164)
+
+	// A swipe that reports a whole delta mid-gesture is still the trackpad.
+	app.scrollY = 100
+	swipe := sdl.MouseWheelEvent{Y: 0.5}
+	swipe.Timestamp = uint64(time.Second)
+	app.handleAnimatedMouseWheel(&swipe)
+	assertClose(t, app.scrollY, 36)
+	app.scrollY = 100
+	swipe = sdl.MouseWheelEvent{Y: 1}
+	swipe.Timestamp = uint64(time.Second + 16*time.Millisecond)
+	app.handleAnimatedMouseWheel(&swipe)
+	assertClose(t, app.scrollY, 36)
+
+	app.scrollY = 100
+	click := sdl.MouseWheelEvent{Y: 1}
+	click.Timestamp = uint64(2 * time.Second)
+	app.handleAnimatedMouseWheel(&click)
+	assertClose(t, app.scrollY, 164)
 }
 
 func TestDisabledSmoothScrollUsesDiscreteWheelPath(t *testing.T) {

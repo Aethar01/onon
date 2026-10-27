@@ -537,8 +537,7 @@ func TestMouseInteractionOptions(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.lua")
 	if err := os.WriteFile(path, []byte(`
-options.invert_scroll = true
-options.invert_smooth_scroll = true
+options.invert_scroll = { trackpad = true }
 options.anti_aliasing = 4
 options.render_oversample = 0.75
 options.page_cache_size = 12
@@ -556,8 +555,8 @@ bind_mouse("right_down", onon.pan)
 	if got := rt.Config().MouseBindings["right_down"]; got != "pan" {
 		t.Fatalf("expected right_down to bind pan, got %q", got)
 	}
-	if !rt.Config().InvertScroll || !rt.Config().InvertSmoothScroll {
-		t.Fatalf("expected both scroll inversion options enabled, config=%+v", rt.Config())
+	if got := rt.Config().InvertScrollSources; got != SmoothInputTrackpad {
+		t.Fatalf("expected only trackpad scrolling inverted, got %q", FormatSmoothInputSources(got))
 	}
 	if got := rt.Config().AntiAliasing; got != 4 {
 		t.Fatalf("expected anti_aliasing=4, got %d", got)
@@ -620,11 +619,23 @@ func TestRuntimeOptionInspectionAndAssignment(t *testing.T) {
 	if rt.Config().PinchSensitivity != 0.5 {
 		t.Fatalf("expected pinch_sensitivity=0.5, got %v", rt.Config().PinchSensitivity)
 	}
-	if err := rt.ToggleOption("invert_scroll"); err != nil {
+	if err := rt.SetOption("invert_scroll", "true"); err != nil {
 		t.Fatal(err)
 	}
-	if !rt.Config().InvertScroll {
-		t.Fatal("expected invert_scroll toggle to enable option")
+	if value, err := rt.OptionValue("invert_scroll"); err != nil || value != `{ mouse = true, trackpad = true }` {
+		t.Fatalf("expected invert_scroll=true to invert both wheel sources, got %q, %v", value, err)
+	}
+	if err := rt.SetOption("invert_scroll", `{ mouse = false }`); err != nil {
+		t.Fatal(err)
+	}
+	if got := rt.Config().InvertScrollSources; got != SmoothInputTrackpad {
+		t.Fatalf("expected partial invert_scroll update, got %q", FormatSmoothInputSources(got))
+	}
+	if err := rt.SetOption("invert_scroll", `{ keyboard = true }`); err == nil {
+		t.Fatal("expected invert_scroll to reject the keyboard source")
+	}
+	if _, err := rt.OptionValue("invert_smooth_scroll"); err == nil {
+		t.Fatal("expected removed invert_smooth_scroll option to be unknown")
 	}
 	if _, err := rt.OptionValue("natural_scroll"); err == nil {
 		t.Fatal("expected removed natural_scroll option to be unknown")
@@ -1104,13 +1115,15 @@ func TestLuaOptionTypeErrorsIncludeSettingName(t *testing.T) {
 		lua     string
 		wantErr string
 	}{
-		{name: "boolean", lua: `options.invert_scroll = "yes"`, wantErr: "options.invert_scroll: expected boolean"},
+		{name: "boolean", lua: `options.mouse_text_select = "yes"`, wantErr: "options.mouse_text_select: expected boolean"},
+		{name: "input sources", lua: `options.invert_scroll = "yes"`, wantErr: "options.invert_scroll: expected table or boolean"},
 		{name: "number", lua: `options.page_gap = true`, wantErr: "options.page_gap: expected number"},
 		{name: "string", lua: `options.fit_mode = false`, wantErr: "options.fit_mode: expected string"},
 		{name: "table", lua: `options.link_schemes = 10`, wantErr: "options.link_schemes: expected table"},
 		{name: "theme colour", lua: `onon.theme.accent = 10`, wantErr: "onon.theme.accent: expected"},
 		{name: "moved to theme", lua: `options.background = {1, 2, 3}`, wantErr: "options.background: background moved to onon.theme.background"},
 		{name: "removed natural scroll", lua: `options.natural_scroll = true`, wantErr: "options.natural_scroll: unknown setting"},
+		{name: "removed invert smooth scroll", lua: `options.invert_smooth_scroll = true`, wantErr: "options.invert_smooth_scroll: unknown setting"},
 		{name: "unknown", lua: `options.no_such_setting = 1`, wantErr: "options.no_such_setting: unknown setting"},
 	}
 
