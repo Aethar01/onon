@@ -231,8 +231,11 @@ type inputState struct {
 	pendingCount     string
 	pendingMark      string
 	inputSource      smoothInputSource
-	smoothZoom       *smoothZoomState
-	smoothScroll     *smoothScrollState
+	// lastTrackpadWheel is the SDL timestamp of the last wheel event read
+	// as a trackpad's.
+	lastTrackpadWheel uint64
+	smoothZoom        *smoothZoomState
+	smoothScroll      *smoothScrollState
 }
 
 type pendingPasswordPrompt struct {

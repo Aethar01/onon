@@ -49,8 +49,7 @@ type Config struct {
 	CopyOnSelect          bool
 	SmoothScrollSources   SmoothInputSources
 	SmoothZoomSources     SmoothInputSources
-	InvertScroll          bool
-	InvertSmoothScroll    bool
+	InvertScrollSources   SmoothInputSources
 	SmoothScrollDampening float64
 	SmoothZoomDampening   float64
 	AutoscrollSpeedFactor float64

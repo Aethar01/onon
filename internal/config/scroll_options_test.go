@@ -8,11 +8,8 @@ import (
 
 func TestScrollOptionDefaults(t *testing.T) {
 	cfg := Default()
-	if cfg.InvertScroll {
-		t.Fatal("expected invert_scroll to default to false")
-	}
-	if cfg.InvertSmoothScroll {
-		t.Fatal("expected invert_smooth_scroll to default to false")
+	if cfg.InvertScrollSources != 0 {
+		t.Fatalf("expected invert_scroll to default to no sources, got %q", FormatSmoothInputSources(cfg.InvertScrollSources))
 	}
 	if cfg.SmoothScrollSources != SmoothInputAll {
 		t.Fatalf("expected smooth_scroll to default to all sources, got %q", FormatSmoothInputSources(cfg.SmoothScrollSources))

@@ -123,13 +123,9 @@ func TestSetCommandInspectsAndAssignsRegisteredOptions(t *testing.T) {
 	if app.config.ScrollStep != 80 || app.pageStep != 80 || app.message != "scroll_step=80" {
 		t.Fatalf("expected applied scroll_step, config=%d step=%v message=%q", app.config.ScrollStep, app.pageStep, app.message)
 	}
-	app.runCommand(":set invert_scroll!")
-	if !app.config.InvertScroll || app.message != "invert_scroll=true" {
-		t.Fatalf("expected toggled invert_scroll, value=%t message=%q", app.config.InvertScroll, app.message)
-	}
-	app.runCommand(":set invert_smooth_scroll!")
-	if !app.config.InvertSmoothScroll || app.message != "invert_smooth_scroll=true" {
-		t.Fatalf("expected toggled invert_smooth_scroll, value=%t message=%q", app.config.InvertSmoothScroll, app.message)
+	app.runCommand(":set invert_scroll={ trackpad = true }")
+	if app.config.InvertScrollSources != config.SmoothInputTrackpad || app.message != "invert_scroll={ mouse = false, trackpad = true }" {
+		t.Fatalf("expected trackpad-only invert_scroll, value=%q message=%q", config.FormatSmoothInputSources(app.config.InvertScrollSources), app.message)
 	}
 	app.runCommand(":set fit_mode?")
 	if app.message != `fit_mode="page"` {
