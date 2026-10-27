@@ -26,12 +26,16 @@ func Fetch(ctx context.Context, uri string, progress func(done, total int64)) (I
 	if err != nil {
 		return Info{}, err
 	}
-	return fetchHTTP(ctx, uri, entry, progress)
+	return fetchHTTP(ctx, uri, httpAddress(uri), entry, progress)
 }
 
-// Changed reports how the document at uri is now, without connecting: an
-// SSH host already connected is asked, anything else reports ok false.
+// Changed reports how the document at uri is now, without asking anyone
+// anything: an SSH host is asked only if already connected, and a WebDAV
+// server only with a login already given. ok is false when it was not asked.
 func Changed(uri string) (Info, bool, error) {
+	if IsDAV(uri) {
+		return statHTTP(uri)
+	}
 	if !IsSFTP(uri) {
 		return Info{}, false, nil
 	}
@@ -53,7 +57,12 @@ func Upload(ctx context.Context, uri, local string, opened Info, force bool) (In
 	if err != nil {
 		return Info{}, err
 	}
-	info, err := uploadSFTP(ctx, t, local, opened, force)
+	var info Info
+	if IsDAV(uri) {
+		info, err = uploadDAV(ctx, t.url.String(), local, opened, force)
+	} else {
+		info, err = uploadSFTP(ctx, t, local, opened, force)
+	}
 	entry, entryErr := entryFor(t.url.String())
 	if entryErr != nil {
 		return info, err

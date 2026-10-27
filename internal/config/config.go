@@ -100,6 +100,7 @@ type luaGeneration struct {
 	cfg              Config
 	callbacks        map[string]*lua.LFunction
 	callbackSeq      int
+	schemes          map[string]*lua.LFunction // onon.register_scheme, by name
 	dirty            bool
 	pluginCatalog    *pluginCatalog
 	plugins          *pluginState

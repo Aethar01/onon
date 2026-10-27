@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	_ "embed"
 
@@ -70,6 +71,9 @@ func run() error {
 	}
 
 	var docPath string
+	// An argument that may be a scheme from config.lua, such as arxiv:id,
+	// waits until the configuration that would register it is loaded.
+	var schemeArg string
 	if flag.NArg() == 0 {
 		// Finder sends the documents to open in an Apple Event, not as
 		// arguments. The window shows one document, so the first wins.
@@ -81,12 +85,15 @@ func run() error {
 				startPage = session.Page + 1
 			}
 		}
+	} else if mayBeScheme(flag.Arg(0)) {
+		schemeArg = flag.Arg(0)
 	} else {
-		var err error
-		docPath, err = explicitDocumentPath(flag.Arg(0))
+		var page int
+		docPath, page, err = documentArg(flag.Arg(0), nil)
 		if err != nil {
 			return err
 		}
+		startPage, pageSet, target = fragmentPage(page, startPage, pageSet, target)
 	}
 	if verbose {
 		log.Printf("verbose logging enabled")
@@ -95,17 +102,18 @@ func run() error {
 
 	// With --unique, a window already showing this document does the work and
 	// this process exits. Any other document is a different instance.
-	if unique && docPath != "" {
+	handOff := func() (bool, error) {
+		if !unique || docPath == "" {
+			return false, nil
+		}
 		handled, err := handOffToRunningInstance(docPath, target, command)
-		if err != nil {
-			return err
+		if handled && verbose {
+			log.Printf("handed %q to the running instance", remote.Display(docPath))
 		}
-		if handled {
-			if verbose {
-				log.Printf("handed %q to the running instance", docPath)
-			}
-			return nil
-		}
+		return handled, err
+	}
+	if handled, err := handOff(); handled || err != nil {
+		return err
 	}
 
 	runtime, err := config.OpenWithOptions(cfgPath, docPath, config.OpenOptions{
@@ -117,6 +125,22 @@ func run() error {
 		return fmt.Errorf("load config: %w", err)
 	}
 	defer runtime.Close()
+	if schemeArg != "" {
+		var page int
+		if docPath, page, err = documentArg(schemeArg, runtime); err != nil {
+			return err
+		}
+		startPage, pageSet, target = fragmentPage(page, startPage, pageSet, target)
+		if verbose {
+			log.Printf("resolved %q to %q", schemeArg, remote.Display(docPath))
+		}
+		if handled, err := handOff(); handled || err != nil {
+			return err
+		}
+		if err := runtime.SetDocument(docPath); err != nil {
+			return fmt.Errorf("load config: %w", err)
+		}
+	}
 	defer config.CloseSessionDatabase() // after the viewer saves its session
 	defer remote.Close()                // ends any SSH connections
 
@@ -177,6 +201,39 @@ func launchArgs() []string {
 		}
 	})
 	return args
+}
+
+// mayBeScheme reports whether arg could start with a scheme registered in
+// config.lua: name:rest, where name is not a built-in scheme and arg is not
+// a local file. scp-style host:path looks the same, and is told apart once
+// the configuration is loaded.
+func mayBeScheme(arg string) bool {
+	name, _, ok := strings.Cut(arg, ":")
+	if !ok || len(name) < 2 || strings.ContainsAny(name, `/\@[`) || remote.IsURI(arg) {
+		return false
+	}
+	_, err := os.Lstat(arg)
+	return err != nil
+}
+
+// documentArg resolves a document argument: through a scheme registered in
+// rt's configuration, if any, then taking off a #page=N, which it returns.
+func documentArg(arg string, rt *config.Runtime) (string, int, error) {
+	arg, _, err := rt.ResolveScheme(arg)
+	if err != nil {
+		return "", 0, err
+	}
+	arg, page := remote.PageFragment(arg)
+	path, err := explicitDocumentPath(arg)
+	return path, page, err
+}
+
+// fragmentPage starts at a #page=N page unless --goto gave a page.
+func fragmentPage(page, startPage int, pageSet bool, target *instance.Request) (int, bool, *instance.Request) {
+	if page == 0 || pageSet {
+		return startPage, pageSet, target
+	}
+	return page, true, &instance.Request{Page: page}
 }
 
 // explicitDocumentPath is the document named on the command line: a remote

@@ -2,6 +2,8 @@ package viewer
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -9,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -407,5 +410,68 @@ func TestRemoteWatcherForgetsOurOwnSave(t *testing.T) {
 	w.setKnown(remote.Info{URI: "sftp://host/~/a.pdf", Size: 1})
 	if _, ok := w.waitForChange(0); ok {
 		t.Fatal("our own save was reported as a change")
+	}
+}
+
+func TestSchemePageAndWebDAVSave(t *testing.T) {
+	useRemoteTestEnvironment(t)
+	var mu sync.Mutex
+	content, version, puts := mustRead(t, testpdf.WritePages(t, []string{"one"}, []string{"two"}, []string{"three"})), 0, 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		etag := fmt.Sprintf(`"v%d"`, version)
+		switch r.Method {
+		case http.MethodPut:
+			if r.Header.Get("If-Match") != etag {
+				w.WriteHeader(http.StatusPreconditionFailed)
+				return
+			}
+			content, _ = io.ReadAll(r.Body)
+			version++
+			puts++
+			w.Header().Set("ETag", fmt.Sprintf(`"v%d"`, version))
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			w.Header().Set("ETag", etag)
+			w.Write(content)
+		}
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "config.lua")
+	lua := `onon.register_scheme("paper", function(name) return "dav` + strings.TrimPrefix(server.URL, "http") + `/" .. name .. ".pdf#page=2" end)`
+	if err := os.WriteFile(cfg, []byte(lua), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := config.Open(cfg, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	app, err := New("", runtime, 0, nil, NewOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Close()
+
+	app.runCommand(":open paper:notes")
+	waitForRemoteTask(t, app)
+	if app.doc == nil || app.docPath != "dav"+strings.TrimPrefix(server.URL, "http")+"/notes.pdf" {
+		t.Fatalf("docPath=%q message=%q", app.docPath, app.message)
+	}
+	if app.page != 1 {
+		t.Fatalf("page = %d, want the second from #page=2", app.page+1)
+	}
+	if app.document.remote == nil {
+		t.Fatal("a WebDAV document is not watched")
+	}
+
+	app.markEdited()
+	app.runCommand(":w")
+	waitForRemoteTask(t, app)
+	if app.unsaved || puts != 1 || !strings.HasPrefix(app.message, "wrote notes.pdf") {
+		t.Fatalf("unsaved=%t puts=%d message=%q", app.unsaved, puts, app.message)
 	}
 }

@@ -16,12 +16,17 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 )
 
 // sshSchemes are the names accepted for files reached over SSH. All of them
 // become sftp://, since that is the protocol spoken.
 var sshSchemes = map[string]bool{"sftp": true, "ssh": true, "scp": true}
+
+// davSchemes name WebDAV, as GVfs and KIO do, by the scheme they are
+// fetched over. webdav and webdavs become dav and davs.
+var davSchemes = map[string]string{"dav": "http", "davs": "https", "webdav": "http", "webdavs": "https"}
 
 // IsURI reports whether s names a remote document by URI.
 func IsURI(s string) bool {
@@ -30,18 +35,61 @@ func IsURI(s string) bool {
 		return false
 	}
 	scheme = strings.ToLower(scheme)
-	return scheme == "http" || scheme == "https" || sshSchemes[scheme]
+	return scheme == "http" || scheme == "https" || sshSchemes[scheme] || davSchemes[scheme] != ""
+}
+
+func schemeOf(uri string) string {
+	scheme, _, _ := strings.Cut(uri, "://")
+	return strings.ToLower(scheme)
+}
+
+// IsDAV reports whether uri names a file on a WebDAV server.
+func IsDAV(uri string) bool { return davSchemes[schemeOf(uri)] != "" }
+
+// httpAddress is the http(s) URL a WebDAV URI is fetched from, or uri itself.
+func httpAddress(uri string) string {
+	scheme, rest, ok := strings.Cut(uri, "://")
+	if !ok {
+		return uri
+	}
+	if over := davSchemes[strings.ToLower(scheme)]; over != "" {
+		return over + "://" + rest
+	}
+	return uri
 }
 
 // IsSFTP reports whether uri names a file reached over SSH.
-func IsSFTP(uri string) bool {
-	scheme, _, _ := strings.Cut(uri, "://")
-	return sshSchemes[strings.ToLower(scheme)]
-}
+func IsSFTP(uri string) bool { return sshSchemes[schemeOf(uri)] }
 
 // Writable reports whether a document at uri can be saved back to where it
-// came from. Only SSH hosts can be written to.
-func Writable(uri string) bool { return IsSFTP(uri) }
+// came from: on an SSH host or a WebDAV server, not a plain web server.
+func Writable(uri string) bool { return IsSFTP(uri) || IsDAV(uri) }
+
+// Watchable reports whether a document at uri can be checked for changes
+// while it is open. A plain web server is not asked over and over.
+func Watchable(uri string) bool { return Writable(uri) }
+
+// PageFragment takes a #page=N fragment, as PDF open parameters (RFC 8118)
+// give one, off a URI, returning the URI without its fragment and the page,
+// or 0 for none. A local path is left whole, since # may be in a file name.
+func PageFragment(arg string) (string, int) {
+	if !strings.Contains(arg, "://") {
+		return arg, 0
+	}
+	rest, fragment, ok := strings.Cut(arg, "#")
+	if !ok {
+		return arg, 0
+	}
+	page := 0
+	for _, param := range strings.Split(fragment, "&") {
+		if key, value, _ := strings.Cut(param, "="); key == "page" {
+			if n, err := strconv.Atoi(value); err == nil && n > 0 {
+				page = n
+			}
+		}
+	}
+	return rest, page
+}
 
 // FromArg turns a document argument into a canonical URI when it names a
 // remote document: a URI, or scp's [user@]host:path. A local file of the
@@ -140,6 +188,12 @@ func Canonical(raw string) (string, error) {
 	u.Host = strings.ToLower(u.Host)
 	u.Fragment = ""
 	if !sshSchemes[u.Scheme] {
+		switch u.Scheme {
+		case "webdav":
+			u.Scheme = "dav"
+		case "webdavs":
+			u.Scheme = "davs"
+		}
 		u.User = nil
 		return u.String(), nil
 	}

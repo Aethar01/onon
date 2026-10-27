@@ -117,9 +117,13 @@ onon https://example.com/paper.pdf
 onon sftp://me@host/srv/docs/paper.pdf     # /srv/docs/paper.pdf on host
 onon sftp://me@host/~/paper.pdf            # paper.pdf in the home directory
 onon me@host:papers/paper.pdf              # scp style, relative to the home
+onon davs://cloud.example.com/remote.php/dav/files/me/paper.pdf   # WebDAV
+onon 'https://example.com/paper.pdf#page=12'   # open at page 12
 ```
 
 `ssh://` and `scp://` mean the same as `sftp://`, and a port goes after the host as in `sftp://host:2222/...`. A path after the host is absolute, as in curl and GNOME and KDE file managers. If no file is there, onon looks for it in the home directory, so `ssh://host/paper.pdf` finds `~/paper.pdf`. In scp style, a local file of the same name wins, as it does for scp; write `./host:file` to mean a local one.
+
+`davs://` and `dav://` (or `webdavs://` and `webdav://`) name a file on a WebDAV server, such as Nextcloud, ownCloud or a NAS, fetched over https or http. A `#page=N` at the end of a URI, as in links to papers, opens at that page unless `--goto` says otherwise.
 
 The document is downloaded to the cache directory and opened from there. Sessions, marks and recent files keep the URI, so reopening one returns to where you were and downloads it again only if it has changed. The status bar shows the download, and `Esc` cancels it. `:open name` from a remote document opens `name` beside it on the same host.
 
@@ -138,7 +142,18 @@ onon.options.http_headers = {
 
 The headers go only to the host they are set for, including after a redirect, and `:set` shows their names but not their values. Logins that a web page asks for in a form, such as single sign-on, need a browser; a shared or signed download link works instead. Such a link is kept in recent files as given, since opening it again needs it, but messages and logs leave out its query, where its token is.
 
+`:w` saves edits back to a WebDAV server too, with a `PUT` the server refuses if the file changed since it was opened (by its ETag), so `:w` and `:w!` work as they do over SSH. With `auto_reload`, a WebDAV document is checked for changes every few seconds, using the login already given.
+
 `:w` saves edits back over SSH: the file is written beside the original under a temporary name and renamed over it, keeping its permissions. If the file changed on the host since it was opened, `:w` refuses and `:w!` saves over it anyway. With `auto_reload`, a document on an SSH host is checked for changes every few seconds. Documents from a web server are read-only; `:w ~/paper.pdf` saves a local copy.
+
+Other names for documents can be added in `config.lua` with `onon.register_scheme`. The function is given what follows the scheme and returns the URL or path to open, which may end in `#page=N`:
+
+```lua
+onon.register_scheme("arxiv", function(id) return "https://arxiv.org/pdf/" .. id end)
+onon.register_scheme("papers", function(name) return "davs://cloud.example.com/dav/papers/" .. name .. ".pdf" end)
+```
+
+Then `onon arxiv:2401.12345` or `:open papers:smith2024` opens it. A local file of the same name wins.
 
 ### Single instance
 

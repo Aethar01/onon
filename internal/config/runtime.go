@@ -159,6 +159,7 @@ func (r *Runtime) Reload() error {
 	r.luaGeneration = luaGeneration{
 		cfg:              Default(),
 		callbacks:        map[string]*lua.LFunction{},
+		schemes:          map[string]*lua.LFunction{},
 		pluginCatalog:    discoverPluginCatalog(r.pluginPaths, r.disabledPlugins),
 		operations:       map[int]*pluginOperation{},
 		pluginGeneration: old.pluginGeneration,

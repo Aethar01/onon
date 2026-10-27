@@ -27,9 +27,13 @@ type Info struct {
 	LastModified string
 }
 
-// SameVersion reports whether two infos describe the same remote file.
-// SFTP gives times to the second, so that is all that is compared.
+// SameVersion reports whether two infos describe the same remote file: by
+// ETag when a web server gave both, else by size and modification time, to
+// the second, which is all SFTP gives.
 func (i Info) SameVersion(other Info) bool {
+	if i.ETag != "" && other.ETag != "" {
+		return i.ETag == other.ETag
+	}
 	return i.Size == other.Size && i.ModTime.Unix() == other.ModTime.Unix()
 }
 

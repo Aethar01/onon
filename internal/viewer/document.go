@@ -24,8 +24,13 @@ func (a *App) Open(path string) error {
 	if path == "" {
 		return fmt.Errorf("open: empty path")
 	}
-	path, err := a.resolveOpenPath(path)
+	// A scheme from Lua first, as it may name a URL with a #page=N.
+	path, _, err := a.runtime.ResolveScheme(path)
 	if err != nil {
+		return err
+	}
+	path, page := remote.PageFragment(path)
+	if path, err = a.resolveOpenPath(path); err != nil {
 		return err
 	}
 	if !a.confirmDiscard("opening it") {
@@ -38,7 +43,11 @@ func (a *App) Open(path string) error {
 		return nil
 	}
 	state := a.captureViewState().atDocumentStart()
-	return a.openDocument(path, openDocumentOptions{reloadConfig: true, preserveView: &state})
+	opts := openDocumentOptions{reloadConfig: true, preserveView: &state}
+	if page > 0 {
+		opts.startPage, opts.startPageExplicit = page-1, true // #page=N
+	}
+	return a.openDocument(path, opts)
 }
 
 func (a *App) resolveOpenPath(path string) (string, error) {
@@ -199,6 +208,9 @@ func (a *App) openDocumentWithPassword(path string, opts openDocumentOptions, pa
 	a.recomputeLayout(a.viewportSize())
 	if opts.preserveView != nil {
 		a.restoreViewState(*opts.preserveView)
+		if opts.startPageExplicit {
+			a.alignPageToAnchor(startPage)
+		}
 	} else if !opts.startPageExplicit && hasSavedState {
 		a.restoreViewState(savedState)
 	} else {

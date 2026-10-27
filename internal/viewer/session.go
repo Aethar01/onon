@@ -50,8 +50,8 @@ func (s *documentSession) record(path string) {
 }
 
 // recordRemote watches a remote document, as record does a local one.
-// Only SSH hosts can be asked whether a file changed; an http(s) document
-// is fetched again only when opened again.
+// SSH hosts and WebDAV servers are asked whether a file changed; a plain
+// http(s) document is fetched again only when opened again.
 func (s *documentSession) recordRemote(info remote.Info) {
 	s.pending = nil
 	s.lastAttempt = time.Time{}
@@ -61,7 +61,7 @@ func (s *documentSession) recordRemote(info remote.Info) {
 		return
 	}
 	s.stopWatching()
-	if remote.IsSFTP(info.URI) {
+	if remote.Watchable(info.URI) {
 		s.remote = newRemoteWatcher(info, s.pollRemote)
 	}
 }

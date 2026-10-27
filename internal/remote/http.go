@@ -8,41 +8,38 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
+	"strings"
+	"time"
 )
 
 var httpClient = &http.Client{Transport: authTransport{base: http.DefaultTransport}}
 
-// fetchHTTP downloads uri unless the cached copy is still current, which a
-// conditional request lets the server say without sending it again. A
-// request for a login is answered as httpauth.go describes.
-func fetchHTTP(ctx context.Context, uri string, entry cacheEntry, progress func(done, total int64)) (Info, error) {
-	cached, hasCache := entry.cached()
+// doHTTP sends the request newRequest makes, answering a request for a
+// login as httpauth.go describes and sending the request again, which is
+// why it is made afresh each time. Without ask, a login is never asked for,
+// for checks made in the background. uri names the document in errors.
+func doHTTP(ctx context.Context, uri string, ask bool, newRequest func() (*http.Request, error)) (*http.Response, error) {
 	var attempts loginAttempts
-	var resp *http.Response
+	if !ask {
+		attempts.netrcTried, attempts.asked = true, maxLoginPrompts
+	}
 	for {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, uri, nil)
+		req, err := newRequest()
 		if err != nil {
-			return Info{}, err
+			return nil, err
 		}
 		req.Header.Set("User-Agent", "onon")
-		if hasCache {
-			if cached.ETag != "" {
-				req.Header.Set("If-None-Match", cached.ETag)
-			}
-			if cached.LastModified != "" {
-				req.Header.Set("If-Modified-Since", cached.LastModified)
-			}
-		}
-		resp, err = httpClient.Do(req)
+		resp, err := httpClient.Do(req)
 		if err != nil {
 			if ctx.Err() != nil {
-				return Info{}, ctx.Err()
+				return nil, ctx.Err()
 			}
-			return Info{}, fmt.Errorf("fetch %s: %w", Display(uri), unwrapURLError(err))
+			return nil, fmt.Errorf("%s: %w", Display(uri), unwrapURLError(err))
 		}
 		if resp.StatusCode != http.StatusUnauthorized {
-			break
+			return resp, nil
 		}
 		resp.Body.Close()
 		// The site that asks, which a redirect may have reached.
@@ -50,16 +47,44 @@ func fetchHTTP(ctx context.Context, uri string, entry cacheEntry, progress func(
 		host := site.Host
 		realm, basic := basicRealm(resp.Header.Values("WWW-Authenticate"))
 		if !basic || headersFor(host).Get("Authorization") != "" {
-			return Info{}, unauthorized(uri, host, resp)
+			return nil, unauthorized(uri, host, resp)
+		}
+		if !ask {
+			return nil, unauthorized(uri, host, resp)
 		}
 		next, ok := attempts.nextLogin(ctx, site, realm)
 		if ctx.Err() != nil {
-			return Info{}, ctx.Err()
+			return nil, ctx.Err()
 		}
 		if !ok {
-			return Info{}, unauthorized(uri, host, resp)
+			return nil, unauthorized(uri, host, resp)
 		}
 		setLogin(siteKey(site), next)
+	}
+}
+
+// fetchHTTP downloads the document uri from address, its http(s) URL,
+// unless the cached copy is still current, which a conditional request lets
+// the server say without sending it again.
+func fetchHTTP(ctx context.Context, uri, address string, entry cacheEntry, progress func(done, total int64)) (Info, error) {
+	cached, hasCache := entry.cached()
+	resp, err := doHTTP(ctx, uri, true, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
+		if err == nil && hasCache {
+			if cached.ETag != "" {
+				req.Header.Set("If-None-Match", cached.ETag)
+			}
+			if cached.LastModified != "" {
+				req.Header.Set("If-Modified-Since", cached.LastModified)
+			}
+		}
+		return req, err
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			return Info{}, ctx.Err()
+		}
+		return Info{}, fmt.Errorf("fetch %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotModified && hasCache {
@@ -69,15 +94,8 @@ func fetchHTTP(ctx context.Context, uri string, entry cacheEntry, progress func(
 	if resp.StatusCode != http.StatusOK {
 		return Info{}, fmt.Errorf("fetch %s: %s", Display(uri), resp.Status)
 	}
-	info := Info{
-		URI:          uri,
-		Size:         resp.ContentLength,
-		ETag:         resp.Header.Get("ETag"),
-		LastModified: resp.Header.Get("Last-Modified"),
-	}
-	if t, err := http.ParseTime(info.LastModified); err == nil {
-		info.ModTime = t
-	}
+	info := versionOf(resp)
+	info.URI = uri
 	return entry.store(info, httpName(uri, resp), func(w io.Writer) error {
 		_, err := io.Copy(&progressWriter{w: w, total: resp.ContentLength, progress: progress}, resp.Body)
 		if err != nil && ctx.Err() != nil {
@@ -85,6 +103,93 @@ func fetchHTTP(ctx context.Context, uri string, entry cacheEntry, progress func(
 		}
 		return err
 	})
+}
+
+// versionOf is the version of a document a response describes.
+func versionOf(resp *http.Response) Info {
+	info := Info{
+		Size:         resp.ContentLength,
+		ETag:         resp.Header.Get("ETag"),
+		LastModified: resp.Header.Get("Last-Modified"),
+	}
+	if t, err := http.ParseTime(info.LastModified); err == nil {
+		info.ModTime = t
+	}
+	return info
+}
+
+// statHTTP asks for the current version of the document at uri with a HEAD
+// request, never asking for a login, for checks made in the background.
+func statHTTP(uri string) (Info, bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	resp, err := doHTTP(ctx, uri, false, func() (*http.Request, error) {
+		return http.NewRequestWithContext(ctx, http.MethodHead, httpAddress(uri), nil)
+	})
+	if err != nil {
+		return Info{}, false, err
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return Info{}, false, fmt.Errorf("%s: %s", Display(uri), resp.Status)
+	}
+	info := versionOf(resp)
+	info.URI = uri
+	return info, true, nil
+}
+
+// uploadDAV saves local over the document at uri with a WebDAV PUT. Unless
+// force is set the server is asked to refuse if the file is no longer the
+// version opened, by its ETag, or failing that its modification time.
+func uploadDAV(ctx context.Context, uri, local string, opened Info, force bool) (Info, error) {
+	st, err := os.Stat(local)
+	if err != nil {
+		return Info{}, err
+	}
+	address := httpAddress(uri)
+	resp, err := doHTTP(ctx, uri, true, func() (*http.Request, error) {
+		f, err := os.Open(local)
+		if err != nil {
+			return nil, err
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, address, f)
+		if err != nil {
+			f.Close()
+			return nil, err
+		}
+		req.ContentLength = st.Size()
+		if !force {
+			// A weak ETag never matches If-Match, which compares strongly.
+			if opened.ETag != "" && !strings.HasPrefix(opened.ETag, "W/") {
+				req.Header.Set("If-Match", opened.ETag)
+			} else if opened.LastModified != "" {
+				req.Header.Set("If-Unmodified-Since", opened.LastModified)
+			}
+		}
+		return req, nil
+	})
+	if err != nil {
+		return Info{}, err
+	}
+	resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusCreated, http.StatusNoContent:
+	case http.StatusPreconditionFailed:
+		return Info{}, ErrConflict
+	case http.StatusMethodNotAllowed, http.StatusForbidden:
+		return Info{}, fmt.Errorf("%s: %s; the server does not accept saving it", Display(uri), resp.Status)
+	default:
+		return Info{}, fmt.Errorf("%s: %s", Display(uri), resp.Status)
+	}
+	info := versionOf(resp)
+	if info.ETag == "" {
+		// Not every server says what it stored; ask.
+		if current, ok, err := statHTTP(uri); err == nil && ok {
+			info = current
+		}
+	}
+	info.URI, info.Local, info.Size = uri, local, st.Size()
+	return info, nil
 }
 
 // httpName names a download: by the URL's last path element when it has an

@@ -180,10 +180,10 @@ func (dw *documentWatcher) Close() {
 	})
 }
 
-// remoteWatcher checks a document on an SSH host for changes every
-// remote.PollInterval. It asks only over a connection that is already open,
-// so a host that went away is not reconnected to, and perhaps prompted for a
-// password, in the background.
+// remoteWatcher checks a document on an SSH host or WebDAV server for
+// changes every remote.PollInterval. It never asks for a password: an SSH
+// host is asked only over a connection already open, and a WebDAV server
+// only with a login already given.
 //
 // It checks only while enabled, which follows auto_reload, since a change
 // would wait unread anyway.

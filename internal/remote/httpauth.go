@@ -110,7 +110,7 @@ func forgetLogin(site string) {
 // takeURLLogin keeps the user and password in an http(s) URL for its host,
 // since the URL itself is stored without them.
 func takeURLLogin(raw string) {
-	u, err := url.Parse(raw)
+	u, err := url.Parse(httpAddress(raw))
 	if err != nil || u.User == nil || (u.Scheme != "http" && u.Scheme != "https") {
 		return
 	}
@@ -221,16 +221,16 @@ func (a *loginAttempts) nextLogin(ctx context.Context, site *url.URL, realm stri
 // unauthorized explains a 401 that could not be answered.
 func unauthorized(uri, host string, resp *http.Response) error {
 	if headersFor(host).Get("Authorization") != "" {
-		return fmt.Errorf("fetch %s: %s with the Authorization header set for %s in http_headers", Display(uri), resp.Status, host)
+		return fmt.Errorf("%s: %s with the Authorization header set for %s in http_headers", Display(uri), resp.Status, host)
 	}
 	if _, basic := basicRealm(resp.Header.Values("WWW-Authenticate")); basic {
-		return fmt.Errorf("fetch %s: %s", Display(uri), resp.Status)
+		return fmt.Errorf("%s: %s", Display(uri), resp.Status)
 	}
 	scheme := "a login"
 	if challenge := resp.Header.Get("WWW-Authenticate"); challenge != "" {
 		scheme, _, _ = strings.Cut(challenge, " ")
 	}
-	return fmt.Errorf("fetch %s: %s; the server wants %s, which needs a header in http_headers for %s", Display(uri), resp.Status, scheme, host)
+	return fmt.Errorf("%s: %s; the server wants %s, which needs a header in http_headers for %s", Display(uri), resp.Status, scheme, host)
 }
 
 // NetrcPath is the netrc file read for logins: $NETRC, or .netrc (_netrc
