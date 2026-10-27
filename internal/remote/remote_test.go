@@ -192,11 +192,18 @@ func TestHeldCopyKept(t *testing.T) {
 	// is held again by the viewer; a newer fetch then still leaves it.
 	release = Hold(second.Local)
 	Forget(uri, second.Local)
-	if err := os.WriteFile(second.Local+".tmp", []byte("%PDF edited"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(second.Local+".tmp", second.Local); err != nil {
-		t.Fatal(err)
+	if runtime.GOOS == "windows" {
+		// Windows will not replace a file held open, so a save is in place.
+		if err := os.WriteFile(second.Local, []byte("%PDF edited"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		if err := os.WriteFile(second.Local+".tmp", []byte("%PDF edited"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(second.Local+".tmp", second.Local); err != nil {
+			t.Fatal(err)
+		}
 	}
 	rehold := Hold(second.Local)
 	release()
