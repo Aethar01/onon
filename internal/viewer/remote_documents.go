@@ -239,6 +239,15 @@ func (a *App) writeRemoteDocument(target string, force bool) {
 		a.message = err.Error()
 		return
 	}
+	if !task.other {
+		// A save MuPDF cannot make incrementally replaces the file, which
+		// the hold, a lock on the one replaced, no longer covers.
+		release := a.releaseCopy
+		a.releaseCopy = remote.Hold(local)
+		if release != nil {
+			release()
+		}
+	}
 	a.startRemoteTask(task, func(ctx context.Context, progress func(done, total int64)) (remote.Info, error) {
 		return remote.Upload(ctx, target, local, opened, force)
 	})

@@ -6,5 +6,6 @@ import "os"
 // so keeping f open holds it.
 func holdFile(*os.File) error { return nil }
 
-// held is false: removing a file held open fails by itself.
-func held(string) bool { return false }
+// lockForRemoval needs no lock either: removing a file held open fails by
+// itself.
+func lockForRemoval(string) (unlock func(), ok bool) { return func() {}, true }

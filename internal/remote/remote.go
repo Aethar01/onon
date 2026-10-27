@@ -71,9 +71,7 @@ func Upload(ctx context.Context, uri, local string, opened Info, force bool) (In
 	if err != nil {
 		// The copy holds edits the remote file does not, so it is no longer
 		// that version; the next open fetches it again.
-		if cached, ok := entry.cached(); ok && cached.Local == local {
-			entry.forget()
-		}
+		entry.forgetCopy(local)
 		return Info{}, err
 	}
 	// Recorded even after Forget, or after a newer version was fetched: the
@@ -92,11 +90,7 @@ func Forget(uri, local string) {
 	if err != nil {
 		return
 	}
-	entry, err := entryFor(t.url.String())
-	if err != nil {
-		return
-	}
-	if cached, ok := entry.cached(); ok && cached.Local == local {
-		entry.forget()
+	if entry, err := entryFor(t.url.String()); err == nil {
+		entry.forgetCopy(local)
 	}
 }

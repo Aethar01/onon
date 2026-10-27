@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
@@ -115,8 +116,17 @@ func fetchHTTP(ctx context.Context, uri, address string, entry cacheEntry, progr
 	}
 	info := versionOf(resp)
 	info.URI = uri
+	body, total := io.Reader(resp.Body), resp.ContentLength
+	if strings.EqualFold(resp.Header.Get("Content-Encoding"), "gzip") {
+		// Compressed though identity was asked for.
+		gz, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return Info{}, fmt.Errorf("fetch %s: %w", Display(uri), err)
+		}
+		body, total = gz, -1
+	}
 	return entry.store(info, httpName(uri, resp), func(w io.Writer) error {
-		_, err := io.Copy(&progressWriter{w: w, total: resp.ContentLength, progress: progress}, resp.Body)
+		_, err := io.Copy(&progressWriter{w: w, total: total, progress: progress}, body)
 		if err != nil && ctx.Err() != nil {
 			return ctx.Err()
 		}

@@ -30,12 +30,14 @@ type Info struct {
 
 // SameVersion reports whether two infos describe the same remote file: by
 // ETag when a web server gave both, else by size and modification time, to
-// the second, which is all SFTP gives.
+// the second, which is all SFTP gives. A size below 0 is one a web server
+// did not say.
 func (i Info) SameVersion(other Info) bool {
 	if i.ETag != "" && other.ETag != "" {
 		return i.ETag == other.ETag
 	}
-	return i.Size == other.Size && i.ModTime.Unix() == other.ModTime.Unix()
+	sameSize := i.Size == other.Size || i.Size < 0 || other.Size < 0
+	return sameSize && i.ModTime.Unix() == other.ModTime.Unix()
 }
 
 // cacheMaxAge is how long a copy that has not been opened is kept.
@@ -104,6 +106,13 @@ func (e cacheEntry) forget() {
 	_ = e.writeMeta(cacheMeta{})
 }
 
+// forgetCopy forgets the entry's copy if it is local.
+func (e cacheEntry) forgetCopy(local string) {
+	if cached, ok := e.cached(); ok && cached.Local == local {
+		e.forget()
+	}
+}
+
 // record notes info as the entry's copy.
 func (e cacheEntry) record(info Info) error {
 	rel, err := filepath.Rel(e.dir, info.Local)
@@ -121,11 +130,22 @@ func (e cacheEntry) writeMeta(meta cacheMeta) error {
 	if err != nil {
 		return err
 	}
-	tmp := filepath.Join(e.dir, "meta.json.tmp")
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	// A temporary file of its own, as another process may be writing too.
+	f, err := os.CreateTemp(e.dir, "meta-*.tmp")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, filepath.Join(e.dir, "meta.json"))
+	_, err = f.Write(data)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(f.Name(), filepath.Join(e.dir, "meta.json"))
+	}
+	if err != nil {
+		os.Remove(f.Name())
+	}
+	return err
 }
 
 // store writes a new version of the document called name from write, and
@@ -181,14 +201,31 @@ func (e cacheEntry) removeVersionsExcept(keep string) {
 }
 
 // removeVersion removes a version's directory unless a viewer, in this
-// process or another, holds its copy.
-func removeVersion(dir string) {
+// process or another, holds its copy, and reports whether it did. Its files
+// stay locked until they are gone, so no viewer takes hold meanwhile.
+func removeVersion(dir string) bool {
 	files, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, f := range files {
+		unlock, ok := lockForRemoval(filepath.Join(dir, f.Name()))
+		if !ok {
+			return false
+		}
+		defer unlock()
+	}
+	return os.RemoveAll(dir) == nil
+}
+
+// removeEntry removes a document's directory, but no version a viewer holds.
+func removeEntry(dir string) {
+	versions, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
-	for _, f := range files {
-		if held(filepath.Join(dir, f.Name())) {
+	for _, v := range versions {
+		if v.IsDir() && !removeVersion(filepath.Join(dir, v.Name())) {
 			return
 		}
 	}
@@ -203,7 +240,8 @@ func (e cacheEntry) contains(local string) bool {
 // Hold marks local, a copy Fetch returned, as open in a viewer until release
 // is called, so a newer version fetched meanwhile, here or by another
 // process, leaves it in place: the viewer reads it, and saves edits into it.
-// Release removes it once it is no longer the entry's current copy.
+// Release removes it once a newer version is the entry's copy; one Forget
+// left unrecorded stays, as an upload of it may still be under way.
 func Hold(local string) (release func()) {
 	root, err := CacheDir()
 	if err != nil {
@@ -223,7 +261,7 @@ func Hold(local string) (release func()) {
 	}
 	return func() {
 		f.Close()
-		if cached, ok := entry.cached(); !ok || cached.Local != local {
+		if cached, ok := entry.cached(); ok && cached.Local != local {
 			removeVersion(filepath.Dir(local))
 		}
 	}
@@ -269,12 +307,12 @@ func pruneCache(root string, now time.Time) {
 		if errors.Is(err, os.ErrNotExist) {
 			// A fetch that never finished; leave one still in progress.
 			if di, err := entry.Info(); err == nil && now.Sub(di.ModTime()) > time.Hour {
-				_ = os.RemoveAll(dir)
+				removeEntry(dir)
 			}
 			continue
 		}
 		if err == nil && now.Sub(info.ModTime()) > cacheMaxAge {
-			_ = os.RemoveAll(dir)
+			removeEntry(dir)
 		}
 	}
 }

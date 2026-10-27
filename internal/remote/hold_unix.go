@@ -3,24 +3,27 @@
 package remote
 
 import (
-	"errors"
 	"os"
 	"syscall"
 )
 
 // holdFile takes a shared lock on f, which lasts until f is closed or the
-// process ends.
+// process ends. It waits out removeVersion's brief check of the file.
 func holdFile(f *os.File) error {
-	return syscall.Flock(int(f.Fd()), syscall.LOCK_SH|syscall.LOCK_NB)
+	return syscall.Flock(int(f.Fd()), syscall.LOCK_SH)
 }
 
-// held reports whether a viewer holds the file at path: an exclusive lock
-// cannot be had while anyone, this process included, has a shared one.
-func held(path string) bool {
+// lockForRemoval takes an exclusive lock on the file at path, which cannot
+// be had while a viewer, in this process or another, holds it. ok is false
+// when one does.
+func lockForRemoval(path string) (unlock func(), ok bool) {
 	f, err := os.Open(path)
 	if err != nil {
-		return false
+		return func() {}, true // gone already, or not ours to hold
 	}
-	defer f.Close()
-	return errors.Is(syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB), syscall.EWOULDBLOCK)
+	if syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
+		f.Close()
+		return nil, false
+	}
+	return func() { f.Close() }, true
 }

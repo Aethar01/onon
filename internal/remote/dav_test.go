@@ -208,3 +208,21 @@ func TestPageFragment(t *testing.T) {
 		}
 	}
 }
+
+func TestFetchDecodesGzipSentAnyway(t *testing.T) {
+	useTempCache(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Encoding", "gzip")
+		gz := gzip.NewWriter(w)
+		io.WriteString(gz, "%PDF")
+		gz.Close()
+	}))
+	defer server.Close()
+	opened, err := Fetch(context.Background(), server.URL+"/a.pdf", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(opened.Local); string(data) != "%PDF" {
+		t.Fatalf("content = %q", data)
+	}
+}

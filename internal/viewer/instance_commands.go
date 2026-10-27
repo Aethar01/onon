@@ -59,7 +59,7 @@ func (a *App) rebindInstanceServer() {
 	address := wanted
 	server, err := instance.Listen(address)
 	if err != nil {
-		a.logf("not listening for %q: %v", a.docPath, err)
+		a.logf("not listening for %q: %v", remote.Display(a.docPath), err)
 		return
 	}
 	a.instanceServer = server

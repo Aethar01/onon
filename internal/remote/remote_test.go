@@ -187,6 +187,62 @@ func TestHeldCopyKept(t *testing.T) {
 	if _, err := os.Stat(second.Local); err != nil {
 		t.Fatalf("current copy removed: %v", err)
 	}
+
+	// A save that replaces the file, as MuPDF's non-incremental one does,
+	// is held again by the viewer; a newer fetch then still leaves it.
+	release = Hold(second.Local)
+	Forget(uri, second.Local)
+	if err := os.WriteFile(second.Local+".tmp", []byte("%PDF edited"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(second.Local+".tmp", second.Local); err != nil {
+		t.Fatal(err)
+	}
+	rehold := Hold(second.Local)
+	release()
+	if _, err := os.Stat(second.Local); err != nil {
+		t.Fatalf("forgotten copy removed on release, with its upload maybe under way: %v", err)
+	}
+	etag = `"v3"`
+	if _, err := Fetch(context.Background(), uri, nil); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(second.Local); err != nil || string(data) != "%PDF edited" {
+		t.Fatalf("replaced copy = %q, %v", data, err)
+	}
+	rehold()
+}
+
+func TestPruneCacheLeavesHeldCopies(t *testing.T) {
+	root := useTempCache(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "%PDF")
+	}))
+	defer server.Close()
+	opened, err := Fetch(context.Background(), server.URL+"/a.pdf", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := Hold(opened.Local)
+	pruneCache(root, time.Now().Add(2*cacheMaxAge))
+	if _, err := os.Stat(opened.Local); err != nil {
+		t.Fatalf("held copy pruned: %v", err)
+	}
+	release()
+	pruneCache(root, time.Now().Add(2*cacheMaxAge))
+	if _, err := os.Stat(opened.Local); !os.IsNotExist(err) {
+		t.Fatalf("old copy kept: %v", err)
+	}
+}
+
+func TestSameVersionWithUnknownSize(t *testing.T) {
+	mod := time.Unix(1700000000, 0)
+	if !(Info{Size: 4, ModTime: mod}).SameVersion(Info{Size: -1, ModTime: mod}) {
+		t.Fatal("a size the server did not give counts as a change")
+	}
+	if (Info{Size: 4, ModTime: mod}).SameVersion(Info{Size: 5, ModTime: mod}) {
+		t.Fatal("a different size does not count as a change")
+	}
 }
 
 func TestFetchHTTPErrors(t *testing.T) {
