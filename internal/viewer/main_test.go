@@ -6,12 +6,18 @@ import (
 	"testing"
 
 	"onon/internal/config"
+	"onon/internal/remote"
+	"onon/internal/remote/remotetest"
 )
 
 // TestMain runs the tests with the user's directories pointed at a
 // temporary one, so no test reads or writes the real configuration or
 // session database.
 func TestMain(m *testing.M) {
+	remotetest.ServeIfFakeSSH()
+	if code, ok := remote.RunAskpass(); ok {
+		os.Exit(code)
+	}
 	os.Exit(runIsolated(m))
 }
 

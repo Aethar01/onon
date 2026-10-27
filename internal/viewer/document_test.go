@@ -12,7 +12,7 @@ func TestResolveOpenPathReturnsAbsolutePath(t *testing.T) {
 	}
 
 	app := &App{}
-	if got := app.resolveOpenPath("test.txt"); got != want {
+	if got, _ := app.resolveOpenPath("test.txt"); got != want {
 		t.Fatalf("expected absolute path %q, got %q", want, got)
 	}
 }
@@ -22,7 +22,7 @@ func TestResolveOpenPathUsesCurrentDocumentDirectory(t *testing.T) {
 	app := &App{documentState: documentState{docPath: filepath.Join(dir, "paper.pdf")}}
 	want := filepath.Join(dir, "other.pdf")
 
-	if got := app.resolveOpenPath("other.pdf"); got != want {
+	if got, _ := app.resolveOpenPath("other.pdf"); got != want {
 		t.Fatalf("expected path relative to document directory %q, got %q", want, got)
 	}
 }

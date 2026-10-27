@@ -9,6 +9,7 @@ import (
 
 	"onon/internal/commands"
 	"onon/internal/config"
+	"onon/internal/remote"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
 	"golang.org/x/image/font"
@@ -194,6 +195,8 @@ func (a *App) openPathCompletions(arg string) []completionItem {
 	readDir := base
 	if strings.HasPrefix(base, "~") {
 		readDir = expandHomePath(base)
+	} else if !filepath.IsAbs(readDir) && remote.IsURI(a.docPath) {
+		return recent // beside a remote document is on its host
 	} else if !filepath.IsAbs(readDir) && a.docPath != "" {
 		readDir = filepath.Join(filepath.Dir(a.docPath), readDir)
 	}

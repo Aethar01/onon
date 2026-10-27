@@ -17,6 +17,7 @@ onon.options.dual_page = false -- Start in dual-page mode.
 onon.options.first_page_offset = true -- Treat the first page as a standalone cover in dual-page mode.
 onon.options.fit_mode = "page" -- Initial fit mode: page, width, height, or manual.
 onon.options.hint_chars = "asdfghjkl" -- Characters used for link hint labels, in order of preference.
+onon.options.http_headers = {} -- Headers sent when fetching remote documents, by host, host:port or *.domain, such as an API token; :set shows only their names.
 onon.options.invert_scroll = { mouse = false, trackpad = false } -- Invert horizontal and vertical wheel scrolling for selected inputs; true or false sets both, and a table updates only the mouse and trackpad fields it names.
 onon.options.link_preview = true -- Preview the destination of an internal link after hovering it briefly.
 onon.options.link_preview_delay_ms = 400 -- Milliseconds to hover an internal link before its preview appears.

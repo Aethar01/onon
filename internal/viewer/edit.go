@@ -3,6 +3,8 @@ package viewer
 import (
 	"fmt"
 	"path/filepath"
+
+	"onon/internal/remote"
 )
 
 // Edits such as highlights and form values stay in memory until :write.
@@ -69,8 +71,9 @@ func (a *App) confirmDiscard(action string) bool {
 }
 
 // writeDocument saves the document to path, or over itself when path is
-// empty.
-func (a *App) writeDocument(path string) {
+// empty. A remote document is saved back to its host, which force does even
+// if the file there changed since it was opened.
+func (a *App) writeDocument(path string, force bool) {
 	if a.doc == nil {
 		a.message = "no document open"
 		return
@@ -81,9 +84,17 @@ func (a *App) writeDocument(path string) {
 	}
 	target := a.docPath
 	if path != "" {
-		target = a.resolveOpenPath(path)
+		var err error
+		if target, err = a.resolveOpenPath(path); err != nil {
+			a.message = err.Error()
+			return
+		}
 	}
-	if err := a.doc.Save(target, a.docPath); err != nil {
+	if remote.IsURI(target) {
+		a.writeRemoteDocument(target, force)
+		return
+	}
+	if err := a.doc.Save(target, a.docFile); err != nil {
 		a.message = err.Error()
 		return
 	}

@@ -31,7 +31,7 @@ func (a *App) printJob(s printSettings, lpArgs []string) (func() (string, error)
 	if lpArgs == nil {
 		lpArgs = s.lpArgs()
 	}
-	cmd := printCommand(a.docPath, lpArgs)
+	cmd := printCommand(a.docFile, lpArgs)
 	return func() (string, error) {
 		out, err := cmd.CombinedOutput()
 		return strings.TrimSpace(string(out)), err

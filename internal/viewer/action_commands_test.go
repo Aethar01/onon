@@ -9,8 +9,8 @@ import (
 )
 
 func TestEveryCommandHasAHandler(t *testing.T) {
-	// :quit! and :wq are documented with :quit and :write.
-	unlisted := map[string]bool{"quit!": true, "wq": true}
+	// :quit!, :write! and :wq are documented with :quit and :write.
+	unlisted := map[string]bool{"quit!": true, "write!": true, "wq": true}
 	specs := map[string]bool{}
 	for _, name := range commandmeta.Names() {
 		specs[name] = true

@@ -10,6 +10,7 @@ import (
 
 	"onon/internal/config"
 	"onon/internal/instance"
+	"onon/internal/remote"
 	"onon/internal/viewer"
 )
 
@@ -17,6 +18,11 @@ import (
 var iconBMP []byte
 
 func main() {
+	// ssh runs onon as its askpass to ask a question in the window that
+	// started it.
+	if code, ok := remote.RunAskpass(); ok {
+		os.Exit(code)
+	}
 	if err := run(); err != nil {
 		log.Fatal(err)
 	}
@@ -112,6 +118,7 @@ func run() error {
 	}
 	defer runtime.Close()
 	defer config.CloseSessionDatabase() // after the viewer saves its session
+	defer remote.Close()                // ends any SSH connections
 
 	app, err := viewer.New(docPath, runtime, startPage-1, iconBMP, viewer.NewOptions{Verbose: verbose, StartPageExplicit: pageSet, LaunchArgs: launchArgs()})
 	if err != nil {
@@ -172,7 +179,13 @@ func launchArgs() []string {
 	return args
 }
 
+// explicitDocumentPath is the document named on the command line: a remote
+// URI or scp-style host:path, which is fetched once the window is up, or a
+// local file, which must exist.
 func explicitDocumentPath(path string) (string, error) {
+	if uri, ok, err := remote.FromArg(path); ok {
+		return uri, err
+	}
 	path = config.AbsoluteDocumentPath(path)
 	if _, err := os.Stat(path); err != nil {
 		return "", fmt.Errorf("open document: %w", err)

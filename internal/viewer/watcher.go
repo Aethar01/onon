@@ -7,6 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"onon/internal/remote"
+
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -176,4 +178,84 @@ func (dw *documentWatcher) Close() {
 		close(dw.done)
 		dw.watcher.Close()
 	})
+}
+
+// remoteWatcher checks a document on an SSH host for changes every
+// remote.PollInterval. It asks only over a connection that is already open,
+// so a host that went away is not reconnected to, and perhaps prompted for a
+// password, in the background.
+//
+// It checks only while enabled, which follows auto_reload, since a change
+// would wait unread anyway.
+type remoteWatcher struct {
+	uri     string
+	changed chan watcherChange
+	done    chan struct{}
+	enabled atomic.Bool
+
+	mu    sync.Mutex
+	known remote.Info
+}
+
+func newRemoteWatcher(info remote.Info, enabled bool) *remoteWatcher {
+	w := &remoteWatcher{uri: info.URI, known: info, changed: make(chan watcherChange, 1), done: make(chan struct{})}
+	w.enabled.Store(enabled)
+	go w.loop()
+	return w
+}
+
+// setKnown records info as the file's version, as after our own save, and
+// drops a change already seen, which may have been that save.
+func (w *remoteWatcher) setKnown(info remote.Info) {
+	w.mu.Lock()
+	w.known = info
+	select {
+	case <-w.changed:
+	default:
+	}
+	w.mu.Unlock()
+}
+
+func (w *remoteWatcher) loop() {
+	ticker := time.NewTicker(remote.PollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-w.done:
+			return
+		case <-ticker.C:
+		}
+		if !w.enabled.Load() {
+			continue
+		}
+		now, connected, err := remote.Changed(w.uri)
+		if !connected || err != nil {
+			continue
+		}
+		// Under the lock, so setKnown cannot fall between the comparison
+		// and the report.
+		w.mu.Lock()
+		if !now.SameVersion(w.known) {
+			w.known = now
+			select {
+			case <-w.changed: // a newer change replaces one not yet taken
+			default:
+			}
+			w.changed <- watcherChange{mod: now.ModTime, size: now.Size}
+		}
+		w.mu.Unlock()
+	}
+}
+
+func (w *remoteWatcher) waitForChange(time.Duration) (watcherChange, bool) {
+	select {
+	case change := <-w.changed:
+		return change, true
+	default:
+		return watcherChange{}, false
+	}
+}
+
+func (w *remoteWatcher) Close() {
+	close(w.done)
 }

@@ -8,6 +8,7 @@ import (
 	"onon/internal/config"
 	"onon/internal/instance"
 	"onon/internal/mupdf"
+	"onon/internal/remote"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
 	"golang.org/x/image/font"
@@ -102,7 +103,8 @@ type documentState struct {
 	instanceAddress        string
 	pendingInstanceJump    *instanceJump
 	pendingInstanceCommand string
-	docPath                string
+	docPath                string // what the document is known by: a path, or a remote URI
+	docFile                string // the file read: docPath, or a remote document's cached copy
 	docName                string
 	docPassword            string
 	doc                    *mupdf.Document
@@ -117,6 +119,15 @@ type documentState struct {
 	initialStartPage int
 	initialPageSet   bool
 	document         documentSession
+
+	// remoteInfo is the version of a remote document that was opened, and
+	// remoteTask a fetch or save in progress.
+	remoteInfo remote.Info
+	remoteTask *remoteTask
+	// remotePrompts brings questions from ssh and web servers to the event
+	// loop; remotePrompt is the one being asked.
+	remotePrompts chan *remotePrompt
+	remotePrompt  *remotePrompt
 }
 
 type viewStateFields struct {

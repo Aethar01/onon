@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"time"
 
+	"onon/internal/remote"
+
 	"github.com/jupiterrider/purego-sdl3/sdl"
 )
 
@@ -128,6 +130,8 @@ func (a *App) Run() error {
 		a.pollMetricUpdates()
 		a.flushPendingInstanceJump()
 		a.pollSearchUpdates()
+		a.pollRemoteTask()
+		a.pollRemotePrompts()
 		a.pollDocumentUpdate()
 		a.expireSequence()
 		a.finishKeybindCapture(time.Now())
@@ -176,7 +180,7 @@ func (a *App) openInitialDocument() error {
 	if a.initialDocPath == "" {
 		return nil
 	}
-	a.message = "opening " + a.initialDocPath
+	a.message = "opening " + remote.Display(a.initialDocPath)
 	a.pendingRedraw = true
 	if err := a.drawFrame(); err != nil {
 		return err

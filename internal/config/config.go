@@ -14,6 +14,7 @@ type Config struct {
 	ZoomStep              float64
 	PageCacheMemoryMB     int
 	LinkSchemes           []string
+	HTTPHeaders           map[string]map[string]string // by host, for remote documents
 	RenderThreads         int
 	MuPDFStoreMB          int
 	HintChars             string

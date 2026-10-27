@@ -12,6 +12,7 @@ import (
 	"onon/internal/config"
 	"onon/internal/filepicker"
 	"onon/internal/keys"
+	"onon/internal/remote"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
 )
@@ -123,6 +124,9 @@ func (a *App) closeAllUIWithCallbacks(callCallbacks bool) {
 		if a.mode == modePassword {
 			a.passwordPrompt = pendingPasswordPrompt{}
 		}
+		if a.mode == modePrompt {
+			a.cancelPrompt()
+		}
 		a.mode = modeNormal
 		a.input.Reset()
 		a.ignoreText = ""
@@ -142,9 +146,16 @@ func (a *App) closeActiveUI() {
 		if a.mode == modePassword {
 			a.passwordPrompt = pendingPasswordPrompt{}
 		}
+		if a.mode == modePrompt {
+			a.cancelPrompt()
+		}
 		a.mode = modeNormal
 		a.input.Reset()
 		a.ignoreText = ""
+		return
+	}
+	if a.cancelRemoteTask() {
+		a.message = "cancelled"
 		return
 	}
 	if a.search.query != "" || len(a.search.order) > 0 || a.search.running {
@@ -202,6 +213,8 @@ func (a *App) RunCommand(command string) error {
 // startup and when a document opens.
 func (a *App) applyConfigState(cfg config.Config) {
 	a.config = cfg
+	remote.SetHTTPHeaders(cfg.HTTPHeaders)
+	a.document.setRemotePolling(cfg.AutoReload)
 	a.cancelSmoothZoom()
 	a.cancelSmoothScroll()
 	a.fitMode = parseFitMode(cfg.FitMode)
@@ -486,14 +499,22 @@ func (a *App) resolvePageInput(input string) (int, bool) {
 var commandHandlers map[string]func(a *App, args string)
 
 // commandAliases are short names of commands.
-var commandAliases = map[string]string{"q": "quit", "q!": "quit!", "p": "page", "w": "write"}
+var commandAliases = map[string]string{"q": "quit", "q!": "quit!", "p": "page", "w": "write", "w!": "write!"}
 
 func init() {
 	commandHandlers = map[string]func(*App, string){
-		"quit":      func(a *App, _ string) { a.quit = a.confirmDiscard(":q") },
-		"quit!":     func(a *App, _ string) { a.quit = true },
-		"write":     (*App).writeDocument,
-		"wq":        func(a *App, args string) { a.writeDocument(args); a.quit = !a.unsaved },
+		"quit":   func(a *App, _ string) { a.quit = a.confirmDiscard(":q") },
+		"quit!":  func(a *App, _ string) { a.quit = true },
+		"write":  func(a *App, args string) { a.writeDocument(args, false) },
+		"write!": func(a *App, args string) { a.writeDocument(args, true) },
+		"wq": func(a *App, args string) {
+			a.writeDocument(args, false)
+			if task := a.remoteTask; task != nil && task.kind == remoteSave {
+				task.quitAfter = true // once it is on the remote host
+				return
+			}
+			a.quit = !a.unsaved
+		},
 		"print":     (*App).printDocument,
 		"undo":      func(a *App, _ string) { a.undoEdit(false) },
 		"redo":      func(a *App, _ string) { a.undoEdit(true) },

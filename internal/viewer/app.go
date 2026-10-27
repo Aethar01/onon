@@ -5,6 +5,7 @@ import (
 
 	"onon/internal/config"
 	"onon/internal/mupdf"
+	"onon/internal/remote"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
 )
@@ -68,7 +69,9 @@ func New(docPath string, runtime *config.Runtime, startPage int, iconBytes []byt
 			sequenceLookup: map[string]string{},
 		},
 	}
-	app.logf("create viewer doc=%q startPage=%d", docPath, startPage+1)
+	app.logf("create viewer doc=%q startPage=%d", remote.Display(docPath), startPage+1)
+	app.remotePrompts = make(chan *remotePrompt, 4)
+	remote.SetPrompter(app.askRemote)
 	runtime.AttachHost(app)
 	runtime.SetWake(app.wakeLoop)
 	app.applyConfigState(cfg)
@@ -108,11 +111,19 @@ func (a *App) setWindowTitle() {
 // whether it has unsaved edits, on systems that show them.
 func (a *App) showWindowDocument() {
 	if a.window != nil {
-		setNativeWindowDocument(a.window, a.docPath, a.unsaved)
+		file := a.docPath
+		if remote.IsURI(file) {
+			file = "" // no local file for the proxy icon
+		}
+		setNativeWindowDocument(a.window, file, a.unsaved)
 	}
 }
 
 func (a *App) Close() {
+	a.cancelRemoteTask()
+	if a.remotePrompts != nil {
+		remote.SetPrompter(nil)
+	}
 	hadDocument := a.doc != nil
 	payload := a.documentEventPayload()
 	if hadDocument && a.runtime != nil {

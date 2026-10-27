@@ -26,7 +26,7 @@ func (a *App) printJob(s printSettings, lpArgs []string) (func() (string, error)
 			return nil, err
 		}
 	}
-	path, opts, title, aa := a.docPath, a.openOptions(a.docPassword), a.docName, a.config.AntiAliasing
+	path, opts, title, aa := a.docFile, a.openOptions(a.docPassword), a.docName, a.config.AntiAliasing
 	return func() (string, error) {
 		return "", printFile(path, opts, title, aa, s)
 	}, nil

@@ -32,7 +32,7 @@ var specs = []Spec{
 	{Name: "mode", ArgCompletions: []string{"continuous", "single"}, Help: ":mode continuous|single - Set render mode"},
 	{Name: "next", Help: ":next - Go to the next search match"},
 	{Name: "noh", Help: ":noh - Clear the search highlights"},
-	{Name: "open", Help: ":open <filename> - Open another PDF relative to the current document"},
+	{Name: "open", Help: ":open <filename> - Open another document relative to the current one, or a URL or ssh host:path"},
 	{Name: "open_file_picker", Help: ":open_file_picker - Open the PDF file picker"},
 	{Name: "outline", Help: ":outline - Open the document outline"},
 	{Name: "overview", Help: ":overview - Toggle the page overview grid"},
@@ -52,7 +52,7 @@ var specs = []Spec{
 	{Name: "trim", ArgCompletions: []string{"on", "off"}, Help: ":trim [on|off] - Lay pages out by their content, trimming margins"},
 	{Name: "undo", Help: ":undo - Undo the last edit"},
 	{Name: "version", Help: ":version - Show the onon version"},
-	{Name: "write", Help: ":write [path], :w - Save edits, or a copy to path; :wq saves and exits"},
+	{Name: "write", Help: ":write [path], :w - Save edits, or a copy to path; :wq saves and exits; :w! saves over a remote file that changed"},
 	{Name: "zoom", ArgCompletions: []string{"in", "out", "reset"}, Help: ":zoom in|out|reset|PERCENT - Zoom a step, reset, or set e.g. :zoom 150"},
 }
 
