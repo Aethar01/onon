@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"onon/internal/instance"
+	"onon/internal/remote"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
 )
@@ -92,7 +93,7 @@ func (a *App) pollInstanceCommands() bool {
 				a.logf("instance command %q failed: %v", delivery.Request.Command, err)
 			} else {
 				a.logf("instance command %q applied path=%q page=%d", delivery.Request.Command,
-					delivery.Request.Path, delivery.Request.Page)
+					remote.Display(delivery.Request.Path), delivery.Request.Page)
 			}
 			changed = true
 		default:

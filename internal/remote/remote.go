@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"path/filepath"
 	"time"
 )
 
@@ -64,19 +65,38 @@ func Upload(ctx context.Context, uri, local string, opened Info, force bool) (In
 		info, err = uploadSFTP(ctx, t, local, opened, force)
 	}
 	entry, entryErr := entryFor(t.url.String())
-	if entryErr != nil {
-		return info, err
-	}
-	cached, ok := entry.cached()
-	if !ok || cached.Local != local {
+	if entryErr != nil || !entry.contains(local) {
 		return info, err
 	}
 	if err != nil {
 		// The copy holds edits the remote file does not, so it is no longer
 		// that version; the next open fetches it again.
-		entry.forget()
+		if cached, ok := entry.cached(); ok && cached.Local == local {
+			entry.forget()
+		}
 		return Info{}, err
 	}
-	_ = entry.record(info)
+	// Recorded even after Forget, or after a newer version was fetched: the
+	// copy is what the remote file now holds.
+	if entry.record(info) == nil {
+		entry.removeVersionsExcept(filepath.Base(filepath.Dir(local)))
+	}
 	return info, nil
+}
+
+// Forget drops the cache's record of local as the current copy of uri,
+// before edits are saved into it, so that if the upload never finishes, the
+// edited copy is not taken for the remote file. Upload records it again.
+func Forget(uri, local string) {
+	t, err := parseTarget(uri)
+	if err != nil {
+		return
+	}
+	entry, err := entryFor(t.url.String())
+	if err != nil {
+		return
+	}
+	if cached, ok := entry.cached(); ok && cached.Local == local {
+		entry.forget()
+	}
 }

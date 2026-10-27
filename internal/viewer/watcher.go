@@ -195,6 +195,7 @@ type remoteWatcher struct {
 
 	mu    sync.Mutex
 	known remote.Info
+	saves int // setKnown calls, to tell a check made across one
 }
 
 func newRemoteWatcher(info remote.Info, enabled bool) *remoteWatcher {
@@ -209,6 +210,7 @@ func newRemoteWatcher(info remote.Info, enabled bool) *remoteWatcher {
 func (w *remoteWatcher) setKnown(info remote.Info) {
 	w.mu.Lock()
 	w.known = info
+	w.saves++
 	select {
 	case <-w.changed:
 	default:
@@ -228,14 +230,18 @@ func (w *remoteWatcher) loop() {
 		if !w.enabled.Load() {
 			continue
 		}
+		w.mu.Lock()
+		saves := w.saves
+		w.mu.Unlock()
 		now, connected, err := remote.Changed(w.uri)
 		if !connected || err != nil {
 			continue
 		}
 		// Under the lock, so setKnown cannot fall between the comparison
-		// and the report.
+		// and the report. A check that began before our own save may have
+		// seen the file from before it, so is dropped.
 		w.mu.Lock()
-		if !now.SameVersion(w.known) {
+		if w.saves == saves && !now.SameVersion(w.known) {
 			w.known = now
 			select {
 			case <-w.changed: // a newer change replaces one not yet taken

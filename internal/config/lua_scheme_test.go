@@ -31,11 +31,15 @@ onon.register_scheme("ping", function() return "pong:x" end)
 onon.register_scheme("pong", function() return "ping:x" end)
 onon.register_scheme("none", function() return nil end)
 onon.register_scheme("boom", function() error("no such paper") end)
+for i = 1, 8 do -- as long a chain as is allowed
+  onon.register_scheme("s" .. i, function(x) return i < 8 and ("s" .. (i + 1) .. ":" .. x) or ("https://example.com/" .. x .. ".pdf") end)
+end
 `)
 	for arg, want := range map[string]string{
 		"arXiv:1234.5678":   "https://arxiv.org/pdf/1234.5678#page=3",
 		"arxiv://2401.0001": "https://arxiv.org/pdf/2401.0001#page=1",
 		"paper:2401.0002":   "https://arxiv.org/pdf/2401.0002#page=1",
+		"s1:a":              "https://example.com/a.pdf",
 	} {
 		got, ok, err := rt.ResolveScheme(arg)
 		if err != nil || !ok || got != want {

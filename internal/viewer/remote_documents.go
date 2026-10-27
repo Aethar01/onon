@@ -229,6 +229,8 @@ func (a *App) writeRemoteDocument(target string, force bool) {
 		task.temp = dir
 		// Another file is written whatever it holds, as :w path does locally.
 		force, opened = true, remote.Info{}
+	} else {
+		remote.Forget(target, local)
 	}
 	if err := a.doc.Save(local, a.docFile); err != nil {
 		if task.temp != "" {

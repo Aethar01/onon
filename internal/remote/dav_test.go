@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
@@ -75,6 +76,8 @@ func TestWebDAVFetchSaveAndConflict(t *testing.T) {
 	if err != nil || opened.URI != uri || opened.ETag != `"v0"` {
 		t.Fatalf("fetch = %+v, %v", opened, err)
 	}
+	// As the viewer does before saving edits into the copy.
+	Forget(uri, opened.Local)
 	if err := os.WriteFile(opened.Local, []byte("%PDF edited"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -99,6 +102,69 @@ func TestWebDAVFetchSaveAndConflict(t *testing.T) {
 	}
 	if last := dav.puts[len(dav.puts)-1]; last.Get("If-Match") != "" {
 		t.Fatalf("forced save sent If-Match %q", last.Get("If-Match"))
+	}
+	// The conflict dropped the record; the forced save made it again.
+	if again, err := Fetch(context.Background(), uri, nil); err != nil || again.Local != opened.Local {
+		t.Fatalf("the force-saved copy is not reused: %+v, %v", again, err)
+	}
+}
+
+func TestWebDAVSaveRedirected(t *testing.T) {
+	useTempCache(t)
+	resetAuth(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/a.pdf" && r.Method == http.MethodPut {
+			http.Redirect(w, r, "/moved/a.pdf", http.StatusMovedPermanently)
+			return
+		}
+		if r.Method == http.MethodPut {
+			t.Errorf("redirected PUT reached %s", r.URL.Path)
+		}
+		w.Header().Set("ETag", `"v0"`)
+		io.WriteString(w, "%PDF")
+	}))
+	defer server.Close()
+	uri := "dav" + strings.TrimPrefix(server.URL, "http") + "/a.pdf"
+	opened, err := Fetch(context.Background(), uri, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// net/http would send it again as a GET, whose 200 passed for a save.
+	if _, err := Upload(context.Background(), uri, opened.Local, opened, false); err == nil || !strings.Contains(err.Error(), "/moved/a.pdf") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// A server that compresses, or sends in chunks, what it is asked for with
+// gzip: the version fetched must match what a HEAD says.
+func TestWebDAVFetchMatchesHead(t *testing.T) {
+	useTempCache(t)
+	resetAuth(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			w.Header().Set("ETag", `"v0-gzip"`)
+			w.Header().Set("Content-Encoding", "gzip")
+			gz := gzip.NewWriter(w)
+			io.WriteString(gz, "%PDF")
+			gz.Close()
+			return
+		}
+		w.Header().Set("ETag", `"v0"`)
+		if r.Method == http.MethodHead {
+			w.Header().Set("Content-Length", "4")
+			return
+		}
+		io.WriteString(w, "%PDF")
+		w.(http.Flusher).Flush() // chunked, so no Content-Length
+	}))
+	defer server.Close()
+	uri := "dav" + strings.TrimPrefix(server.URL, "http") + "/a.pdf"
+	opened, err := Fetch(context.Background(), uri, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if now, ok, err := Changed(uri); err != nil || !ok || !now.SameVersion(opened) || opened.Size != 4 {
+		t.Fatalf("Changed = %+v, %t, %v; opened %+v", now, ok, err, opened)
 	}
 }
 

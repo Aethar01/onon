@@ -132,6 +132,10 @@ func (a *App) Close() {
 	a.saveDocumentSession()
 	a.document.Close()
 	a.closeDocumentResources()
+	if a.releaseCopy != nil {
+		a.releaseCopy()
+		a.releaseCopy = nil
+	}
 	if hadDocument && a.runtime != nil {
 		a.emitPluginEvent("document_closed", payload)
 	}

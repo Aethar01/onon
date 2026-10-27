@@ -53,3 +53,12 @@ func TestPromptHistoryKeepsPromptHistoryMaxEntries(t *testing.T) {
 		t.Fatalf("history = %v, want the newest 2", got)
 	}
 }
+
+func TestPromptHistoryLeavesOutPasswords(t *testing.T) {
+	app := testLayoutApp(1)
+	app.config.PromptHistoryMax = 10
+	app.recordPromptHistory(modeCommand, "open https://me:secret@example.com/a.pdf?token=t")
+	if got := app.promptHistoryFor(modeCommand).entries[0]; got != "open https://me@example.com/a.pdf?token=t" {
+		t.Fatalf("history = %q", got)
+	}
+}

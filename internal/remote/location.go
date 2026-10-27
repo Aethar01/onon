@@ -240,6 +240,26 @@ func Display(uri string) string {
 	return u.Redacted()
 }
 
+// WithoutPasswords drops the password from each URL in text, a command
+// line, which is kept as typed otherwise. The login is remembered for the
+// session apart from it.
+func WithoutPasswords(text string) string {
+	for _, field := range strings.Fields(text) {
+		if !strings.Contains(field, "://") {
+			continue
+		}
+		u, err := url.Parse(field)
+		if err != nil || u.User == nil {
+			continue
+		}
+		if _, ok := u.User.Password(); ok {
+			u.User = url.User(u.User.Username())
+			text = strings.Replace(text, field, u.String(), 1)
+		}
+	}
+	return text
+}
+
 // Name returns the file name in uri, for titles and the cached copy. A URL
 // without one, such as a bare site, is named after its host.
 func Name(uri string) string {

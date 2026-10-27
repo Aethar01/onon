@@ -14,7 +14,20 @@ import (
 	"time"
 )
 
-var httpClient = &http.Client{Transport: authTransport{base: http.DefaultTransport}}
+var httpClient = &http.Client{
+	Transport: authTransport{base: http.DefaultTransport},
+	// Only a GET or HEAD follows a redirect: net/http sends a redirected PUT
+	// again as a GET, whose 200 would pass for a save.
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if method := via[0].Method; method != http.MethodGet && method != http.MethodHead {
+			return http.ErrUseLastResponse
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	},
+}
 
 // doHTTP sends the request newRequest makes, answering a request for a
 // login as httpauth.go describes and sending the request again, which is
@@ -70,7 +83,13 @@ func fetchHTTP(ctx context.Context, uri, address string, entry cacheEntry, progr
 	cached, hasCache := entry.cached()
 	resp, err := doHTTP(ctx, uri, true, func() (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
-		if err == nil && hasCache {
+		if err != nil {
+			return nil, err
+		}
+		// The bytes as stored, with the ETag a HEAD gives, which a compressed
+		// reply may not have.
+		req.Header.Set("Accept-Encoding", "identity")
+		if hasCache {
 			if cached.ETag != "" {
 				req.Header.Set("If-None-Match", cached.ETag)
 			}
@@ -78,7 +97,7 @@ func fetchHTTP(ctx context.Context, uri, address string, entry cacheEntry, progr
 				req.Header.Set("If-Modified-Since", cached.LastModified)
 			}
 		}
-		return req, err
+		return req, nil
 	})
 	if err != nil {
 		if ctx.Err() != nil {
@@ -176,6 +195,8 @@ func uploadDAV(ctx context.Context, uri, local string, opened Info, force bool) 
 	case http.StatusOK, http.StatusCreated, http.StatusNoContent:
 	case http.StatusPreconditionFailed:
 		return Info{}, ErrConflict
+	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
+		return Info{}, fmt.Errorf("%s: %s to %s; open it there to save it", Display(uri), resp.Status, resp.Header.Get("Location"))
 	case http.StatusMethodNotAllowed, http.StatusForbidden:
 		return Info{}, fmt.Errorf("%s: %s; the server does not accept saving it", Display(uri), resp.Status)
 	default:

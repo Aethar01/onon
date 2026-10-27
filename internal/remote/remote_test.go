@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"onon/internal/remote/remotetest"
 )
@@ -153,6 +154,41 @@ func TestFetchHTTPRevalidates(t *testing.T) {
 	}
 }
 
+func TestHeldCopyKept(t *testing.T) {
+	useTempCache(t)
+	etag := `"v1"`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("ETag", etag)
+		fmt.Fprint(w, "%PDF "+etag)
+	}))
+	defer server.Close()
+	uri := server.URL + "/a.pdf"
+
+	first, err := Fetch(context.Background(), uri, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := Hold(first.Local)
+	etag = `"v2"`
+	second, err := Fetch(context.Background(), uri, nil)
+	if err != nil || second.Local == first.Local {
+		t.Fatalf("changed fetch = %+v, %v", second, err)
+	}
+	// A viewer keeping unsaved edits still reads, and saves into, the first.
+	if _, err := os.Stat(first.Local); err != nil {
+		t.Fatalf("held copy removed: %v", err)
+	}
+	release()
+	if _, err := os.Stat(first.Local); !os.IsNotExist(err) {
+		t.Fatalf("released copy kept: %v", err)
+	}
+	// The current copy outlives its viewer, to be opened again.
+	Hold(second.Local)()
+	if _, err := os.Stat(second.Local); err != nil {
+		t.Fatalf("current copy removed: %v", err)
+	}
+}
+
 func TestFetchHTTPErrors(t *testing.T) {
 	useTempCache(t)
 	server := httptest.NewServer(http.NotFoundHandler())
@@ -185,6 +221,9 @@ func TestHTTPName(t *testing.T) {
 	}
 	if name := safeName(`a/b\c:d.pdf`); name != "a_b_c_d.pdf" {
 		t.Fatalf("safeName = %q", name)
+	}
+	if name := safeName(strings.Repeat("報告", 50) + ".pdf"); !utf8.ValidString(name) || len(name) > 200 || !strings.HasSuffix(name, ".pdf") {
+		t.Fatalf("long safeName = %q (%d bytes)", name, len(name))
 	}
 }
 

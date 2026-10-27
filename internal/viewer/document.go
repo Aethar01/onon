@@ -2,6 +2,7 @@ package viewer
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -36,7 +37,7 @@ func (a *App) Open(path string) error {
 	if !a.confirmDiscard("opening it") {
 		return nil
 	}
-	a.logf("open requested path=%q", path)
+	a.logf("open requested path=%q", remote.Display(path))
 	if a.runtime == nil {
 		a.pendingOpen = path
 		a.quit = true
@@ -51,6 +52,14 @@ func (a *App) Open(path string) error {
 }
 
 func (a *App) resolveOpenPath(path string) (string, error) {
+	// A file of the name beside a local document wins over host:path, as
+	// one in the working directory does in FromArg.
+	if a.docPath != "" && !remote.IsURI(a.docPath) && !filepath.IsAbs(path) {
+		beside := filepath.Join(filepath.Dir(a.docPath), path)
+		if _, err := os.Lstat(beside); err == nil {
+			return config.AbsoluteDocumentPath(beside), nil
+		}
+	}
 	if uri, ok, err := remote.FromArg(path); ok {
 		return uri, err
 	}
@@ -147,7 +156,7 @@ func (a *App) openDocumentWithPassword(path string, opts openDocumentOptions, pa
 	a.emitPluginEvent("document_open_pre", map[string]any{"document": map[string]any{"path": path, "name": config.DocumentName(path)}})
 	doc, err := mupdf.Open(file, a.openOptions(password))
 	if err != nil {
-		a.logf("open document failed path=%q err=%v", path, err)
+		a.logf("open document failed path=%q err=%v", remote.Display(path), err)
 		if mupdf.IsPasswordError(err) {
 			a.promptDocumentPassword(path, opts)
 			return nil
@@ -314,6 +323,15 @@ func (a *App) installDocument(doc *mupdf.Document, path, file string, pages, sta
 	a.generation++
 	a.docPath = path
 	a.docFile = file
+	// The new copy is held before the old is let go, which may be the same.
+	release := a.releaseCopy
+	a.releaseCopy = nil
+	if remote.IsURI(path) {
+		a.releaseCopy = remote.Hold(file)
+	}
+	if release != nil {
+		release()
+	}
 	a.docName = config.DocumentName(path)
 	a.recordRecentFile(path)
 	a.doc = doc

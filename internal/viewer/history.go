@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"onon/internal/config"
+	"onon/internal/remote"
 )
 
 // Prompt history lets Up and Down in the : and / prompts step through
@@ -57,6 +58,9 @@ func (a *App) recordPromptHistory(m mode, entry string) {
 	h := a.promptHistoryFor(m)
 	if h == nil || entry == "" {
 		return
+	}
+	if m == modeCommand {
+		entry = remote.WithoutPasswords(entry)
 	}
 	h.entries = slices.DeleteFunc(h.entries, func(e string) bool { return e == entry })
 	h.entries = slices.Insert(h.entries, 0, entry)

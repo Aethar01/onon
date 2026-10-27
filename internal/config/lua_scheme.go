@@ -84,11 +84,14 @@ func (r *Runtime) ResolveScheme(arg string) (string, bool, error) {
 		return arg, false, nil
 	}
 	original := arg
-	for depth := 0; depth < maxSchemeDepth; depth++ {
+	for depth := 0; ; depth++ {
 		name, rest, ok := strings.Cut(arg, ":")
 		resolve := r.schemes[strings.ToLower(name)]
 		if !ok || resolve == nil {
 			return arg, true, nil
+		}
+		if depth == maxSchemeDepth {
+			return "", true, fmt.Errorf("%s: schemes resolve to each other in a loop", original)
 		}
 		var result lua.LValue
 		err := r.doLua(func() error {
@@ -107,5 +110,4 @@ func (r *Runtime) ResolveScheme(arg string) (string, bool, error) {
 		}
 		arg = result.String()
 	}
-	return "", true, fmt.Errorf("%s: schemes resolve to each other in a loop", original)
 }

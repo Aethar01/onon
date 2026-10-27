@@ -105,6 +105,7 @@ type documentState struct {
 	pendingInstanceCommand string
 	docPath                string // what the document is known by: a path, or a remote URI
 	docFile                string // the file read: docPath, or a remote document's cached copy
+	releaseCopy            func() // lets the cache remove a remote document's copy, once read no more
 	docName                string
 	docPassword            string
 	doc                    *mupdf.Document

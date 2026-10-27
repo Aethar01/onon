@@ -190,7 +190,7 @@ func (a *App) openInitialDocument() error {
 	pageSet := a.initialPageSet
 	a.initialDocPath = ""
 	a.initialPageSet = false
-	a.logf("open initial document path=%q page=%d", path, startPage+1)
+	a.logf("open initial document path=%q page=%d", remote.Display(path), startPage+1)
 	if err := a.openDocument(path, openDocumentOptions{startPage: startPage, startPageExplicit: pageSet}); err != nil {
 		a.message = err.Error()
 		a.pendingRedraw = true

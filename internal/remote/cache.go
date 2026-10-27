@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // Info describes a fetched copy of a remote document.
@@ -97,9 +98,10 @@ func (e cacheEntry) cached() (Info, bool) {
 }
 
 // forget drops the record of the entry's copy, which stays on disk for the
-// viewer that has it open until the next version replaces it.
+// viewer that has it open. meta.json stays, without a file, so pruneCache
+// does not take the entry for a fetch that never finished.
 func (e cacheEntry) forget() {
-	_ = os.Remove(filepath.Join(e.dir, "meta.json"))
+	_ = e.writeMeta(cacheMeta{})
 }
 
 // record notes info as the entry's copy.
@@ -108,10 +110,14 @@ func (e cacheEntry) record(info Info) error {
 	if err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(cacheMeta{
+	return e.writeMeta(cacheMeta{
 		URI: info.URI, File: filepath.ToSlash(rel), ModTime: info.ModTime, Size: info.Size,
 		ETag: info.ETag, LastModified: info.LastModified,
-	}, "", "  ")
+	})
+}
+
+func (e cacheEntry) writeMeta(meta cacheMeta) error {
+	data, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -123,7 +129,7 @@ func (e cacheEntry) record(info Info) error {
 }
 
 // store writes a new version of the document called name from write, and
-// records it. Older versions are removed where nothing holds them open.
+// records it. Older versions are removed unless a viewer holds them.
 func (e cacheEntry) store(info Info, name string, write func(io.Writer) error) (Info, error) {
 	version := strconv.FormatInt(time.Now().UnixNano(), 36)
 	dir := filepath.Join(e.dir, version)
@@ -144,11 +150,16 @@ func (e cacheEntry) store(info Info, name string, write func(io.Writer) error) (
 	if err == nil {
 		err = os.Rename(part, local)
 	}
+	var st os.FileInfo
+	if err == nil {
+		st, err = os.Stat(local)
+	}
 	if err != nil {
 		os.RemoveAll(dir)
 		return Info{}, err
 	}
-	info.Local = local
+	// What arrived, which a reply sent in chunks gives no length for.
+	info.Local, info.Size = local, st.Size()
 	if err := e.record(info); err != nil {
 		os.RemoveAll(dir)
 		return Info{}, err
@@ -164,7 +175,56 @@ func (e cacheEntry) removeVersionsExcept(keep string) {
 	}
 	for _, entry := range entries {
 		if entry.IsDir() && entry.Name() != keep {
-			_ = os.RemoveAll(filepath.Join(e.dir, entry.Name()))
+			removeVersion(filepath.Join(e.dir, entry.Name()))
+		}
+	}
+}
+
+// removeVersion removes a version's directory unless a viewer, in this
+// process or another, holds its copy.
+func removeVersion(dir string) {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, f := range files {
+		if held(filepath.Join(dir, f.Name())) {
+			return
+		}
+	}
+	_ = os.RemoveAll(dir)
+}
+
+// contains reports whether local is a copy in the entry, not another file.
+func (e cacheEntry) contains(local string) bool {
+	return filepath.Dir(filepath.Dir(local)) == e.dir
+}
+
+// Hold marks local, a copy Fetch returned, as open in a viewer until release
+// is called, so a newer version fetched meanwhile, here or by another
+// process, leaves it in place: the viewer reads it, and saves edits into it.
+// Release removes it once it is no longer the entry's current copy.
+func Hold(local string) (release func()) {
+	root, err := CacheDir()
+	if err != nil {
+		return func() {}
+	}
+	entry := cacheEntry{dir: filepath.Dir(filepath.Dir(local))}
+	if filepath.Dir(entry.dir) != filepath.Clean(root) {
+		return func() {}
+	}
+	f, err := os.Open(local)
+	if err != nil {
+		return func() {}
+	}
+	if err := holdFile(f); err != nil {
+		f.Close()
+		return func() {}
+	}
+	return func() {
+		f.Close()
+		if cached, ok := entry.cached(); !ok || cached.Local != local {
+			removeVersion(filepath.Dir(local))
 		}
 	}
 }
@@ -187,7 +247,12 @@ func safeName(name string) string {
 		if len(ext) > 20 {
 			ext = ""
 		}
-		name = name[:200-len(ext)] + ext
+		// On a character boundary: APFS refuses a name that is not UTF-8.
+		cut := 200 - len(ext)
+		for cut > 0 && !utf8.RuneStart(name[cut]) {
+			cut--
+		}
+		name = name[:cut] + ext
 	}
 	return name
 }
