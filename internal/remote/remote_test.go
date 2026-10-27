@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -197,7 +199,7 @@ func TestFetchSFTP(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	abs := "sftp://me@host:2200" + filepath.ToSlash(doc)
+	abs := "sftp://me@host:2200" + path.Join("/", filepath.ToSlash(doc)) // /C:/... on Windows
 	info, err := Fetch(context.Background(), abs, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -263,7 +265,7 @@ func TestUploadSFTP(t *testing.T) {
 	if data, _ := os.ReadFile(doc); string(data) != "%PDF edited" {
 		t.Fatalf("remote = %q", data)
 	}
-	if st, _ := os.Stat(doc); st.Mode().Perm() != 0o640 {
+	if st, _ := os.Stat(doc); runtime.GOOS != "windows" && st.Mode().Perm() != 0o640 {
 		t.Fatalf("mode = %v", st.Mode())
 	}
 	if leftovers, _ := filepath.Glob(filepath.Join(home, ".a.pdf.onon-*")); len(leftovers) > 0 {

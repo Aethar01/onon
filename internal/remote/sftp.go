@@ -1,7 +1,6 @@
 package remote
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -32,7 +31,7 @@ type sshConn struct {
 	client *sftp.Client
 	cmd    *exec.Cmd
 	home   string
-	stderr *tailBuffer
+	stderr string        // the end of what ssh printed, once it exits
 	done   chan struct{} // closed once ssh exits
 }
 
@@ -165,26 +164,42 @@ func sshArgs(t target) []string {
 
 func dialSSH(ctx context.Context, t target) (*sshConn, error) {
 	cmd := exec.Command(SSHCommand, sshArgs(t)...)
+	hideConsole(cmd)
 	// Questions are asked only while connecting.
 	env, release := askpassEnv(ctx, t.url.Host)
 	defer release()
 	cmd.Env = env
-	stderr := &tailBuffer{max: 4096}
+	// ssh's messages go to a file, not a pipe: the Windows ssh stops at its
+	// first message to a piped stderr after it has run askpass, such as on
+	// a wrong password.
+	stderr, err := os.CreateTemp("", "onon-ssh-*.log")
+	if err != nil {
+		return nil, err
+	}
+	discard := func() {
+		stderr.Close()
+		os.Remove(stderr.Name())
+	}
 	cmd.Stderr = stderr
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
+		discard()
 		return nil, err
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		discard()
 		return nil, err
 	}
 	if err := cmd.Start(); err != nil {
+		discard()
 		return nil, fmt.Errorf("start ssh: %w", err)
 	}
-	conn := &sshConn{cmd: cmd, stderr: stderr, done: make(chan struct{})}
+	conn := &sshConn{cmd: cmd, done: make(chan struct{})}
 	go func() {
 		_ = cmd.Wait()
+		conn.stderr = fileTail(stderr, 4096)
+		discard()
 		close(conn.done)
 	}()
 
@@ -213,7 +228,7 @@ func dialSSH(ctx context.Context, t target) (*sshConn, error) {
 		if r.err != nil {
 			_ = cmd.Process.Kill()
 			<-conn.done
-			return nil, sshError(t, r.err, stderr.String())
+			return nil, sshError(t, r.err, conn.stderr)
 		}
 		conn.client, conn.home = r.client, r.home
 		return conn, nil
@@ -423,27 +438,16 @@ func randomSuffix() string {
 	return hex.EncodeToString(b)
 }
 
-// tailBuffer keeps the last max bytes written to it.
-type tailBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-	max int
-}
-
-func (b *tailBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.buf.Write(p)
-	if over := b.buf.Len() - b.max; over > 0 {
-		b.buf.Next(over)
+// fileTail returns the last size bytes of f.
+func fileTail(f *os.File, size int64) string {
+	st, err := f.Stat()
+	if err != nil {
+		return ""
 	}
-	return len(p), nil
-}
-
-func (b *tailBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.String()
+	start := max(st.Size()-size, 0)
+	data := make([]byte, st.Size()-start)
+	n, _ := f.ReadAt(data, start)
+	return string(data[:n])
 }
 
 // ErrConflict is returned when saving over a remote file that changed after
