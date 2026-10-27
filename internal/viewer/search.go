@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"onon/internal/mupdf"
+	"onon/internal/remote"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
 )
@@ -417,7 +418,7 @@ func (a *App) startSearch(query string, mode searchMode) {
 		return
 	}
 	if a.searchWorker == nil && a.doc != nil {
-		a.logf("start search worker path=%q", a.docPath)
+		a.logf("start search worker path=%q", remote.Display(a.docPath))
 		a.searchWorker = newSearchWorker(a.doc, a.wakeLoop)
 	}
 	if a.searchWorker == nil {

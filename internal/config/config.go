@@ -14,6 +14,7 @@ type Config struct {
 	ZoomStep              float64
 	PageCacheMemoryMB     int
 	LinkSchemes           []string
+	HTTPHeaders           map[string]map[string]string // by host, for remote documents
 	RenderThreads         int
 	MuPDFStoreMB          int
 	HintChars             string
@@ -99,6 +100,7 @@ type luaGeneration struct {
 	cfg              Config
 	callbacks        map[string]*lua.LFunction
 	callbackSeq      int
+	schemes          map[string]*lua.LFunction // onon.register_scheme, by name
 	dirty            bool
 	pluginCatalog    *pluginCatalog
 	plugins          *pluginState

@@ -103,6 +103,7 @@ func newLuaModule(L *lua.LState, rt *Runtime, cfg *Config) *lua.LTable {
 		{Signature: "onon.message([text])", Function: luaMessage(rt, cfg)},
 		{Signature: "onon.command(command)", Function: luaCommand(rt)},
 		{Signature: "onon.open(path)", Function: luaOpen(rt)},
+		{Signature: "onon.register_scheme(name, resolve)", Function: luaRegisterScheme(rt)},
 		{Signature: "onon.pick_file(callback)", Function: luaPickFile(rt)},
 		{Signature: "onon.pick_directory(callback)", Function: luaPickDirectory(rt)},
 		{Signature: "onon.schedule(callback)", Function: luaSchedule(rt)},

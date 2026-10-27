@@ -6,15 +6,18 @@ import (
 
 	"onon/internal/config"
 	"onon/internal/mupdf"
+	"onon/internal/remote"
 )
 
 const documentReloadRetry = time.Second
 
 type documentSession struct {
-	watcher *documentWatcher
-	delay   time.Duration // how long writes must settle before a change is reported
-	mod     time.Time
-	size    int64
+	watcher    *documentWatcher
+	remote     *remoteWatcher // in place of watcher for a document on an SSH host
+	pollRemote bool           // auto_reload: whether remote watches check at all
+	delay      time.Duration  // how long writes must settle before a change is reported
+	mod        time.Time
+	size       int64
 
 	pending     *documentChange
 	lastAttempt time.Time
@@ -26,10 +29,7 @@ type documentChange struct {
 }
 
 func (s *documentSession) record(path string) {
-	if s.watcher != nil {
-		s.watcher.Close()
-		s.watcher = nil
-	}
+	s.stopWatching()
 	s.pending = nil
 	s.lastAttempt = time.Time{}
 	watcher, err := newDocumentWatcher(path, s.delay)
@@ -49,8 +49,52 @@ func (s *documentSession) record(path string) {
 	s.size = info.Size()
 }
 
+// recordRemote watches a remote document, as record does a local one.
+// SSH hosts and WebDAV servers are asked whether a file changed; a plain
+// http(s) document is fetched again only when opened again.
+func (s *documentSession) recordRemote(info remote.Info) {
+	s.pending = nil
+	s.lastAttempt = time.Time{}
+	s.mod, s.size = info.ModTime, info.Size
+	if s.remote != nil && s.remote.uri == info.URI {
+		s.remote.setKnown(info) // our own save is not an outside change
+		return
+	}
+	s.stopWatching()
+	if remote.Watchable(info.URI) {
+		s.remote = newRemoteWatcher(info, s.pollRemote)
+	}
+}
+
+// setRemotePolling turns checking a remote document for changes on or off.
+func (s *documentSession) setRemotePolling(on bool) {
+	s.pollRemote = on
+	if s.remote != nil {
+		s.remote.enabled.Store(on)
+	}
+}
+
+func (s *documentSession) stopWatching() {
+	if s.watcher != nil {
+		s.watcher.Close()
+		s.watcher = nil
+	}
+	if s.remote != nil {
+		s.remote.Close()
+		s.remote = nil
+	}
+}
+
 func (s *documentSession) poll(now time.Time) (documentChange, bool) {
-	if s.watcher == nil {
+	var source interface {
+		waitForChange(time.Duration) (watcherChange, bool)
+	}
+	switch {
+	case s.watcher != nil:
+		source = s.watcher
+	case s.remote != nil:
+		source = s.remote
+	default:
 		return documentChange{}, false
 	}
 
@@ -62,7 +106,7 @@ func (s *documentSession) poll(now time.Time) (documentChange, bool) {
 		return *s.pending, true
 	}
 
-	change, ok := s.watcher.waitForChange(0)
+	change, ok := source.waitForChange(0)
 	if !ok {
 		return documentChange{}, false
 	}
@@ -90,9 +134,7 @@ func (s *documentSession) commit(change documentChange) {
 }
 
 func (s *documentSession) Close() {
-	if s.watcher != nil {
-		s.watcher.Close()
-	}
+	s.stopWatching()
 }
 
 type viewState struct {
@@ -259,7 +301,9 @@ func (a *App) recordRecentFile(path string) {
 		return
 	}
 	_ = config.RecordRecentFile(path, a.config.RecentFilesMax)
-	noteSystemRecentDocument(path)
+	if !remote.IsURI(path) {
+		noteSystemRecentDocument(path) // the system's lists hold local files
+	}
 }
 
 func (a *App) handleMarkToken(token string) bool {

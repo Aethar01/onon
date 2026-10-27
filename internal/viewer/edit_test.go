@@ -40,7 +40,7 @@ func TestWriteSavesCopyAndInPlace(t *testing.T) {
 	}
 	defer doc.Close()
 	app := testLayoutApp(1)
-	app.doc, app.docPath = doc, path
+	app.doc, app.docPath, app.docFile = doc, path, path
 
 	copyPath := filepath.Join(filepath.Dir(path), "copy.pdf")
 	app.markEdited()

@@ -2,11 +2,13 @@ package viewer
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
 	"onon/internal/config"
 	"onon/internal/mupdf"
+	"onon/internal/remote"
 )
 
 type openDocumentOptions struct {
@@ -14,35 +16,65 @@ type openDocumentOptions struct {
 	startPageExplicit bool
 	reloadConfig      bool
 	preserveView      *viewState
+	// remote is the fetched copy of a remote document; until it is set,
+	// opening one fetches it first.
+	remote *remote.Info
 }
 
 func (a *App) Open(path string) error {
 	if path == "" {
 		return fmt.Errorf("open: empty path")
 	}
-	path = a.resolveOpenPath(path)
+	// A scheme from Lua first, as it may name a URL with a #page=N.
+	path, _, err := a.runtime.ResolveScheme(path)
+	if err != nil {
+		return err
+	}
+	path, page := remote.PageFragment(path)
+	if path, err = a.resolveOpenPath(path); err != nil {
+		return err
+	}
 	if !a.confirmDiscard("opening it") {
 		return nil
 	}
-	a.logf("open requested path=%q", path)
+	a.logf("open requested path=%q", remote.Display(path))
 	if a.runtime == nil {
 		a.pendingOpen = path
 		a.quit = true
 		return nil
 	}
 	state := a.captureViewState().atDocumentStart()
-	return a.openDocument(path, openDocumentOptions{reloadConfig: true, preserveView: &state})
+	opts := openDocumentOptions{reloadConfig: true, preserveView: &state}
+	if page > 0 {
+		opts.startPage, opts.startPageExplicit = page-1, true // #page=N
+	}
+	return a.openDocument(path, opts)
 }
 
-func (a *App) resolveOpenPath(path string) string {
+func (a *App) resolveOpenPath(path string) (string, error) {
+	// A file of the name beside a local document wins over host:path, as
+	// one in the working directory does in FromArg.
+	if a.docPath != "" && !remote.IsURI(a.docPath) && !filepath.IsAbs(path) {
+		beside := filepath.Join(filepath.Dir(a.docPath), path)
+		if _, err := os.Lstat(beside); err == nil {
+			return config.AbsoluteDocumentPath(beside), nil
+		}
+	}
+	if uri, ok, err := remote.FromArg(path); ok {
+		return uri, err
+	}
 	path = expandHomePath(path)
+	if !filepath.IsAbs(path) && remote.IsURI(a.docPath) {
+		// Beside a remote document is on its host.
+		return remote.Resolve(a.docPath, filepath.ToSlash(path))
+	}
 	if !filepath.IsAbs(path) {
 		if a.docPath != "" {
 			dir := filepath.Dir(a.docPath)
 			path = filepath.Join(dir, path)
 		}
 	}
-	return config.AbsoluteDocumentPath(path)
+	return config.AbsoluteDocumentPath(path), nil
 }
 
 // initMetricLoader loads metrics for pages in the background, with content
@@ -110,14 +142,21 @@ func (a *App) openDocument(path string, opts openDocumentOptions) error {
 }
 
 func (a *App) openDocumentWithPassword(path string, opts openDocumentOptions, password string) error {
-	a.message = "opening " + path
-
 	path = config.AbsoluteDocumentPath(path)
-	a.logf("opening document path=%q startPage=%d reloadConfig=%t", path, opts.startPage+1, opts.reloadConfig)
-	a.emitPluginEvent("document_open_pre", map[string]any{"document": map[string]any{"path": path, "name": filepath.Base(path)}})
-	doc, err := mupdf.Open(path, a.openOptions(password))
+	file := path
+	if remote.IsURI(path) {
+		if opts.remote == nil {
+			a.fetchRemoteDocument(path, opts, password)
+			return nil
+		}
+		file = opts.remote.Local
+	}
+	a.message = "opening " + remote.Display(path)
+	a.logf("opening document path=%q file=%q startPage=%d reloadConfig=%t", remote.Display(path), file, opts.startPage+1, opts.reloadConfig)
+	a.emitPluginEvent("document_open_pre", map[string]any{"document": map[string]any{"path": path, "name": config.DocumentName(path)}})
+	doc, err := mupdf.Open(file, a.openOptions(password))
 	if err != nil {
-		a.logf("open document failed path=%q err=%v", path, err)
+		a.logf("open document failed path=%q err=%v", remote.Display(path), err)
 		if mupdf.IsPasswordError(err) {
 			a.promptDocumentPassword(path, opts)
 			return nil
@@ -150,13 +189,19 @@ func (a *App) openDocumentWithPassword(path string, opts openDocumentOptions, pa
 	}
 	a.runtime.SetPageCount(pages)
 
-	a.document.record(path)
-	a.installDocument(doc, path, pages, startPage)
+	if opts.remote != nil {
+		a.remoteInfo = *opts.remote
+		a.document.recordRemote(*opts.remote)
+	} else {
+		a.remoteInfo = remote.Info{}
+		a.document.record(path)
+	}
+	a.installDocument(doc, path, file, pages, startPage)
 	a.rebindInstanceServer()
 	a.resetForNewDocument(password)
 
 	a.initDocumentMetrics(doc, pages, startPage)
-	a.logf("opened document path=%q pages=%d page=%d", path, pages, startPage+1)
+	a.logf("opened document path=%q pages=%d page=%d", remote.Display(path), pages, startPage+1)
 
 	var configErr error
 	if opts.reloadConfig {
@@ -172,6 +217,9 @@ func (a *App) openDocumentWithPassword(path string, opts openDocumentOptions, pa
 	a.recomputeLayout(a.viewportSize())
 	if opts.preserveView != nil {
 		a.restoreViewState(*opts.preserveView)
+		if opts.startPageExplicit {
+			a.alignPageToAnchor(startPage)
+		}
 	} else if !opts.startPageExplicit && hasSavedState {
 		a.restoreViewState(savedState)
 	} else {
@@ -226,7 +274,7 @@ func (a *App) promptDocumentPassword(path string, opts openDocumentOptions) {
 	a.mode = modePassword
 	a.input.Reset()
 	a.passwordPrompt = pendingPasswordPrompt{path: path, opts: opts}
-	a.message = "password required: " + filepath.Base(path)
+	a.message = "password required: " + config.DocumentName(path)
 	a.pendingRedraw = true
 }
 
@@ -268,12 +316,23 @@ func (a *App) initDocumentMetrics(doc *mupdf.Document, pages int, startPage int)
 	}
 }
 
-func (a *App) installDocument(doc *mupdf.Document, path string, pages, startPage int) {
+// installDocument makes doc, read from file, the document known as path.
+func (a *App) installDocument(doc *mupdf.Document, path, file string, pages, startPage int) {
 	a.documentAPIMu.Lock()
 	defer a.documentAPIMu.Unlock()
 	a.generation++
 	a.docPath = path
-	a.docName = filepath.Base(path)
+	a.docFile = file
+	// The new copy is held before the old is let go, which may be the same.
+	release := a.releaseCopy
+	a.releaseCopy = nil
+	if remote.IsURI(path) {
+		a.releaseCopy = remote.Hold(file)
+	}
+	if release != nil {
+		release()
+	}
+	a.docName = config.DocumentName(path)
 	a.recordRecentFile(path)
 	a.doc = doc
 	a.pageCount = pages
@@ -295,6 +354,9 @@ func (a *App) pollDocumentUpdate() {
 	if !a.config.AutoReload {
 		return // a change stays pending until auto_reload is turned on
 	}
+	if a.remoteTask != nil {
+		return // a change waits for the fetch or save under way
+	}
 	change, ok := a.document.poll(time.Now())
 	if !ok {
 		return
@@ -315,11 +377,14 @@ func (a *App) reloadUpdatedDocument(change documentChange) error {
 	if a.overview != nil {
 		a.closeOverview(a.overview.selected)
 	}
-	path := a.docPath
+	if remote.IsURI(a.docPath) {
+		a.refetchRemoteDocument(change)
+		return nil
+	}
 	// Presentation mode stays on, so reload the view it shows rather than
 	// the one it returns to.
 	state := a.currentViewState()
-	if err := a.softReloadDocument(path, state); err != nil {
+	if err := a.softReloadDocument(a.docPath, a.docFile, state); err != nil {
 		return err
 	}
 	a.document.commit(change)
@@ -328,10 +393,10 @@ func (a *App) reloadUpdatedDocument(change documentChange) error {
 	return nil
 }
 
-func (a *App) softReloadDocument(path string, state viewState) error {
-	path = config.AbsoluteDocumentPath(path)
-	a.logf("soft reload document path=%q", path)
-	doc, err := mupdf.Open(path, a.openOptions(a.docPassword))
+// softReloadDocument reads path again, from file, keeping the view state.
+func (a *App) softReloadDocument(path, file string, state viewState) error {
+	a.logf("soft reload document path=%q file=%q", remote.Display(path), file)
+	doc, err := mupdf.Open(file, a.openOptions(a.docPassword))
 	if err != nil {
 		return err
 	}
@@ -346,11 +411,11 @@ func (a *App) softReloadDocument(path string, state viewState) error {
 	a.cache.retainPages(pages)
 	a.invalidateRenderRequests()
 
-	a.installDocument(doc, path, pages, startPage)
+	a.installDocument(doc, path, file, pages, startPage)
 	a.rebindInstanceServer()
 
 	a.initDocumentMetrics(doc, pages, startPage)
-	a.logf("soft reloaded document path=%q pages=%d page=%d", path, pages, startPage+1)
+	a.logf("soft reloaded document path=%q pages=%d page=%d", remote.Display(path), pages, startPage+1)
 	a.setWindowTitle()
 	a.initRenderWorker()
 	a.initSearch()

@@ -96,7 +96,7 @@ func init() {
 		"jump_backward":     do((*App).jumpBackward),
 		"open_file_picker":  (*App).openFilePicker,
 		"show_recent_files": do((*App).showRecentFiles),
-		"save":              do(func(a *App) { a.writeDocument("") }),
+		"save":              do(func(a *App) { a.writeDocument("", false) }),
 		"print":             do(func(a *App) { a.printDocument("") }),
 		"reload_config":     do((*App).reloadConfig),
 		"open_config":       do((*App).openConfig),

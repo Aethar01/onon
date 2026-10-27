@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"onon/internal/remote"
+
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -43,14 +45,10 @@ type OpenOptions struct {
 
 func OpenWithOptions(explicitPath, docPath string, options OpenOptions) (*Runtime, error) {
 	docPath = AbsoluteDocumentPath(docPath)
-	docName := ""
-	if docPath != "" {
-		docName = filepath.Base(docPath)
-	}
 	rt := &Runtime{
 		explicitPath:     explicitPath,
 		docPath:          docPath,
-		docName:          docName,
+		docName:          DocumentName(docPath),
 		docMeta:          loadDocumentMeta(docPath),
 		verbose:          options.Verbose,
 		operationResults: make(chan pluginOperationResult, 64),
@@ -135,10 +133,7 @@ func (r *Runtime) SetWake(wake func()) {
 func (r *Runtime) SetDocument(path string, pageCount ...int) error {
 	path = AbsoluteDocumentPath(path)
 	r.docPath = path
-	r.docName = ""
-	if path != "" {
-		r.docName = filepath.Base(path)
-	}
+	r.docName = DocumentName(path)
 	r.docMeta = loadDocumentMeta(path)
 	if len(pageCount) > 0 {
 		r.docMeta.pageCount = pageCount[0]
@@ -164,6 +159,7 @@ func (r *Runtime) Reload() error {
 	r.luaGeneration = luaGeneration{
 		cfg:              Default(),
 		callbacks:        map[string]*lua.LFunction{},
+		schemes:          map[string]*lua.LFunction{},
 		pluginCatalog:    discoverPluginCatalog(r.pluginPaths, r.disabledPlugins),
 		operations:       map[int]*pluginOperation{},
 		pluginGeneration: old.pluginGeneration,
@@ -413,8 +409,8 @@ func (r *Runtime) flushDeferredOpen() error {
 }
 
 func loadDocumentMeta(docPath string) documentMeta {
-	meta := documentMeta{ext: strings.ToLower(filepath.Ext(docPath))}
-	if docPath == "" {
+	meta := documentMeta{ext: strings.ToLower(filepath.Ext(DocumentName(docPath)))}
+	if docPath == "" || remote.IsURI(docPath) {
 		return meta
 	}
 	info, err := os.Stat(docPath)

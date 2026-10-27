@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+
+	"onon/internal/remote"
 )
 
 // startProcess starts a new window's process; tests replace it.
@@ -26,7 +28,7 @@ func (a *App) openInNewWindow(path string) error {
 	if err := startProcess(cmd); err != nil {
 		return fmt.Errorf("open in new window: %w", err)
 	}
-	a.logf("opened %q in a new window", path)
+	a.logf("opened %q in a new window", remote.Display(path))
 	go cmd.Wait() // reap it when it exits
 	return nil
 }

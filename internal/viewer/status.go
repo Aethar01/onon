@@ -221,7 +221,7 @@ func (a *App) promptStart() int {
 // part of it before the cursor.
 func (a *App) inputDisplay() (display, left string) {
 	display, left = a.input.Value, a.input.Left()
-	if a.mode == modePassword {
+	if a.inputMasked() {
 		display = strings.Repeat("*", utf8.RuneCountInString(display))
 		left = strings.Repeat("*", utf8.RuneCountInString(left))
 	}
@@ -344,6 +344,10 @@ func (a *App) formatStatusBar(template string) string {
 	case modePrompt:
 		message = a.inputPrefix() + a.input.Value
 		inputToken = a.input.Value
+		if a.promptState.masked {
+			message = a.inputPrefix() + strings.Repeat("*", len([]rune(a.input.Value)))
+			inputToken = message
+		}
 	}
 
 	page := fmt.Sprintf("%d", a.page+1)

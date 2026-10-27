@@ -192,6 +192,72 @@ func stringListOption(description string, get func(*Config) []string, set func(*
 	}
 }
 
+// headersOption is a table of tables: header names and values by host. The
+// values are often secrets, such as API tokens, so :set shows only the names.
+func headersOption(description string, get func(*Config) map[string]map[string]string, set func(*Config, map[string]map[string]string)) optionDesc {
+	return optionDesc{
+		kind:        "table",
+		description: description,
+		get: func(L *lua.LState, cfg *Config) lua.LValue {
+			tbl := L.NewTable()
+			for host, headers := range get(cfg) {
+				inner := L.NewTable()
+				for name, value := range headers {
+					inner.RawSetString(name, lua.LString(value))
+				}
+				tbl.RawSetString(host, inner)
+			}
+			return tbl
+		},
+		format: func(cfg *Config) string {
+			hosts := make([]string, 0, len(get(cfg)))
+			for host, headers := range get(cfg) {
+				names := make([]string, 0, len(headers))
+				for name := range headers {
+					names = append(names, name+" = …")
+				}
+				sort.Strings(names)
+				hosts = append(hosts, fmt.Sprintf("[%q] = {%s}", host, strings.Join(names, ", ")))
+			}
+			sort.Strings(hosts)
+			return "{" + strings.Join(hosts, ", ") + "}"
+		},
+		applyText: func(cfg *Config, raw string) error {
+			return fmt.Errorf("set it in config.lua, where its values can come from os.getenv")
+		},
+		apply: func(cfg *Config, value lua.LValue) error {
+			tbl, ok := value.(*lua.LTable)
+			if !ok {
+				return fmt.Errorf("expected table of hosts")
+			}
+			result := map[string]map[string]string{}
+			var err error
+			tbl.ForEach(func(key, inner lua.LValue) {
+				headers, ok := inner.(*lua.LTable)
+				if err != nil || key.Type() != lua.LTString || !ok {
+					if err == nil {
+						err = fmt.Errorf("expected a table of headers for each host")
+					}
+					return
+				}
+				values := map[string]string{}
+				headers.ForEach(func(name, value lua.LValue) {
+					if err == nil && (name.Type() != lua.LTString || value.Type() != lua.LTString) {
+						err = fmt.Errorf("headers for %s must be strings", key.String())
+					}
+					values[name.String()] = value.String()
+				})
+				result[strings.ToLower(key.String())] = values
+			})
+			if err != nil {
+				return err
+			}
+			set(cfg, result)
+			return nil
+		},
+	}
+}
+
 func normalizeLinkSchemes(schemes []string) []string {
 	normalized := make([]string, 0, len(schemes))
 	for _, scheme := range schemes {
@@ -355,6 +421,7 @@ var configOptions = map[string]optionDesc{
 	"dual_page":              boolOption("Start in dual-page mode.", func(c *Config) bool { return c.DualPage }, func(c *Config, v bool) { c.DualPage = v }),
 	"first_page_offset":      boolOption("Treat the first page as a standalone cover in dual-page mode.", func(c *Config) bool { return c.FirstPageOffset }, func(c *Config, v bool) { c.FirstPageOffset = v }),
 	"anti_aliasing":          intOption("MuPDF antialiasing level from 0 through 8.", func(c *Config) int { return c.AntiAliasing }, func(c *Config, v int) { c.AntiAliasing = v }),
+	"http_headers":           headersOption("Headers sent when fetching remote documents, by host, host:port or *.domain, such as an API token; :set shows only their names.", func(c *Config) map[string]map[string]string { return c.HTTPHeaders }, func(c *Config, v map[string]map[string]string) { c.HTTPHeaders = v }),
 	"link_schemes":           stringListOption("URI schemes that document links may open externally; other links only show their target.", func(c *Config) []string { return c.LinkSchemes }, func(c *Config, v []string) { c.LinkSchemes = normalizeLinkSchemes(v) }),
 	"mupdf_store_mb":         intOption("MuPDF cache for fonts and decoded images in MiB; applies to newly opened documents.", func(c *Config) int { return c.MuPDFStoreMB }, func(c *Config, v int) { c.MuPDFStoreMB = max(1, v) }),
 	"page_cache_memory_mb":   intOption("Maximum memory in MiB for cached page renders; 0 disables the limit.", func(c *Config) int { return c.PageCacheMemoryMB }, func(c *Config, v int) { c.PageCacheMemoryMB = max(0, v) }),

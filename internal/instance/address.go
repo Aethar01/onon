@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+
+	"onon/internal/remote"
 )
 
 // AddressFor returns the socket path for one document. Instances are per
@@ -38,8 +40,13 @@ func AddressFor(docPath string) (string, error) {
 
 // documentKey identifies a document across processes. Symlinks are resolved so
 // two names for one file share an instance; an unresolvable path is used as
-// given, which at worst means a separate instance.
+// given, which at worst means a separate instance. A remote URI is already
+// canonical.
 func documentKey(docPath string) string {
+	if remote.IsURI(docPath) {
+		sum := sha256.Sum256([]byte(docPath))
+		return hex.EncodeToString(sum[:8])
+	}
 	canonical := docPath
 	if absolute, err := filepath.Abs(canonical); err == nil {
 		canonical = absolute
