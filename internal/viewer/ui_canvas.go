@@ -65,7 +65,14 @@ type canvasImage struct {
 	texture *sdl.Texture
 	w, h    int
 	err     error
+	// modTime is the file's when loaded, checked against it at most every
+	// imageCheckInterval, the last time at checked.
+	modTime, checked time.Time
 }
+
+// imageCheckInterval is how often an image's file is looked at for a
+// change, which reloads it.
+const imageCheckInterval = time.Second
 
 func (c *canvasCache) closeFaces() {
 	closed := map[font.Face]bool{}
@@ -324,7 +331,15 @@ func (c *elementCanvas) Unclip() {
 // canvasImage is the image file at path, decoded and made a texture once.
 func (a *App) canvasImage(renderer *sdl.Renderer, path string) *canvasImage {
 	if img, ok := a.canvas.images[path]; ok {
-		return img
+		if time.Since(img.checked) < imageCheckInterval {
+			return img
+		}
+		img.checked = time.Now()
+		if info, err := os.Stat(path); err != nil || info.ModTime().Equal(img.modTime) {
+			return img
+		}
+		destroyTexture(img.texture)
+		delete(a.canvas.images, path)
 	}
 	if len(a.canvas.images) >= maxCanvasImages {
 		a.canvas.clearImages()
@@ -332,7 +347,10 @@ func (a *App) canvasImage(renderer *sdl.Renderer, path string) *canvasImage {
 	if a.canvas.images == nil {
 		a.canvas.images = map[string]*canvasImage{}
 	}
-	img := &canvasImage{}
+	img := &canvasImage{checked: time.Now()}
+	if info, err := os.Stat(path); err == nil {
+		img.modTime = info.ModTime()
+	}
 	img.texture, img.w, img.h, img.err = loadImageTexture(renderer, path)
 	a.canvas.images[path] = img
 	return img
@@ -416,22 +434,28 @@ func (c *elementCanvas) Page(page int, x, y, w, h float64) (float64, float64) {
 	if page < 0 || page >= len(a.pageMetrics) {
 		return 0, 0
 	}
+	// The page is drawn turned as the document's are, fitted by the box
+	// the turned page takes.
 	bounds := a.pageMetrics[page].bounds
 	pw, ph := float64(bounds.X1-bounds.X0), float64(bounds.Y1-bounds.Y0)
-	w, h = fitSize(pw, ph, w, h, true)
-	dst := c.rect(x, y, w, h)
-	a.wantThumbnail(page, float64(dst.W)/math.Max(1, pw))
+	minX, minY, maxX, maxY := rotatedBounds(bounds, a.rotation)
+	w, h = fitSize(maxX-minX, maxY-minY, w, h, true)
+	box := c.rect(x, y, w, h)
+	scale := float64(box.W) / math.Max(1, maxX-minX)
+	a.wantThumbnail(page, scale)
 	if c.renderer == nil {
 		return w, h
 	}
+	dst := sdl.FRect{W: float32(pw * scale), H: float32(ph * scale)}
+	dst.X, dst.Y = box.X+(box.W-dst.W)/2, box.Y+(box.H-dst.H)/2
 	if tile, ok := a.cache.get(thumbnailKey(page)); ok {
 		alpha := a.styleColor(config.Color{RGB: [3]uint8{0xff, 0xff, 0xff}, Alpha: 1}, c.style.Opacity.V).A
 		// The thumbnail is the document's too, so it is left as it was.
 		sdl.SetTextureAlphaMod(tile.texture, alpha)
-		sdl.RenderTexture(c.renderer, tile.texture, nil, &dst)
+		sdl.RenderTextureRotated(c.renderer, tile.texture, nil, &dst, a.rotation, nil, sdl.FlipNone)
 		sdl.SetTextureAlphaMod(tile.texture, 0xff)
 	} else {
-		fillRect(c.renderer, dst, a.styleColor(config.Color{RGB: a.palette().Page, Alpha: 1}, c.style.Opacity.V))
+		fillRect(c.renderer, box, a.styleColor(config.Color{RGB: a.palette().Page, Alpha: 1}, c.style.Opacity.V))
 	}
 	return w, h
 }

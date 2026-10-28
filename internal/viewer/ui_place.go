@@ -210,3 +210,88 @@ func (a *App) pinnedRect(pt config.UIPoint, w, h int) sdl.FRect {
 	}
 	return sdl.FRect{X: float32(math.Round(x)), Y: float32(math.Round(y)), W: float32(w), H: float32(h)}
 }
+
+// dockEdgeAt is the resizable docked view whose inner edge is at x, y,
+// within a few pixels either side.
+func (a *App) dockEdgeAt(x, y float32) *uiView {
+	band := a.px(4)
+	for _, view := range a.views.panels {
+		if !view.visible || !view.resizable || view.place.dock == "" {
+			continue
+		}
+		_, r := a.dockLayout(view)
+		var near bool
+		switch view.place.dock {
+		case "left":
+			near = abs32(x-(r.X+r.W)) <= band && y >= r.Y && y <= r.Y+r.H
+		case "right":
+			near = abs32(x-r.X) <= band && y >= r.Y && y <= r.Y+r.H
+		case "top":
+			near = abs32(y-(r.Y+r.H)) <= band && x >= r.X && x <= r.X+r.W
+		case "bottom":
+			near = abs32(y-r.Y) <= band && x >= r.X && x <= r.X+r.W
+		}
+		if near {
+			return view
+		}
+	}
+	return nil
+}
+
+// handleDockResizeButton starts dragging a docked view's edge on a press
+// at it, and ends the drag on the release, reporting whether it did.
+func (a *App) handleDockResizeButton(e *sdl.MouseButtonEvent) bool {
+	if e.Button != uint8(sdl.ButtonLeft) {
+		return false
+	}
+	if e.Type == sdl.EventMouseButtonUp {
+		resizing := a.views.resizing != nil
+		a.views.resizing = nil
+		return resizing
+	}
+	a.views.resizing = a.dockEdgeAt(e.X, e.Y)
+	return a.views.resizing != nil
+}
+
+// dragDockEdge resizes the docked view whose edge is being dragged to the
+// pointer at x, y, the document laying itself out beside it, and reports
+// whether one was.
+func (a *App) dragDockEdge(x, y float32) bool {
+	view := a.views.resizing
+	if view == nil || !view.visible {
+		a.views.resizing = nil
+		return false
+	}
+	_, r := a.dockLayout(view)
+	var size float32
+	switch view.place.dock {
+	case "left":
+		size = x - r.X
+	case "right":
+		size = r.X + r.W - x
+	case "top":
+		size = y - r.Y
+	case "bottom":
+		size = r.Y + r.H - y
+	}
+	length := config.UISize{Value: float64(max(size, a.px(40))) / float64(a.px(1))}
+	a.relayoutWithViewportAnchor(func() {
+		if view.place.dock == "left" || view.place.dock == "right" {
+			view.place.width = length
+		} else {
+			view.place.height = length
+		}
+	})
+	a.pendingRedraw = true
+	return true
+}
+
+func (a *App) UIViewSize(id string) (float64, float64) {
+	view := a.views.views[id]
+	if view == nil {
+		return 0, 0
+	}
+	rect, _ := view.frameGeometry(a)
+	scale := float64(a.px(1))
+	return float64(rect.W) / scale, float64(rect.H) / scale
+}

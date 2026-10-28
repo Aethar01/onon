@@ -238,7 +238,7 @@ func uiOverlayFromLuaSpec(L *lua.LState, rt *Runtime, spec *lua.LTable) UIOverla
 	if query := spec.RawGetString("query"); query.Type() == lua.LTString {
 		overlay.Query = query.String()
 	}
-	for name, field := range map[string]*bool{"searchable": &overlay.Searchable, "filter": &overlay.Filter, "modal": &overlay.Modal, "stack": &overlay.Stack} {
+	for name, field := range map[string]*bool{"searchable": &overlay.Searchable, "filter": &overlay.Filter, "modal": &overlay.Modal, "stack": &overlay.Stack, "resizable": &overlay.Resizable} {
 		if value := spec.RawGetString(name); value.Type() == lua.LTBool {
 			*field = lua.LVAsBool(value)
 		}
@@ -433,6 +433,15 @@ func newLuaView(L *lua.LState, rt *Runtime, overlay UIOverlay) *lua.LTable {
 	L.SetField(view, "focused", L.NewFunction(func(L *lua.LState) int {
 		L.Push(lua.LBool(shown() && rt.host.UIFocused(overlay.ID)))
 		return 1
+	}))
+	L.SetField(view, "size", L.NewFunction(func(L *lua.LState) int {
+		w, h := 0.0, 0.0
+		if shown() {
+			w, h = rt.host.UIViewSize(overlay.ID)
+		}
+		L.Push(lua.LNumber(w))
+		L.Push(lua.LNumber(h))
+		return 2
 	}))
 	L.SetField(view, "redraw", L.NewFunction(func(L *lua.LState) int {
 		if rt.host != nil && rt.host.UIVisible(overlay.ID) {

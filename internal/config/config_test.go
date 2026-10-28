@@ -98,11 +98,12 @@ func (h *stubHost) UIScroll(id string) int { return h.ui.Scroll }
 
 func (h *stubHost) UIQuery(id string) string { return h.ui.Query }
 
-func (h *stubHost) RedrawUI(id string)                {}
-func (h *stubHost) UIField(id, field string) string   { return h.ui.Fields[field] }
-func (h *stubHost) SetUIField(id, field, text string) { h.ui.Fields[field] = text }
-func (h *stubHost) FocusUI(id string, focus bool)     {}
-func (h *stubHost) UIFocused(id string) bool          { return false }
+func (h *stubHost) RedrawUI(id string)                      {}
+func (h *stubHost) UIField(id, field string) string         { return h.ui.Fields[field] }
+func (h *stubHost) SetUIField(id, field, text string)       { h.ui.Fields[field] = text }
+func (h *stubHost) FocusUI(id string, focus bool)           {}
+func (h *stubHost) UIFocused(id string) bool                { return false }
+func (h *stubHost) UIViewSize(id string) (float64, float64) { return 0, 0 }
 
 func (h *stubHost) Page() int {
 	return h.page

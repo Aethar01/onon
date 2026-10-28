@@ -1,6 +1,8 @@
 package viewer
 
 import (
+	"slices"
+
 	"github.com/jupiterrider/purego-sdl3/sdl"
 )
 
@@ -22,6 +24,9 @@ const (
 	cursorAutoscrollSW
 	cursorAutoscrollW
 	cursorAutoscrollNW
+	cursorResizeEW // a docked view's edge, dragged across
+	cursorResizeNS // and dragged up and down
+	cursorText     // over text to type in
 )
 
 // Cursors from the CSS set SDL 3.6 adds after SDL_SYSTEM_CURSOR_W_RESIZE,
@@ -47,8 +52,46 @@ func (a *App) updateCursor() {
 		kind = cursorGrabbing
 	case a.links.overLink:
 		kind = cursorPointer
+	default:
+		kind = a.viewCursor()
 	}
 	a.setCursor(kind)
+}
+
+// viewCursor is the cursor for the views under the pointer: across or up
+// and down at a docked view's edge, a hand over a button or check box, and
+// an I-beam over text to type in.
+func (a *App) viewCursor() cursorKind {
+	x, y := a.pointer.X, a.pointer.Y
+	edge := a.views.resizing
+	if edge == nil {
+		edge = a.dockEdgeAt(x, y)
+	}
+	if edge != nil {
+		if edge.place.dock == "left" || edge.place.dock == "right" {
+			return cursorResizeEW
+		}
+		return cursorResizeNS
+	}
+	view := a.viewUnderPointer()
+	if view == nil {
+		return cursorDefault
+	}
+	inside := func(r sdl.FRect) bool { return x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H }
+	for id, r := range view.controls {
+		if inside(r) && slices.Contains(view.focusOrder, id) {
+			return cursorPointer
+		}
+	}
+	for _, id := range view.focusOrder {
+		if f := view.fields[id]; f != nil && inside(f.rect) {
+			return cursorText
+		}
+	}
+	if view.prompt != "" && inside(view.promptRect) {
+		return cursorText
+	}
+	return cursorDefault
 }
 
 func (a *App) setCursor(kind cursorKind) {
@@ -86,8 +129,12 @@ func systemCursorFor(kind cursorKind, css bool) sdl.SystemCursor {
 		return sdl.SystemCursorMove
 	case cursorAutoscrollVertical:
 		return sdl.SystemCursorNSResize
-	case cursorAutoscrollHorizontal:
+	case cursorAutoscrollHorizontal, cursorResizeEW:
 		return sdl.SystemCursorEWResize
+	case cursorResizeNS:
+		return sdl.SystemCursorNSResize
+	case cursorText:
+		return sdl.SystemCursorText
 	}
 	if kind >= cursorAutoscrollN && kind <= cursorAutoscrollNW {
 		return []sdl.SystemCursor{

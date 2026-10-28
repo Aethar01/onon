@@ -73,7 +73,9 @@ type uiView struct {
 	modal    bool
 	stack    bool // a modal view opened over the menu open, not in its place
 	place    viewPlacement
-	visible  bool
+	// resizable lets the pointer drag a docked view's inner edge.
+	resizable bool
+	visible   bool
 
 	rows       []uiRow
 	selected   int
@@ -194,6 +196,8 @@ type uiManager struct {
 	stack []*uiView
 	// focused is the panel the keys go to, while no menu is open.
 	focused *uiView
+	// resizing is the docked view whose edge is being dragged.
+	resizing *uiView
 }
 
 func (m *uiManager) add(view *uiView) {
@@ -248,6 +252,9 @@ func (m *uiManager) close(view *uiView) {
 	}
 	if m.focused == view {
 		m.focused = nil
+	}
+	if m.resizing == view {
+		m.resizing = nil
 	}
 }
 

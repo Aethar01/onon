@@ -144,6 +144,7 @@ func (a *App) createLuaView(spec config.UIOverlay) *uiView {
 		headless:   spec.Draw != "" && spec.Title == "" && spec.Prompt == "",
 		element:    config.ElementPanel,
 		place:      viewPlacement{width: spec.Width, height: spec.Height, anchor: spec.Anchor, at: spec.At, dock: spec.Dock},
+		resizable:  spec.Resizable && spec.Dock != "",
 	}
 	if view.id == "" {
 		view.id = "lua" + strconv.Itoa(len(a.views.views)+1)

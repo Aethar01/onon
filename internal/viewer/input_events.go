@@ -182,7 +182,7 @@ func (a *App) handleSDLMouseButton(e *sdl.MouseButtonEvent) {
 		a.viewMouseButton(view, e)
 		return
 	}
-	if a.handlePanelMouseButton(e) {
+	if a.handleDockResizeButton(e) || a.handlePanelMouseButton(e) {
 		return
 	}
 	if a.presentation != nil {
@@ -276,6 +276,7 @@ func (a *App) handleLinkButton(e *sdl.MouseButtonEvent) bool {
 
 func (a *App) handleSDLMouseMotion(e *sdl.MouseMotionEvent) bool {
 	a.pointer = sdl.FPoint{X: e.X, Y: e.Y}
+	defer a.updateCursor()
 	if view := a.activeModalUIView(); view != nil {
 		if a.autoscroll != nil {
 			a.noteAutoscrollPointer() // the frame loop does the scrolling
@@ -296,6 +297,9 @@ func (a *App) handleSDLMouseMotion(e *sdl.MouseMotionEvent) bool {
 		oldX, oldY := a.scrollX, a.scrollY
 		a.scrollBy(-float64(e.Xrel), -float64(e.Yrel))
 		return a.scrollX != oldX || a.scrollY != oldY
+	}
+	if a.dragDockEdge(e.X, e.Y) {
+		return true
 	}
 	if taken, redraw := a.handlePanelMouseMotion(e); taken {
 		// a link under the panel is no longer hovered

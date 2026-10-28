@@ -1,7 +1,17 @@
 package viewer
 
 import (
+	"bytes"
+	"image"
+	"image/png"
+	"math"
+	"os"
+	"path/filepath"
+	"strconv"
 	"testing"
+	"time"
+
+	"onon/internal/config"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
 	"golang.org/x/image/font/basicfont"
@@ -95,5 +105,101 @@ onon.ui.create({
 	spans := app.columnSpans(view, 0, 400)
 	if spans[1][1] != 80 || spans[0][1] != 400-12-80 || spans[1][0] != 400-80 {
 		t.Fatalf("column spans %v", spans)
+	}
+}
+
+func TestResizableDockFollowsItsEdge(t *testing.T) {
+	app := luaUITestApp(t, "")
+	evalLua(t, app, `
+dock = onon.ui.create({ dock = "left", width = 200, resizable = true, draw = function() end })
+dock:show()`)
+	view := app.views.panels[0]
+	if app.dockEdgeAt(200, 300) != view || app.dockEdgeAt(260, 300) != nil {
+		t.Fatal("the dock's edge is not where it ends")
+	}
+	if app.viewCursor() != cursorDefault {
+		t.Fatal("a cursor other than the default away from the edge")
+	}
+	app.pointer = sdl.FPoint{X: 201, Y: 300}
+	if app.viewCursor() != cursorResizeEW {
+		t.Fatal("no resize cursor over the edge")
+	}
+	if !app.handleDockResizeButton(&sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: uint8(sdl.ButtonLeft), X: 201, Y: 300}) {
+		t.Fatal("a press on the edge did not start dragging it")
+	}
+	app.dragDockEdge(320, 300)
+	app.handleDockResizeButton(&sdl.MouseButtonEvent{Type: sdl.EventMouseButtonUp, Button: uint8(sdl.ButtonLeft), X: 320, Y: 300})
+	if doc := app.documentRect(); doc.X != 320 || app.views.resizing != nil {
+		t.Fatalf("dragged to 320, the document starts at %v", doc.X)
+	}
+	evalLua(t, app, `local w, h = dock:size() onon.message(w .. "x" .. h)`)
+	if want := "320x" + strconv.Itoa(int(app.documentRect().H)); app.message != want {
+		t.Fatalf("dock:size() = %s, want %s", app.message, want)
+	}
+	// A dock not resizable has no edge to drag.
+	evalLua(t, app, `onon.ui.create({ dock = "right", width = 100, draw = function() end }):show()`)
+	if app.dockEdgeAt(1000-100, 300) != nil {
+		t.Fatal("a dock not resizable has an edge")
+	}
+}
+
+func TestViewCursorOverControls(t *testing.T) {
+	app := luaUITestApp(t, "")
+	app.fontFace = basicfont.Face7x13
+	evalLua(t, app, `
+onon.ui.create({
+  draw = function(canvas, box)
+    canvas:input("name", 0, 0, box.w)
+    canvas:button("ok", 0, 40, 80, "OK")
+  end,
+}):show()`)
+	view := app.activeUIView()
+	drawLuaView(t, app, view)
+	field, ok := view.fields["name"].rect, view.controls["ok"]
+	app.pointer = sdl.FPoint{X: field.X + 2, Y: field.Y + 2}
+	if app.viewCursor() != cursorText {
+		t.Fatal("no I-beam over a field")
+	}
+	app.pointer = sdl.FPoint{X: ok.X + 2, Y: ok.Y + 2}
+	if app.viewCursor() != cursorPointer {
+		t.Fatal("no hand over a button")
+	}
+}
+
+func TestCanvasImagesReloadAndPagesTurn(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "icon.png")
+	write := func(w, h int) {
+		var buf bytes.Buffer
+		if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, w, h))); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(4, 2)
+	app := testLayoutApp(1)
+	if img := app.canvasImage(nil, path); img.w != 4 {
+		t.Fatalf("image width %d", img.w)
+	}
+	write(8, 2)
+	later := time.Now().Add(time.Minute)
+	if err := os.Chtimes(path, later, later); err != nil {
+		t.Fatal(err)
+	}
+	if img := app.canvasImage(nil, path); img.w != 4 {
+		t.Fatal("the image was looked at again within the interval")
+	}
+	app.canvas.images[path].checked = time.Time{}
+	if img := app.canvasImage(nil, path); img.w != 8 {
+		t.Fatalf("the changed image was not reloaded: width %d", img.w)
+	}
+
+	// A page turned a quarter fits by its turned size.
+	app.rotation = 90
+	canvas := &elementCanvas{app: app, style: &config.Style{}}
+	if w, h := canvas.Page(0, 0, 0, 50, 0); math.Abs(w-50) > 1e-6 || math.Abs(h-25) > 1e-6 {
+		t.Fatalf("a page 100 by 200 turned a quarter, 50 wide, is %vx%v", w, h)
 	}
 }
