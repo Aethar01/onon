@@ -33,6 +33,9 @@ type uiRow struct {
 	checked   bool
 	cells     []string   // the text in each of the view's columns
 	lua       lua.LValue // the row a plugin gave, handed back to its callbacks
+	// highlight is the part of text, from byte to byte, drawn in the
+	// accent colour, as a search match is; empty for none.
+	highlight [2]int
 }
 
 // splitHeader splits a panel header such as "Outline /query (3/10)" into
@@ -844,7 +847,7 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 				a.drawCells(renderer, view, item.cells, textX, textEnd, baseline, face, a.textColor(&st, false), st.Bold.V)
 				continue
 			}
-			if err := a.drawTextFace(renderer, truncateText(face, text, textWidth), textX, baseline, a.textColor(&st, false), st.Bold.V); err != nil {
+			if err := a.drawRowText(renderer, item, truncateText(face, text, textWidth), textX, baseline, face, &st); err != nil {
 				return err
 			}
 			if secondary != "" {
@@ -856,6 +859,34 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 		return nil
 	})
 	return err
+}
+
+// drawRowText draws a row's text, shown as truncated, its highlight in the
+// accent colour, as far as the truncation leaves it.
+func (a *App) drawRowText(renderer *sdl.Renderer, item uiRow, shown string, x, baseline int, face font.Face, st *config.Style) error {
+	clr := a.textColor(st, false)
+	kept := len(shown)
+	if shown != item.text {
+		kept -= len("...") // the ellipsis truncateText ends it with
+	}
+	start, end := min(item.highlight[0], kept), min(item.highlight[1], kept)
+	if end <= start {
+		return a.drawTextFace(renderer, shown, x, baseline, clr, st.Bold.V)
+	}
+	accent := a.styleColor(config.Color{Name: "accent", Alpha: 1}, st.Opacity.V)
+	for _, part := range []struct {
+		text string
+		clr  color.RGBA
+	}{{shown[:start], clr}, {shown[start:end], accent}, {shown[end:], clr}} {
+		if part.text == "" {
+			continue
+		}
+		if err := a.drawTextFace(renderer, part.text, x, baseline, part.clr, st.Bold.V); err != nil {
+			return err
+		}
+		x += measureText(face, part.text)
+	}
+	return nil
 }
 
 // listPrefix is the room the rows of a list leave before their text: for

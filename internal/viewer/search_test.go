@@ -4,6 +4,7 @@ import (
 	"math"
 	"reflect"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -107,8 +108,8 @@ func TestSearchMatchesListsContextAndSelects(t *testing.T) {
 	if view == nil || len(view.rows) != 2 {
 		t.Fatalf("match list = %+v", view)
 	}
-	if view.rows[1].text != "a second needle" || view.rows[1].secondary != "p. 3" {
-		t.Fatalf("second row = %+v", view.rows[1])
+	if row := view.rows[1]; row.text != "a second needle" || row.key != "p. 3" || row.highlight != [2]int{9, 15} {
+		t.Fatalf("second row = %+v", row)
 	}
 	view.selected = 1
 	app.activateUIView(view) // Enter on the second match
@@ -355,5 +356,25 @@ func TestSearchMatchesPreviewTheMatchSelected(t *testing.T) {
 	app.runUIViewAction(view, "close")
 	if app.currentJumpPosition() != start || app.search.current != 0 {
 		t.Fatalf("closing left %+v, current %d, from %+v", app.currentJumpPosition(), app.search.current, start)
+	}
+}
+
+func TestSearchMatchContextLeadsToAMatchFarAlong(t *testing.T) {
+	line := "one two three four five six seven eight nine ten eleven twelve needle after"
+	doc, err := mupdf.Open(testpdf.WritePages(t, []string{line}), mupdf.OpenOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+	app := testLayoutApp(1)
+	app.doc = doc
+	hits, err := searchDocumentPage(doc, 0, "needle", nil)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("hits %v, %v", hits, err)
+	}
+	app.search = searchState{query: "needle", matches: map[int][]mupdf.SearchHit{0: hits}, order: []searchHitRef{{}}}
+	text, at := app.searchMatchContext(searchHitRef{})
+	if !strings.HasPrefix(text, "…") || len(text) >= len(line) || text[at[0]:at[1]] != "needle" || at[0] > matchLead {
+		t.Fatalf("context %q, match at %v", text, at)
 	}
 }
