@@ -221,7 +221,9 @@ func (m *uiManager) show(view *uiView) {
 	m.add(view)
 	view.visible = true
 	if !view.modal {
-		m.layoutGen++
+		if view.place.dock != "" {
+			m.layoutGen++ // the views beside it move
+		}
 		m.panels = append(slices.DeleteFunc(m.panels, func(p *uiView) bool { return p == view }), view)
 		return
 	}
@@ -251,7 +253,7 @@ func (m *uiManager) close(view *uiView) {
 			m.active, m.stack = m.stack[n-1], m.stack[:n-1]
 		}
 	}
-	if !view.modal {
+	if view.place.dock != "" {
 		m.layoutGen++
 	}
 	m.panels = slices.DeleteFunc(m.panels, func(p *uiView) bool { return p == view })
@@ -445,9 +447,45 @@ func (a *App) closeUIView(view *uiView, callCallback bool) {
 	}
 	a.pendingRedraw = true
 	a.syncTextInput()
+	a.viewClosed(view, callCallback)
+}
+
+// viewClosed finishes closing view: a plugin's hears its state handed
+// back and is let go, then its on_close runs, if callCallback. A view of a
+// plugin generation since reloaded runs nothing, its callbacks' names now
+// another generation's.
+func (a *App) viewClosed(view *uiView, callCallback bool) {
+	if a.staleLuaView(view) {
+		return
+	}
+	if view.owner == "lua" {
+		if a.runtime != nil {
+			a.runtime.UIViewClosed(view.id, a.closingState(view))
+		}
+		if a.views.views[view.id] == view {
+			delete(a.views.views, view.id)
+		}
+	}
 	if callCallback && view.onClose != nil {
 		view.onClose(a)
 	}
+}
+
+// staleLuaView reports whether view is a plugin's from a generation since
+// reloaded.
+func (a *App) staleLuaView(view *uiView) bool {
+	return view.owner == "lua" && a.runtime != nil && view.generation != a.runtime.Generation()
+}
+
+// closingState is view's state as it closes, for its plugin.
+func (a *App) closingState(view *uiView) config.UIViewState {
+	state := config.UIViewState{Fields: map[string]string{}, Selected: view.selected + 1, Query: view.query}
+	for id, f := range view.fields {
+		state.Fields[id] = f.input.Value
+	}
+	state.Scroll = a.UIScrollOf(view)
+	state.W, state.H = a.viewSize(view)
+	return state
 }
 
 func (a *App) closeAllUIViews(callCallbacks bool) {
@@ -460,12 +498,8 @@ func (a *App) closeAllUIViews(callCallbacks bool) {
 	a.views.closeAll()
 	a.pendingRedraw = true
 	a.syncTextInput()
-	if callCallbacks {
-		for _, view := range visible {
-			if view.onClose != nil {
-				view.onClose(a)
-			}
-		}
+	for _, view := range visible {
+		a.viewClosed(view, callCallbacks)
 	}
 }
 
@@ -483,6 +517,11 @@ func (a *App) removeStaleLuaViews(generation int) {
 		}
 		if state := a.smoothScrollState(); state != nil && state.modalView == view {
 			a.cancelSmoothScroll()
+		}
+		// It does not fade out: its draw function belongs to the old
+		// generation, whose callbacks' names the new one reuses.
+		if m := &a.motion; m.shownView == view || m.closingView == view {
+			m.shownView, m.closingView = nil, nil
 		}
 	}
 }

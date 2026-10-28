@@ -106,8 +106,10 @@ func TestLuaUIClosePathsInvokeCallback(t *testing.T) {
 		t.Fatalf("programmatic close callbacks = %d, want 1", closed)
 	}
 
-	view.visible = true
-	app.views.active = view
+	if _, kept := app.views.views["view"]; kept {
+		t.Fatal("a closed plugin view was kept")
+	}
+	app.views.show(view) // shown again, as ShowUI does
 	app.closeAllUI()
 	if closed != 2 {
 		t.Fatalf("teardown close callbacks = %d, want 2", closed)
@@ -886,5 +888,76 @@ view:show()`)
 	evalLua(t, app, `view:close() onon.message(closing .. "/" .. view:field("name"))`)
 	if app.message != "alice/alice" {
 		t.Fatalf("on_close and after read %q, want what was typed", app.message)
+	}
+}
+
+func TestReloadDropsStaleViewsWithoutRunningThem(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.lua")
+	source := `drawn = 0
+bind("u", function()
+  onon.ui.create({ title = "old", draw = function() drawn = drawn + 1 onon.message("drew " .. drawn) end }):show()
+end)`
+	if err := os.WriteFile(configPath, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := config.Open(configPath, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	app := testLayoutApp(0)
+	app.winW, app.winH = 1000, 800
+	app.runtime = runtime
+	runtime.AttachHost(app)
+	runtime.RunAction(runtime.Config().KeyBindings["u"])
+	stale := app.activeUIView()
+	app.motion.shownView = stale
+	app.reloadConfig()
+	if app.motion.shownView == stale || app.motion.closingView == stale {
+		t.Fatal("a view of the old generation was left to fade out")
+	}
+	// Were it drawn all the same, its old draw function is not run.
+	app.message = ""
+	app.drawViewBody(nil, stale, app.uiViewBody(stale), func() error { return nil })
+	if app.message != "" {
+		t.Fatalf("a stale view's draw function ran: %q", app.message)
+	}
+}
+
+func TestClosingAllSkipsStaleViewsCallbacks(t *testing.T) {
+	app := luaUITestApp(t, "")
+	ran := ""
+	stale := &uiView{id: "stale", owner: "lua", modal: true, generation: app.runtime.Generation() - 1, onClose: func(*App) { ran += "stale;" }}
+	fresh := &uiView{id: "fresh", owner: "lua", modal: true, stack: true, generation: app.runtime.Generation(), onClose: func(*App) { ran += "fresh;" }}
+	app.views.show(stale)
+	app.views.show(fresh) // stacked over the stale one
+	app.closeAllUI()
+	if ran != "fresh;" {
+		t.Fatalf("closing all ran %q, want only the current generation's", ran)
+	}
+}
+
+func TestClosedLuaViewsAreLetGoAndReopenFresh(t *testing.T) {
+	app := luaUITestApp(t, "")
+	app.fontFace = basicfont.Face7x13
+	evalLua(t, app, `
+view = onon.ui.create({ draw = function(canvas, box) canvas:input("name", 0, 0, box.w) end })
+view:set_field("name", "start")
+view:show()`)
+	view := app.activeUIView()
+	drawLuaView(t, app, view)
+	app.typeUIText("ed")
+	evalLua(t, app, `view:close() onon.message(view:field("name"))`)
+	if app.message != "started" || app.views.views[view.id] != nil {
+		t.Fatalf("after closing: field %q, view kept %v", app.message, app.views.views[view.id] != nil)
+	}
+	evalLua(t, app, `view:set_field("name", "set") onon.message(view:field("name"))`)
+	if app.message != "set" {
+		t.Fatalf("a closed view's field set reads back %q", app.message)
+	}
+	evalLua(t, app, `view:show() onon.message(view:field("name"))`)
+	if app.message != "set" {
+		t.Fatalf("reopened, the field reads %q, want its spec's text", app.message)
 	}
 }

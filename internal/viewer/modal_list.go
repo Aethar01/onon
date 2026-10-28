@@ -162,10 +162,6 @@ func pointInFRect(x, y float32, rect sdl.FRect) bool {
 	return x >= rect.X && x < rect.X+rect.W && y >= rect.Y && y < rect.Y+rect.H
 }
 
-func pointInRect(x, y int, rect sdl.FRect) bool {
-	return float32(x) >= rect.X && float32(x) <= rect.X+rect.W && float32(y) >= rect.Y && float32(y) <= rect.Y+rect.H
-}
-
 // drawScrollbarThumb draws thumb as a slim bar set off the right edge of
 // panel; the wider track around it is what takes clicks.
 func (a *App) drawScrollbarThumb(renderer *sdl.Renderer, panel, thumb sdl.FRect) {

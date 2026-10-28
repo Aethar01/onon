@@ -82,8 +82,6 @@ func (h *stubHost) CloseUI(id string) {
 
 func (h *stubHost) UIVisible(id string) bool { return h.uiVisible && h.ui.ID == id }
 
-func (h *stubHost) UIExists(id string) bool { return h.ui.ID == id }
-
 func (h *stubHost) SetUIRows(id string, rows []UIListRow) {
 	h.ui.Rows = append([]UIListRow(nil), rows...)
 }

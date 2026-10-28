@@ -278,3 +278,62 @@ view:show()`)
 		t.Fatalf("Space on a button: prompt %q, message %q", view.promptInput.Value, app.message)
 	}
 }
+
+func TestOtherButtonsDoNotEndAControlsPress(t *testing.T) {
+	app := luaUITestApp(t, "")
+	app.fontFace = basicfont.Face7x13
+	evalLua(t, app, `
+onon.ui.create({
+  draw = function(canvas) canvas:button("ok", 0, 0, 80, "OK") end,
+  on_click = function(id) onon.message("clicked " .. id) end,
+}):show()`)
+	view := app.activeUIView()
+	drawLuaView(t, app, view)
+	r := view.controls["ok"]
+	button := func(typ sdl.EventType, b sdl.MouseButtonFlags) {
+		app.viewMouseButton(view, &sdl.MouseButtonEvent{Type: typ, Button: uint8(b), X: r.X + 2, Y: r.Y + 2})
+	}
+	button(sdl.EventMouseButtonDown, sdl.ButtonLeft)
+	button(sdl.EventMouseButtonDown, sdl.ButtonRight)
+	button(sdl.EventMouseButtonUp, sdl.ButtonRight)
+	if !view.pressTaken {
+		t.Fatal("a right click ended the left press on the button")
+	}
+	button(sdl.EventMouseButtonUp, sdl.ButtonLeft)
+	if view.pressTaken || view.pressedControl != "" || app.message != "clicked ok" {
+		t.Fatalf("the left release: taken %v, pressed %q, message %q", view.pressTaken, view.pressedControl, app.message)
+	}
+	// The prompt draws its cursor only while it has the focus.
+	view.prompt, view.focus = "Find", "ok"
+	if view.promptFocused() {
+		t.Fatal("the prompt counts as focused with a button focused")
+	}
+}
+
+func TestCanvasRenderRequests(t *testing.T) {
+	app := testPrefetchApp(5, 1)
+	// A smaller draw of a page whose thumbnail is sharp enough for it
+	// leaves a sharper one asked for in the same frame.
+	key := thumbnailKey(2)
+	app.cache.add(&renderedTile{key: key, scale: 1, version: app.tileVersion(2)})
+	app.wantThumbnail(2, 2)
+	app.wantThumbnail(2, 0.5)
+	if req := app.canvas.thumbs[2]; req.scale != 2 {
+		t.Fatalf("the sharper thumbnail asked for became %+v", req)
+	}
+	// A render asked for once and failed is not asked for at once on
+	// every frame.
+	app.canvas.tiles = map[tileKey]image.Rectangle{{page: 1, scale: 1}: image.Rect(0, 0, 10, 10)}
+	app.canvas.thumbs = nil
+	app.requestCanvasRenders()
+	app.renderPending = map[tileKey]renderRequest{} // as when it fails
+	if app.canvasRendersUnasked() {
+		t.Fatal("a failed render is asked for again every frame")
+	}
+	// A panel not docked moves no other view.
+	gen := app.views.layoutGen
+	app.views.show(&uiView{id: "float", place: viewPlacement{anchor: "center"}})
+	if app.views.layoutGen != gen {
+		t.Fatal("a floating panel changed every view's layout")
+	}
+}

@@ -106,24 +106,63 @@ func (a *App) clickUIControl(view *uiView, id string) {
 	}
 }
 
-// pressUIControl handles a press at x, y in view on a text field, which it
-// focuses, or a button or check box, which it focuses and presses, its
-// release over it clicking it. It reports whether there was one.
-func (a *App) pressUIControl(view *uiView, x, y float32) bool {
-	if a.pressUIField(view, x, y) {
-		return true
-	}
-	for id, r := range view.controls {
-		if pointInFRect(x, y, r) && slices.Contains(view.focusOrder, id) {
-			view.focus, view.pressedControl = id, id
-			if !view.modal {
-				a.focusUIView(view, true)
-			}
-			a.pendingRedraw = true
-			return true
+// uiTarget is what of a view the pointer can work.
+type uiTarget int
+
+const (
+	targetNone    uiTarget = iota
+	targetField            // a text field
+	targetPrompt           // the header's prompt
+	targetControl          // a button or check box
+)
+
+// controlAt is what of view is at x, y that the pointer works, with its
+// id, as last drawn: one hit-test for pressing and for the cursor.
+func (view *uiView) controlAt(x, y float32) (uiTarget, string) {
+	for _, id := range view.focusOrder {
+		if f := view.fields[id]; f != nil && pointInFRect(x, y, f.rect) {
+			return targetField, id
+		}
+		if r, ok := view.controls[id]; ok && pointInFRect(x, y, r) {
+			return targetControl, id
 		}
 	}
-	return false
+	if view.prompt != "" && pointInFRect(x, y, view.promptRect) {
+		return targetPrompt, promptFocus
+	}
+	return targetNone, ""
+}
+
+// pressUIControl handles a press at x, y in view on a text field or the
+// prompt, which it focuses, putting the cursor there and starting a
+// selection a drag stretches, or on a button or check box, which it
+// focuses and presses, its release over it clicking it. It reports
+// whether there was one.
+func (a *App) pressUIControl(view *uiView, x, y float32) bool {
+	target, id := view.controlAt(x, y)
+	press := func(l *textLayout, input *textInput) {
+		if l.face != nil && len(l.lines) > 0 {
+			pressText(l, input, x, y, false)
+			input.mouseSelecting = true
+		}
+	}
+	switch target {
+	case targetNone:
+		return false
+	case targetField:
+		f := view.fields[id]
+		press(&f.layout, &f.input)
+	case targetPrompt:
+		press(&view.promptLayout, &view.promptInput)
+	case targetControl:
+		view.pressedControl = id
+	}
+	view.focus = id
+	if !view.modal {
+		a.focusUIView(view, true)
+	}
+	a.pendingRedraw = true
+	return true
 }
 
 // releaseUIControl handles the release of a button or check box pressed,

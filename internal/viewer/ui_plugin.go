@@ -10,11 +10,7 @@ import (
 
 func (a *App) ShowUI(spec config.UIOverlay) error {
 	if spec.Modal && !spec.Stack {
-		callCallbacks := true
-		if active := a.activeUIView(); active != nil && active.owner == "lua" && active.generation != spec.Generation {
-			callCallbacks = false
-		}
-		a.closeAllUIWithCallbacks(callCallbacks)
+		a.closeAllUI() // a stale plugin view's callbacks are left unrun
 	} else if old := a.views.views[spec.ID]; old != nil {
 		a.closeUIView(old, true)
 	}
@@ -34,10 +30,6 @@ func (a *App) RedrawUI(id string) {
 func (a *App) CloseUI(id string) {
 	view := a.views.views[id]
 	a.closeUIView(view, true)
-}
-
-func (a *App) UIExists(id string) bool {
-	return a.views.views[id] != nil
 }
 
 func (a *App) UIVisible(id string) bool {
@@ -111,6 +103,12 @@ func (a *App) UIScroll(id string) int {
 	if view == nil {
 		return 0
 	}
+	return a.UIScrollOf(view)
+}
+
+// UIScrollOf is how far view is scrolled: rows for a list, logical pixels
+// for what a draw function draws.
+func (a *App) UIScrollOf(view *uiView) int {
 	if view.drawBody != nil && len(view.rows) == 0 {
 		return int(math.Round(view.scrollPx / float64(a.px(1))))
 	}
@@ -167,6 +165,10 @@ func (a *App) createLuaView(spec config.UIOverlay) *uiView {
 	rt := a.runtime
 	if spec.Draw != "" {
 		view.drawBody = func(a *App, canvas *elementCanvas, state config.DrawState) (bool, error) {
+			if a.staleLuaView(view) {
+				canvas.Default() // its function is the old generation's
+				return false, nil
+			}
 			return rt.RunUIDraw(spec.Draw, canvas, state)
 		}
 	}

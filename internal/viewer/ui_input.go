@@ -92,10 +92,15 @@ func (a *App) uiEditTarget() (uiEdit, bool) {
 	if f := view.fields[view.focus]; f != nil {
 		return uiEdit{view: view, id: view.focus, input: &f.input}, true
 	}
-	if view.prompt != "" && (view.focus == promptFocus || view.focus == "") {
+	if view.promptFocused() {
 		return uiEdit{view: view, input: &view.promptInput}, true
 	}
 	return uiEdit{}, false
+}
+
+// promptFocused reports whether view's prompt has its focus.
+func (view *uiView) promptFocused() bool {
+	return view.prompt != "" && (view.focus == promptFocus || view.focus == "")
 }
 
 // promptFocus is the focus of a view's prompt, which no field, button or
@@ -216,34 +221,6 @@ func (a *App) handleUIEditKey(view *uiView, key keys.Key, name string) bool {
 	}
 	// Option on macOS and AltGr elsewhere type characters of their own.
 	return key.Mod&(keys.Ctrl|keys.Cmd) == 0 && key.Mod&keys.Alt != 0 && utf8.RuneCountInString(key.Name) == 1
-}
-
-// pressUIField focuses the field or prompt of view at x, y, putting the
-// cursor where it was pressed and starting a selection a drag stretches,
-// and reports whether there was one.
-func (a *App) pressUIField(view *uiView, x, y float32) bool {
-	press := func(l *textLayout, input *textInput) bool {
-		if l.face != nil && len(l.lines) > 0 {
-			pressText(l, input, x, y, false)
-			input.mouseSelecting = true
-		}
-		if !view.modal {
-			a.focusUIView(view, true)
-		}
-		a.pendingRedraw = true
-		return true
-	}
-	for _, id := range view.focusOrder {
-		if f := view.fields[id]; f != nil && pointInFRect(x, y, f.rect) {
-			view.focus = id
-			return press(&f.layout, &f.input)
-		}
-	}
-	if view.prompt != "" && pointInFRect(x, y, view.promptRect) {
-		view.focus = promptFocus
-		return press(&view.promptLayout, &view.promptInput)
-	}
-	return false
 }
 
 // dragUIField stretches the selection of the field or prompt of view being
@@ -408,7 +385,8 @@ func (a *App) drawPromptHeader(renderer *sdl.Renderer, view *uiView, rect sdl.FR
 	view.promptRect = sdl.FRect{X: float32(x), Y: top, W: float32(max(1, end-x)), H: float32(height)}
 	view.promptLayout = a.drawEditBox(renderer, editBox{
 		input: &view.promptInput, display: view.promptInput.Value, face: a.fontFace,
-		x: x, y: textTop, width: max(1, end-x), lines: 1, scroll: &view.promptScroll, focused: a.keyView() == view,
+		x: x, y: textTop, width: max(1, end-x), lines: 1, scroll: &view.promptScroll,
+		focused:   a.keyView() == view && view.promptFocused(),
 		textColor: a.textColor(&st, false), phColor: a.textColor(&st, true), compositionColor: st.Text.V,
 		cursor: tweenKey{kind: "cursor", view: view, text: view.promptInput.Value},
 	})

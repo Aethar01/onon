@@ -1,8 +1,6 @@
 package viewer
 
 import (
-	"slices"
-
 	"github.com/jupiterrider/purego-sdl3/sdl"
 )
 
@@ -80,17 +78,10 @@ func (a *App) viewCursor() cursorKind {
 	if view == nil {
 		return cursorDefault
 	}
-	for id, r := range view.controls {
-		if pointInFRect(x, y, r) && slices.Contains(view.focusOrder, id) {
-			return cursorPointer
-		}
-	}
-	for _, id := range view.focusOrder {
-		if f := view.fields[id]; f != nil && pointInFRect(x, y, f.rect) {
-			return cursorText
-		}
-	}
-	if view.prompt != "" && pointInFRect(x, y, view.promptRect) {
+	switch target, _ := view.controlAt(x, y); target {
+	case targetControl:
+		return cursorPointer
+	case targetField, targetPrompt:
 		return cursorText
 	}
 	return cursorDefault

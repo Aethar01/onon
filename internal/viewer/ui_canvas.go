@@ -37,6 +37,10 @@ type canvasCache struct {
 	// them, once it has told the render worker they are wanted.
 	thumbs map[int]renderRequest
 	tiles  map[tileKey]image.Rectangle
+	// asked are the renders requestCanvasRenders has asked for, which a
+	// frame does not ask for again at once if they failed; the prefetch
+	// asks again as it would for any tile.
+	asked map[tileKey]bool
 }
 
 const (
@@ -439,7 +443,9 @@ func (a *App) wantThumbnail(page int, scale float64) {
 	}
 	version := a.tileVersion(page)
 	if thumb, ok := a.cache.get(thumbnailKey(page)); ok && thumb.scale >= scale*renderUpgradeTolerance && thumb.version == version {
-		a.canvas.thumbs[page] = renderRequest{}
+		if _, wanted := a.canvas.thumbs[page]; !wanted {
+			a.canvas.thumbs[page] = renderRequest{} // kept, not replacing a sharper one asked for
+		}
 		return
 	}
 	if req := a.canvas.thumbs[page]; req.scale < scale {
@@ -450,28 +456,36 @@ func (a *App) wantThumbnail(page int, scale float64) {
 // requestCanvasRenders asks for the thumbnails and tiles canvases drew that
 // are not yet kept, once the render worker knows they are wanted.
 func (a *App) requestCanvasRenders() {
+	if a.canvas.asked == nil || len(a.canvas.asked) > maxCanvasAsked {
+		a.canvas.asked = map[tileKey]bool{}
+	}
 	for _, req := range a.canvas.thumbs {
 		if req.scale > 0 {
 			a.queueRender(req, 0)
+			a.canvas.asked[req.key] = true
 		}
 	}
 	for key, rect := range a.canvas.tiles {
 		a.requestTile(key, rect, 0)
+		a.canvas.asked[key] = true
 	}
 }
+
+// maxCanvasAsked bounds the renders remembered as asked for.
+const maxCanvasAsked = 1024
 
 // canvasRendersUnasked reports whether canvases drew a thumbnail or tile
 // that is neither kept nor asked for.
 func (a *App) canvasRendersUnasked() bool {
 	for _, req := range a.canvas.thumbs {
-		if _, pending := a.renderPending[req.key]; req.scale > 0 && !pending {
+		if _, pending := a.renderPending[req.key]; req.scale > 0 && !pending && !a.canvas.asked[req.key] {
 			return true
 		}
 	}
 	for key := range a.canvas.tiles {
 		_, cached := a.cache.get(key)
 		_, pending := a.renderPending[key]
-		if !cached && !pending {
+		if !cached && !pending && !a.canvas.asked[key] {
 			return true
 		}
 	}
@@ -584,7 +598,7 @@ func (view *uiView) regionAt(x, y float32) lua.LValue {
 // open, or the topmost panel.
 func (a *App) viewUnderPointer() *uiView {
 	if view := a.activeModalUIView(); view != nil {
-		if rect, _ := view.frameGeometry(a); pointInRect(int(a.pointer.X), int(a.pointer.Y), rect) {
+		if rect, _ := view.frameGeometry(a); pointInFRect(a.pointer.X, a.pointer.Y, rect) {
 			return view
 		}
 		return nil

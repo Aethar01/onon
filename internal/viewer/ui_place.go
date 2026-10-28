@@ -346,6 +346,11 @@ func (a *App) UIViewSize(id string) (float64, float64) {
 	if view == nil {
 		return 0, 0
 	}
+	return a.viewSize(view)
+}
+
+// viewSize is view's size in logical pixels.
+func (a *App) viewSize(view *uiView) (float64, float64) {
 	rect, _ := view.frameGeometry(a)
 	scale := float64(a.px(1))
 	return float64(rect.W) / scale, float64(rect.H) / scale

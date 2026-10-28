@@ -96,10 +96,13 @@ type Runtime struct {
 // luaGeneration is what one load of the configuration builds. Reload
 // replaces it as a whole and, if loading fails, puts the old one back.
 type luaGeneration struct {
-	state            *lua.LState
-	cfg              Config
-	callbacks        map[string]*lua.LFunction
-	callbackSeq      int
+	state       *lua.LState
+	cfg         Config
+	callbacks   map[string]*lua.LFunction
+	callbackSeq int
+	// openViews has, for each plugin view shown, what takes its state as
+	// it closes; see UIViewClosed.
+	openViews        map[string]func(UIViewState)
 	schemes          map[string]*lua.LFunction // onon.register_scheme, by name
 	dirty            bool
 	pluginCatalog    *pluginCatalog
@@ -217,6 +220,15 @@ type UIListRow struct {
 	Lua lua.LValue
 }
 
+// UIViewState is a view's state as it closed: its fields' text, its
+// selection (1-based), scroll and query, and its size in logical pixels.
+type UIViewState struct {
+	Fields           map[string]string
+	Selected, Scroll int
+	Query            string
+	W, H             float64
+}
+
 // UIRowRef is a row as a view's callbacks are given it.
 type UIRowRef struct {
 	Index           int // 1-based, in the rows as set, however filtered
@@ -251,9 +263,6 @@ type Host interface {
 	ShowUI(overlay UIOverlay) error
 	CloseUI(id string)
 	UIVisible(id string) bool
-	// UIExists reports whether the host keeps the view, shown once, open
-	// or closed.
-	UIExists(id string) bool
 	SetUIRows(id string, rows []UIListRow)
 	SetUISelected(id string, selected int)
 	SetUIScroll(id string, scroll int)

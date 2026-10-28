@@ -167,7 +167,7 @@ func (a *App) viewMouseEvent(view *uiView, x, y float32) (config.UIMouseEvent, b
 		Y:      (float64(y-body.Y) + view.scrollPx) / scale,
 		Region: view.regionAt(x, y),
 	}
-	return ev, pointInRect(int(x), int(y), frame)
+	return ev, pointInFRect(x, y, frame)
 }
 
 // viewMouseButton handles a button event for view, which has the pointer
@@ -179,14 +179,14 @@ func (a *App) viewMouseButton(view *uiView, e *sdl.MouseButtonEvent) {
 	down := e.Type == sdl.EventMouseButtonDown
 	left := e.Button == uint8(sdl.ButtonLeft)
 	// A press on a field or button is theirs to its release, a drag across
-	// a field selecting.
+	// a field selecting; other buttons meanwhile are ignored.
 	if down && inside && left && a.pressUIControl(view, e.X, e.Y) {
 		view.pointerDown, view.pressTaken = true, true
 		return
 	}
-	if !down && view.pressTaken {
-		view.pointerDown, view.pressTaken = false, false
-		if left {
+	if view.pressTaken {
+		if !down && left {
+			view.pointerDown, view.pressTaken = false, false
 			a.releaseUIControl(view, e.X, e.Y)
 			a.dragUIField(view, e.X, e.Y, true)
 		}
@@ -365,10 +365,10 @@ func (a *App) drawViewScrollbar(renderer *sdl.Renderer, view *uiView) {
 // jumped to the pointer, when the track was.
 func (a *App) viewStartScrollbarDrag(view *uiView, x, y float32) bool {
 	track, thumb, ok := a.viewScrollbar(view)
-	if !ok || !pointInRect(int(x), int(y), track) {
+	if !ok || !pointInFRect(x, y, track) {
 		return false
 	}
-	if pointInRect(int(x), int(y), thumb) {
+	if pointInFRect(x, y, thumb) {
 		view.scrollbarDragOffsetY = int(y - thumb.Y)
 	} else {
 		view.scrollbarDragOffsetY = int(thumb.H / 2)
@@ -391,7 +391,7 @@ func (a *App) viewDragScrollbar(view *uiView, y float32) {
 func (a *App) panelAt(x, y float32) *uiView {
 	panels := a.views.panels
 	for i := len(panels) - 1; i >= 0; i-- {
-		if rect, _ := panels[i].frameGeometry(a); panels[i].visible && pointInRect(int(x), int(y), rect) {
+		if rect, _ := panels[i].frameGeometry(a); panels[i].visible && pointInFRect(x, y, rect) {
 			return panels[i]
 		}
 	}

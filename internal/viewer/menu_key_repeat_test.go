@@ -162,3 +162,36 @@ func TestKeybindCaptureKeepsItsRow(t *testing.T) {
 		t.Fatalf("the row passed over lost its binding: %s is %q", other.key, got)
 	}
 }
+
+// Choosing another row while capturing, such as the new keybind button,
+// leaves the capture to the binding it began on.
+func TestKeybindCaptureIgnoresChoosingWhileCapturing(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	rt, err := config.Open(filepath.Join(dir, "config.lua"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+	app, err := New("", rt, 0, nil, NewOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.toggleKeybindMenu()
+	view := app.keybindMenu.view
+	view.selected = 1
+	chosen, _ := app.selectedKeybind()
+	app.activateUIView(view)
+	view.selected = 0 // the new keybind button
+	app.activateUIView(view)
+	start := time.Now()
+	app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: sdl.KeycodeZ})
+	app.finishKeybindCapture(start.Add(time.Duration(app.config.SequenceTimeoutMS+1) * time.Millisecond))
+	if app.config.KeyBindings["z"] != chosen.action {
+		t.Fatalf("z bound to %q, want %q", app.config.KeyBindings["z"], chosen.action)
+	}
+	if _, kept := app.config.KeyBindings[chosen.key]; kept {
+		t.Fatalf("%s kept its binding: the capture added one rather than rebinding", chosen.key)
+	}
+}
