@@ -2,6 +2,7 @@ package viewer
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -19,9 +20,11 @@ func (a *App) showSearchMatches() {
 		}
 		return
 	}
+	pattern := parseSearchQuery(a.search.query, a.page)
+	re, _ := compileSearchPattern(pattern) // it compiled for the search
 	rows := make([]uiRow, len(a.search.order))
 	for i, ref := range a.search.order {
-		text, highlight := a.searchMatchContext(ref)
+		text, highlight := a.searchMatchContext(ref, pattern, re)
 		rows[i] = uiRow{index: i, key: "p. " + a.pageLabel(ref.page), text: text, highlight: highlight, value: strconv.Itoa(i)}
 	}
 	current := a.search.current
@@ -67,10 +70,11 @@ func (a *App) previewSearchMatch(view *uiView, i int) {
 // so that a match far along a long line still shows.
 const matchLead = 32
 
-// searchMatchContext returns the text of the line a match is on, and
-// where in it the match is. A match far along the line has the line
-// start a little before it, from a word where there is one.
-func (a *App) searchMatchContext(ref searchHitRef) (string, [2]int) {
+// searchMatchContext returns the text of the line a match of pattern,
+// or of re for one that needs a regular expression, is on, and where in
+// it the match is. A match far along the line has the line start a little
+// before it, from a word where there is one.
+func (a *App) searchMatchContext(ref searchHitRef, pattern searchPattern, re *regexp.Regexp) (string, [2]int) {
 	quads := a.search.matches[ref.page][ref.hit].Quads
 	if len(quads) == 0 {
 		return "", [2]int{}
@@ -81,15 +85,13 @@ func (a *App) searchMatchContext(ref searchHitRef) (string, [2]int) {
 		return "", [2]int{}
 	}
 	line := strings.Join(strings.Fields(sel.Text), " ")
-	hit, err := a.doc.ExtractSelection(ref.page, first.UL, last.LR, mupdf.SelectChars)
-	match := strings.Join(strings.Fields(hit.Text), " ")
-	lower := strings.ToLower(line)
-	at := strings.Index(lower, strings.ToLower(match))
-	if err != nil || match == "" || at < 0 || len(lower) != len(line) { // offsets in lower are line's
+	found := lineMatches(line, pattern, re)
+	if len(found) == 0 {
 		return line, [2]int{}
 	}
-	if at > matchLead {
-		cut := at - matchLead/2
+	at := found[0]
+	if at[0] > matchLead {
+		cut := at[0] - matchLead/2
 		from := strings.LastIndexByte(line[:cut], ' ') + 1
 		if from == 0 { // no word to start from, as in a long URL
 			from = cut
@@ -98,7 +100,36 @@ func (a *App) searchMatchContext(ref searchHitRef) (string, [2]int) {
 			}
 		}
 		line = "…" + line[from:]
-		at += len("…") - from
+		shift := len("…") - from
+		at = [2]int{at[0] + shift, at[1] + shift}
 	}
-	return line, [2]int{at, at + len(match)}
+	return line, at
+}
+
+// lineMatches finds where pattern, or re, matches in line, as the search
+// found them on the page: a regular expression as it matches the text
+// layer, and plain text ignoring case and runs of spaces, as MuPDF does.
+func lineMatches(line string, pattern searchPattern, re *regexp.Regexp) [][2]int {
+	var found [][2]int
+	if re != nil {
+		for _, loc := range re.FindAllStringSubmatchIndex(line, -1) {
+			if loc[0] != loc[1] && wordBoundsHold(re, line, loc) {
+				found = append(found, [2]int{loc[0], loc[1]})
+			}
+		}
+		return found
+	}
+	needle := strings.ToLower(strings.Join(strings.Fields(pattern.text), " "))
+	lower := strings.ToLower(line)
+	if needle == "" || len(lower) != len(line) { // offsets in lower are line's
+		return nil
+	}
+	for from := 0; ; {
+		i := strings.Index(lower[from:], needle)
+		if i < 0 {
+			return found
+		}
+		found = append(found, [2]int{from + i, from + i + len(needle)})
+		from += i + len(needle)
+	}
 }

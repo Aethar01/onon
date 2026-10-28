@@ -373,7 +373,7 @@ func TestSearchMatchContextLeadsToAMatchFarAlong(t *testing.T) {
 		t.Fatalf("hits %v, %v", hits, err)
 	}
 	app.search = searchState{query: "needle", matches: map[int][]mupdf.SearchHit{0: hits}, order: []searchHitRef{{}}}
-	text, at := app.searchMatchContext(searchHitRef{})
+	text, at := app.searchMatchContext(searchHitRef{}, parseSearchQuery("needle", 0), nil)
 	if !strings.HasPrefix(text, "…") || len(text) >= len(line) || text[at[0]:at[1]] != "needle" || at[0] > matchLead {
 		t.Fatalf("context %q, match at %v", text, at)
 	}
@@ -393,8 +393,24 @@ func TestSearchMatchContextCutsALineWithoutSpaces(t *testing.T) {
 		t.Fatalf("hits %v, %v", hits, err)
 	}
 	app.search = searchState{query: "needle", matches: map[int][]mupdf.SearchHit{0: hits}, order: []searchHitRef{{}}}
-	text, at := app.searchMatchContext(searchHitRef{})
+	text, at := app.searchMatchContext(searchHitRef{}, parseSearchQuery("needle", 0), nil)
 	if !strings.HasPrefix(text, "…") || len(text) >= len(line) || text[at[0]:at[1]] != "needle" || at[0] > matchLead {
 		t.Fatalf("context %q, match at %v", text, at)
+	}
+}
+
+func TestLineMatchesFindsPlainAndRegularMatches(t *testing.T) {
+	line := "The needle, a Needle and needles"
+	plain := parseSearchQuery("needle", 0)
+	if got := lineMatches(line, plain, nil); !reflect.DeepEqual(got, [][2]int{{4, 10}, {14, 20}, {25, 31}}) {
+		t.Fatalf("plain matches %v", got)
+	}
+	words := parseSearchQuery(`\<needle\>`, 0)
+	re, err := compileSearchPattern(words)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := lineMatches(line, words, re); !reflect.DeepEqual(got, [][2]int{{4, 10}, {14, 20}}) {
+		t.Fatalf("whole-word matches %v", got)
 	}
 }
