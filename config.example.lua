@@ -24,13 +24,14 @@ onon.options.link_preview_delay_ms = 400 -- Milliseconds to hover an internal li
 onon.options.link_schemes = {"http", "https", "mailto"} -- URI schemes that document links may open externally; other links only show their target.
 onon.options.loading_indicator = true -- Animate a loading indicator on pages still rendering for the first time.
 onon.options.max_zoom = 8 -- Maximum manual zoom scale.
+onon.options.menus = {} -- Where onon's own menus sit, by name, such as { outline = { anchor = "left", width = "40%" } }: each takes width and height, the most of the window it takes, in logical pixels or a percentage, and anchor, as views do. Menus: annotation, choice, colors, help, keybind_keys, keybinds, matches, options, outline, print, printers, recent, themes.
 onon.options.min_zoom = 0.5 -- Minimum manual zoom scale.
 onon.options.mouse_text_select = true -- Enable text selection with the left mouse button.
 onon.options.mupdf_store_mb = 256 -- MuPDF cache for fonts and decoded images in MiB; applies to newly opened documents.
 onon.options.open_in_new_window = true -- On macOS, open a document Finder or `open` sends to a running onon in a new window rather than the current one.
 onon.options.outline_height_percent = 80 -- Outline overlay height as a percentage of the window.
 onon.options.outline_initial_depth = 1 -- Outline levels expanded when the outline opens.
-onon.options.outline_width_percent = 70 -- Outline overlay width as a percentage of the window.
+onon.options.outline_width_percent = 70 -- Most of the window the outline overlay takes, as a percentage of its width; the outline is narrower when its entries are.
 onon.options.overview_gap = 16 -- Gap in pixels between the page overview's cells.
 onon.options.overview_max_columns = 12 -- Most columns the page overview shows, whether fitted to the window or set with zoom_out.
 onon.options.overview_thumb_width = 220 -- Width in pixels the page overview aims to show each page at, which sets how many columns fit.

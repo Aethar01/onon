@@ -275,3 +275,49 @@ func TestSetStatusBarVisibleAppliesAfterToggle(t *testing.T) {
 		t.Fatal(":set status_bar_visible=false did not hide the status bar")
 	}
 }
+
+func TestOptionsListSwitchesAndSetsOptions(t *testing.T) {
+	app := luaUITestApp(t, "")
+	app.config = app.runtime.Config()
+	app.runSet("")
+	view := app.activeModalUIView()
+	find := func(name string) uiRow {
+		for _, row := range view.rows {
+			if row.value == name {
+				return row
+			}
+		}
+		t.Fatalf("no row for %s", name)
+		return uiRow{}
+	}
+	row := find("copy_on_select")
+	before := row.secondary
+	view.selected = row.index
+	app.activateUIView(view)
+	if after := find("copy_on_select").secondary; after == before || app.activeModalUIView() != view || view.selected != row.index {
+		t.Fatalf("Enter on copy_on_select: %s to %s, view %v, selected %d", before, after, app.activeModalUIView(), view.selected)
+	}
+
+	row = find("fit_mode")
+	view.selected = row.index
+	app.activateUIView(view)
+	if app.activeModalUIView() != nil || app.mode != modeCommand || app.input.Value != "set fit_mode="+row.secondary {
+		t.Fatalf("Enter on fit_mode: mode %v, input %q", app.mode, app.input.Value)
+	}
+}
+
+func TestRecentFilePartsNameTheFileFirst(t *testing.T) {
+	home := string(filepath.Separator) + "h"
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	for _, tc := range []struct{ path, name, folder string }{
+		{filepath.Join(home, "papers", "a.pdf"), "a.pdf", filepath.Join("~", "papers")},
+		{filepath.Join(home+"x", "b.pdf"), "b.pdf", home + "x"},
+		{"https://example.com/docs/c.pdf", "c.pdf", "https://example.com/docs"},
+		{filepath.Join(home, "a", "b", "c", "d", "e.pdf"), "e.pdf", filepath.Join("…", "c", "d")},
+	} {
+		if name, folder := recentFileParts(tc.path); name != tc.name || folder != tc.folder {
+			t.Errorf("recentFileParts(%q) = %q, %q; want %q, %q", tc.path, name, folder, tc.name, tc.folder)
+		}
+	}
+}

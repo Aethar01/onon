@@ -68,8 +68,10 @@ func (a *App) placeCompletion() {
 	_, rowPadRight, _, rowPadLeft := a.insets(row.Padding.V)
 	widest := 0
 	for _, r := range view.rows {
-		widest = max(widest, measureText(a.fontFace, strings.Repeat("  ", r.depth)+r.text))
+		widest = max(widest, a.depthIndent(r.depth)+measureText(a.fontFace, r.text))
 	}
+	prefix := a.rowPrefix(view, view.rows, math.MaxInt32)
+	widest += prefix.width() + prefix.marker
 	margin := a.ipx(8)
 	width := widest + int(math.Round(float64(padLeft+rowPadLeft+rowPadRight+padRight)))
 	width = clampInt(width, a.ipx(120), max(a.ipx(120), a.winW-2*margin))

@@ -3,8 +3,11 @@ package viewer
 import (
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 	"time"
+
+	"onon/internal/config"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
 )
@@ -147,5 +150,55 @@ func TestWheelWithoutSmoothScrollingMovesAWholeRow(t *testing.T) {
 		if view.offset != step.want || view.scroll != int(step.want) {
 			t.Fatalf("after a wheel of %v: offset %v scroll %d, want %v", step.y, view.offset, view.scroll, step.want)
 		}
+	}
+}
+
+func TestMenusFitTheirRows(t *testing.T) {
+	app := testStyleApp("bar")
+	app.winW, app.winH = 2000, 800
+	app.showRowList("test", "Test", []uiRow{{text: "short", secondary: "12"}}, 70, 70, func(*uiView) {})
+	view := app.activeModalUIView()
+	narrow, _ := view.frameGeometry(app)
+	if narrow.W >= 1400 || narrow.W < 260 {
+		t.Fatalf("a menu of one short row is %v wide", narrow.W)
+	}
+
+	// A longer row widens it, up to the share of the window it may take.
+	app.setUIViewRows(view, []uiRow{{text: strings.Repeat("long ", 20), secondary: "12"}})
+	wider, _ := view.frameGeometry(app)
+	if wider.W <= narrow.W {
+		t.Fatalf("a longer row left it %v wide, from %v", wider.W, narrow.W)
+	}
+	app.setUIViewRows(view, []uiRow{{text: strings.Repeat("long ", 400)}})
+	if full, _ := view.frameGeometry(app); full.W != 1400 {
+		t.Fatalf("a menu wider than its share is %v wide, want 1400", full.W)
+	}
+
+	// Filtering keeps its width.
+	app.setUIViewRows(view, []uiRow{{text: "short"}, {text: strings.Repeat("long ", 20)}})
+	before, _ := view.frameGeometry(app)
+	app.setUIViewQuery(view, "short")
+	if after, _ := view.frameGeometry(app); after.W != before.W {
+		t.Fatalf("filtering changed its width from %v to %v", before.W, after.W)
+	}
+}
+
+func TestMenusOptionPlacesOnonsMenus(t *testing.T) {
+	app := testStyleApp("bar")
+	app.winW, app.winH = 1000, 800
+	app.config.Menus = map[string]config.MenuPlacement{"help": {Width: config.UISize{Value: 30, Percent: true}, Anchor: "top"}}
+	app.toggleHelp()
+	view := app.activeModalUIView()
+	rect, _ := view.frameGeometry(app)
+	if rect.W > 300 || view.place.anchor != "top" || rect.Y > 20 {
+		t.Fatalf("help placed at %+v, anchor %q", rect, view.place.anchor)
+	}
+	// Menus not named keep their own place.
+	app.showRowList("themes", "Themes", []uiRow{{text: "moss"}}, 50, 60, func(*uiView) {})
+	if view := app.activeModalUIView(); view.place.anchor != "center" {
+		t.Fatalf("themes anchored %q", view.place.anchor)
+	}
+	if config.MenuViews["help"] != helpViewID {
+		t.Errorf("the menus option's help is view %q, help is %q", config.MenuViews["help"], helpViewID)
 	}
 }

@@ -70,13 +70,13 @@ func (a *App) openAnnotationMenu(e *sdl.MouseButtonEvent) bool {
 	a.showRowList("annotation-menu", target.Type, rows, 25, 20, func(view *uiView) {
 		view.searchable = false
 		view.onSelect = func(a *App, row uiRow) {
-			a.closeUIView(view, false)
 			switch row.value {
 			case "delete":
+				a.closeUIView(view, false)
 				a.deleteAnnotation(target)
 			case "colour":
 				palette := a.annotationPalette()
-				a.pickColor("Annotation colour", palette, func(i int) {
+				a.pickColor("Annotation colour", palette, true, func(i int) {
 					a.editPage(target.page, func() error { return a.doc.RecolorAnnotation(target.page, target.Index, palette[i]) })
 					a.highlightColor = i
 				})

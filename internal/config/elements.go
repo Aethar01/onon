@@ -69,7 +69,7 @@ var elementSpecs = [ElementCount]struct {
 	ElementRowSelected:       {"row_selected", ElementRow, slices.Concat(boxProps, textProps), "The selected row."},
 	ElementRowDisabled:       {"row_disabled", ElementRow, slices.Concat(boxProps, textProps), "A row that cannot be chosen."},
 	ElementHeading:           {"heading", ElementRow, slices.Concat(boxProps, textProps), "A section title among a menu's rows."},
-	ElementButton:            {"button", ElementRow, slices.Concat(boxProps, textProps), "A button in a menu, such as the keybind menu's new keybind."},
+	ElementButton:            {"button", ElementRow, slices.Concat(boxProps, textProps), "A button in a menu, such as the keybind menu's Add a key…."},
 	ElementScrollbar:         {"scrollbar", noElement, slices.Concat(boxProps, []string{"width", "margin"}), "The thumb of a menu's scrollbar; margin.right sets it off the panel's edge."},
 	ElementSwatch:            {"swatch", noElement, slices.Concat(boxProps, []string{"gap"}), "A colour sample before a row's text, gap before the text."},
 	ElementStatus:            {"status", noElement, slices.Concat(boxProps, []string{"margin", "gap", "floating"}), "The status bar as a whole: margin sets it off the window's edges, gap between its sides, and floating draws it over the page instead of below it."},
@@ -277,9 +277,10 @@ func elementDefaults(t *Theme, e Element) Style {
 		s.Text = some(paletteColor("accent", 1))
 		s.Bold = some(true)
 	case ElementButton:
+		// Told apart by its text, not by a box around it.
 		s.Radius = some(corners(radius))
-		s.BorderWidth = some(1.0)
 		s.Text = some(paletteColor("accent", 1))
+		s.Bold = some(true)
 	case ElementScrollbar:
 		s.Shape = some(Shape{Kind: "pill"})
 		s.Fill = some(paletteColor("muted", 0.56))
@@ -326,8 +327,7 @@ func elementDefaults(t *Theme, e Element) Style {
 	case ElementInputFocused:
 		s.BorderColor = some(paletteColor("accent", 1))
 	case ElementButtonFocused:
-		s.Fill = some(paletteColor("accent", 0.1))
-		s.BorderColor = some(paletteColor("accent", 1))
+		s.Fill = some(paletteColor("accent", 0.1)) // as the selected row is
 	case ElementCheck:
 		s.Radius = some(corners(radius / 4))
 		s.Fill = some(paletteColor("accent", 1))

@@ -33,6 +33,9 @@ type uiRow struct {
 	checked   bool
 	cells     []string   // the text in each of the view's columns
 	lua       lua.LValue // the row a plugin gave, handed back to its callbacks
+	// highlight is the part of text, from byte to byte, drawn in the
+	// accent colour, as a search match is; empty for none.
+	highlight [2]int
 }
 
 // splitHeader splits a panel header such as "Outline /query (3/10)" into
@@ -78,7 +81,10 @@ type uiView struct {
 	geometry  viewGeometryCache // see viewGeometry
 	visible   bool
 
-	rows       []uiRow
+	rows []uiRow
+	// fitRows, if set, are the rows a fitted list's width is measured
+	// for in place of rows, for a list whose rows come and go.
+	fitRows    []uiRow
 	selected   int
 	scroll     int
 	searchable bool
@@ -91,9 +97,10 @@ type uiView struct {
 	offset       float64
 	offsetScroll int
 	settling     bool
-	offsetAt     time.Time   // when offset was last brought up to date
-	filtered     uiRowFilter // visibleRows' last result
-	keyWidth     uiKeyWidth  // keyColumnWidth's last result
+	offsetAt     time.Time      // when offset was last brought up to date
+	filtered     uiRowFilter    // visibleRows' last result
+	keyWidth     uiKeyWidth     // keyColumnWidth's last result
+	contentWidth uiContentWidth // listContentWidth's last result
 
 	// drawBody draws the body in place of the rows, which the canvas's
 	// default draws, returning whether to draw it again on the next frame.
@@ -150,6 +157,9 @@ type uiView struct {
 	// was notifiedSelected when it last ran.
 	onSelectionChanged func(*App, *uiView)
 	notifiedSelected   int
+	// pointerSelected is set while the selection is where the pointer
+	// passing over the rows put it, not the keys or the query.
+	pointerSelected bool
 	// onInput runs as a field's text changes, and onSubmit on Enter in a
 	// field, or the prompt, whose id is empty.
 	onInput, onSubmit func(a *App, id, text string)
@@ -183,7 +193,17 @@ type uiKeyWidth struct {
 	rows               []uiRow
 	face               font.Face
 	width              int
+	marker             int // the widest marker
 	swatches, checkbox bool
+}
+
+// uiContentWidth is the width a fitted list's rows take, measured for
+// rows in face with styles.
+type uiContentWidth struct {
+	rows   []uiRow
+	face   font.Face
+	styles *[config.ElementCount]config.Style
+	width  int
 }
 
 type uiManager struct {
@@ -421,6 +441,7 @@ func (a *App) activeModalUIView() *uiView {
 }
 
 func (a *App) showUIView(view *uiView) {
+	a.placeMenu(view)
 	if view.place.dock != "" {
 		a.relayoutWithViewportAnchor(func() { a.views.show(view) })
 	} else {
@@ -546,6 +567,7 @@ func (a *App) setUIViewQuery(view *uiView, query string) {
 		return
 	}
 	view.query = query
+	view.pointerSelected = false
 	if view.onQueryChanged != nil {
 		view.onQueryChanged(a, view)
 	}
@@ -561,6 +583,7 @@ func (a *App) moveUIViewSelection(view *uiView, delta int) {
 	if len(items) == 0 {
 		return
 	}
+	view.pointerSelected = false
 	row := uiViewSelectedRow(view, items)
 	for next := clampInt(row+delta, 0, len(items)-1); next != row; next = clampInt(next+delta, 0, len(items)-1) {
 		row = next
@@ -783,12 +806,6 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 				continue
 			}
 			text := item.text
-			if item.depth > 0 || item.marker != "" {
-				text = strings.Repeat("  ", max(0, item.depth)) + item.marker + item.text
-			}
-			// The right-hand column gets at most 45% of a narrow row.
-			secondary := a.truncateModalListText(item.secondary, int(rect.W*0.45))
-			secondaryWidth := measureText(a.fontFace, secondary)
 			if !item.button {
 				// Every row leaves the room any row's swatch, check box or
 				// key takes, so their text lines up.
@@ -808,8 +825,24 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 						return err
 					}
 				}
-				textX += prefix.width()
+				textX += prefix.width() + a.depthIndent(item.depth)
+				// Markers take a column of their own, so the text of rows
+				// with and without one lines up.
+				if item.marker != "" {
+					if err := a.drawText(renderer, item.marker, textX, baseline, a.textColor(&st, true)); err != nil {
+						return err
+					}
+				}
+				textX += prefix.marker
 			}
+			// The detail on the right takes what the text leaves it, and
+			// at least 45% of a row too narrow for both.
+			secondary := item.secondary
+			if secondary != "" {
+				room := textEnd - textX - measureText(face, text) - a.ipx(12)
+				secondary = a.truncateModalListText(secondary, max(room, int(rect.W*0.45)))
+			}
+			secondaryWidth := measureText(a.fontFace, secondary)
 			textWidth := textEnd - textX
 			if secondary != "" {
 				textWidth -= secondaryWidth + a.ipx(12)
@@ -818,7 +851,7 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 				a.drawCells(renderer, view, item.cells, textX, textEnd, baseline, face, a.textColor(&st, false), st.Bold.V)
 				continue
 			}
-			if err := a.drawTextFace(renderer, truncateText(face, text, textWidth), textX, baseline, a.textColor(&st, false), st.Bold.V); err != nil {
+			if err := a.drawRowText(renderer, item, truncateText(face, text, textWidth), textX, baseline, face, &st); err != nil {
 				return err
 			}
 			if secondary != "" {
@@ -832,9 +865,38 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 	return err
 }
 
+// drawRowText draws a row's text, shown as truncated, its highlight in the
+// accent colour, as far as the truncation leaves it.
+func (a *App) drawRowText(renderer *sdl.Renderer, item uiRow, shown string, x, baseline int, face font.Face, st *config.Style) error {
+	clr := a.textColor(st, false)
+	kept := len(shown)
+	if shown != item.text {
+		kept -= len("...") // the ellipsis truncateText ends it with
+	}
+	start, end := min(item.highlight[0], kept), min(item.highlight[1], kept)
+	if end <= start {
+		return a.drawTextFace(renderer, shown, x, baseline, clr, st.Bold.V)
+	}
+	accent := a.styleColor(config.Color{Name: "accent", Alpha: 1}, st.Opacity.V)
+	for _, part := range []struct {
+		text string
+		clr  color.RGBA
+	}{{shown[:start], clr}, {shown[start:end], accent}, {shown[end:], clr}} {
+		if part.text == "" {
+			continue
+		}
+		if err := a.drawTextFace(renderer, part.text, x, baseline, part.clr, st.Bold.V); err != nil {
+			return err
+		}
+		x += measureText(face, part.text)
+	}
+	return nil
+}
+
 // listPrefix is the room the rows of a list leave before their text: for
-// a swatch, a check box and the key column, each where any row has one.
-type listPrefix struct{ swatch, checkbox, key, keyGap int }
+// a swatch, a check box and the key column, each where any row has one,
+// and, after a row's indent, for the widest marker.
+type listPrefix struct{ swatch, checkbox, key, keyGap, marker int }
 
 func (p listPrefix) width() int { return p.swatch + p.checkbox + p.key + p.keyGap }
 
@@ -852,7 +914,15 @@ func (a *App) rowPrefix(view *uiView, items []uiRow, keyLimit int) listPrefix {
 	if view.keyWidth.checkbox {
 		p.checkbox = size + a.ipx(8)
 	}
+	if m := view.keyWidth.marker; m > 0 {
+		p.marker = m + a.ipx(6)
+	}
 	return p
+}
+
+// depthIndent is how far a row at depth is set in.
+func (a *App) depthIndent(depth int) int {
+	return a.ipx(16) * max(0, depth)
 }
 
 // keyColumnWidth is the width of the key column: the widest key of items,
@@ -868,9 +938,87 @@ func (a *App) keyColumnWidth(view *uiView, items []uiRow, limit int) int {
 			if item.key != "" && !item.button {
 				k.width = max(k.width, measureText(a.fontFace, item.key))
 			}
+			if item.marker != "" {
+				k.marker = max(k.marker, measureText(a.fontFace, item.marker))
+			}
 		}
 	}
 	return min(k.width, limit)
+}
+
+// listContentWidth is the width a fitted list needs to show its rows
+// whole, in output pixels: its widest row, details set off from the text
+// by a gap, or its columns' widest cells, and its header, all within the
+// panel's and the rows' padding. It is 0 for a view not fitted. All the
+// rows are measured, or its fitRows, not those the query leaves, so the
+// panel keeps its width while filtering.
+func (a *App) listContentWidth(view *uiView) int {
+	if !view.place.fit || view.drawBody != nil || view.place.dock != "" || a.fontFace == nil || a.styles == nil {
+		return 0
+	}
+	rows := view.rows
+	if view.fitRows != nil {
+		rows = view.fitRows
+	}
+	c := &view.contentWidth
+	if c.face == a.fontFace && c.styles == a.styles && len(c.rows) == len(rows) && (len(c.rows) == 0 || &c.rows[0] == &rows[0]) {
+		return c.width
+	}
+	*c = uiContentWidth{rows: rows, face: a.fontFace, styles: a.styles}
+	_, panelRight, _, panelLeft := a.viewInsets(view)
+	rowStyle := a.style(config.ElementRow)
+	_, rowRight, _, rowLeft := a.insets(rowStyle.Padding.V)
+	headingStyle := a.style(config.ElementHeading)
+	headingFace := a.styleFace(&headingStyle)
+	rowFace := a.styleFace(&rowStyle)
+	detailGap := a.ipx(32)
+	widest := 0
+	cells := make([]int, len(view.columns))
+	for _, row := range rows {
+		switch {
+		case row.heading:
+			widest = max(widest, measureText(headingFace, row.text))
+			continue
+		case len(view.columns) > 0 && row.cells != nil:
+			for i := range min(len(cells), len(row.cells)) {
+				cells[i] = max(cells[i], measureText(rowFace, row.cells[i]))
+			}
+			continue
+		}
+		w := a.depthIndent(row.depth) + measureText(rowFace, row.text)
+		if row.secondary != "" {
+			w += detailGap + measureText(a.fontFace, row.secondary)
+		}
+		widest = max(widest, w)
+	}
+	if len(view.columns) > 0 {
+		w := a.ipx(12) * (len(cells) - 1)
+		for i, col := range view.columns {
+			cell := max(cells[i], measureText(rowFace, col.title))
+			if !col.fill && !col.width.Percent {
+				cell = int(math.Round(a.uiLength(col.width, 0)))
+			}
+			w += cell
+		}
+		widest = max(widest, w)
+	}
+	prefix := a.rowPrefix(view, rows, math.MaxInt32)
+	width := int(math.Ceil(float64(panelLeft+rowLeft+rowRight+panelRight))) + prefix.width() + prefix.marker + widest
+	if header := view.title; header != "" || view.header != nil {
+		if view.header != nil {
+			header = view.header(a, view, len(view.rows))
+		}
+		st := a.style(config.ElementHeader)
+		_, right, _, left := a.insets(st.Padding.V)
+		title, detail := splitHeader(header)
+		w := int(math.Ceil(float64(left+right))) + measureText(a.styleFace(&st), title)
+		if detail != "" {
+			w += a.ipx(st.Gap.V) + measureText(a.fontFace, detail)
+		}
+		width = max(width, w)
+	}
+	c.width = width + 1 // for the rounding of the insets
+	return c.width
 }
 
 // uiViewIndexAt is the row of view at x, y, which depends on how far into
@@ -903,7 +1051,11 @@ func (a *App) uiViewHover(view *uiView, x, y int) bool {
 			view.selected = item.index
 		}
 	}
-	return old != view.selected
+	if old != view.selected {
+		view.pointerSelected = true
+		return true
+	}
+	return false
 }
 
 func uiRowsFromConfig(rows []config.UIListRow) []uiRow {
@@ -936,13 +1088,23 @@ func (a *App) showCoreList(id, title string, rows []string, onSelect func(string
 }
 
 // showRowList replaces any open menu with a searchable menu of rows,
-// widthPercent and heightPercent of the window. setup, which sets onSelect
+// at most widthPercent and heightPercent of the window. setup, which sets onSelect
 // and may set the selection and hooks, runs before the view is shown.
 func (a *App) showRowList(id, title string, rows []uiRow, widthPercent, heightPercent int, setup func(*uiView)) *uiView {
 	a.closeAllUI()
+	return a.openRowList(id, title, rows, widthPercent, heightPercent, false, setup)
+}
+
+// showRowListOver opens a menu of rows, as showRowList does, over the menu
+// open, which closing it returns to with its selection as it was.
+func (a *App) showRowListOver(id, title string, rows []uiRow, widthPercent, heightPercent int, setup func(*uiView)) *uiView {
+	return a.openRowList(id, title, rows, widthPercent, heightPercent, true, setup)
+}
+
+func (a *App) openRowList(id, title string, rows []uiRow, widthPercent, heightPercent int, stack bool, setup func(*uiView)) *uiView {
 	view := &uiView{
 		id: id, owner: "core", title: title, rows: rows, selected: min(0, len(rows)-1),
-		searchable: true, modal: true, element: config.ElementPanel, place: percentPlace(widthPercent, heightPercent),
+		searchable: true, modal: true, stack: stack, element: config.ElementPanel, place: menuPlace(widthPercent, heightPercent),
 	}
 	setup(view)
 	a.showUIView(view)

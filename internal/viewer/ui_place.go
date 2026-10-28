@@ -17,6 +17,10 @@ type viewPlacement struct {
 	anchor        string
 	at            *config.UIPoint
 	dock          string
+	// fit narrows a list to what its rows take, its width being the most
+	// and least, if set, the least.
+	fit   bool
+	least config.UISize
 }
 
 // percentPlace is a view of the given percentages of the window, centred,
@@ -26,6 +30,42 @@ func percentPlace(width, height int) viewPlacement {
 		width:  config.UISize{Value: float64(width), Percent: true},
 		height: config.UISize{Value: float64(height), Percent: true},
 		anchor: "center",
+	}
+}
+
+// menuPlace is a menu's place: centred, at most the given percentages of
+// the window, and as narrow as its rows let it be.
+func menuPlace(width, height int) viewPlacement {
+	p := percentPlace(width, height)
+	p.fit = true
+	return p
+}
+
+// placeMenu places one of onon's own menus where the menus option puts it,
+// over its own place.
+func (a *App) placeMenu(view *uiView) {
+	if view.owner != "core" || len(a.config.Menus) == 0 {
+		return
+	}
+	var p config.MenuPlacement
+	found := false
+	for name, id := range config.MenuViews {
+		if id == view.id {
+			p, found = a.config.Menus[name]
+			break
+		}
+	}
+	if !found {
+		return
+	}
+	if p.Width.Value > 0 {
+		view.place.width = p.Width
+	}
+	if p.Height.Value > 0 {
+		view.place.height = p.Height
+	}
+	if p.Anchor != "" {
+		view.place.anchor = p.Anchor
 	}
 }
 
@@ -167,6 +207,7 @@ func (a *App) viewGeometry(view *uiView) (sdl.FRect, int) {
 		winW: a.winW, winH: a.winH, status: a.statusVisible(), styles: a.styles, font: a.fontFace, scale: a.uiScale,
 		panels: a.views.layoutGen, rows: len(view.visibleRows()), place: view.place,
 		headless: view.headless, titles: view.hasColumnTitles(), body: view.drawBody != nil,
+		content: a.listContentWidth(view),
 	}
 	if g := &view.geometry; g.ok && g.key == key {
 		return g.rect, g.rows
@@ -189,6 +230,7 @@ type viewGeometryKey struct {
 	rows                   int
 	place                  viewPlacement
 	headless, titles, body bool
+	content                int
 }
 
 type viewGeometryCache struct {
@@ -215,9 +257,19 @@ func (a *App) placeView(view *uiView) (sdl.FRect, int) {
 	areaW, areaH := int(area.W)-2*gap, int(area.H)-2*gap
 	w := clampInt(int(math.Round(a.uiLength(p.width, float64(a.winW)))), 1, max(1, areaW))
 	h := clampInt(int(math.Round(a.uiLength(p.height, float64(a.winH)))), 1, max(1, areaH))
+	least := 260
+	if content := a.listContentWidth(view); content > 0 {
+		most := w
+		w = min(w, content)
+		least = a.ipx(320) // a fitted menu of short rows still reads as a menu
+		if p.least.Value > 0 {
+			least = max(least, int(math.Round(a.uiLength(p.least, float64(a.winW)))))
+		}
+		least = min(least, most)
+	}
 	if fit && p.at == nil {
 		// a menu keeps a least size
-		w = max(w, min(260, areaW))
+		w = max(w, min(least, areaW))
 		h = max(h, min(160, areaH))
 	}
 	rows := max(1, (h-head-bottom)/rowHeight)

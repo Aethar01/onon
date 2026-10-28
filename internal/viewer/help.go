@@ -1,6 +1,7 @@
 package viewer
 
 import (
+	"math"
 	"slices"
 	"strings"
 
@@ -28,10 +29,47 @@ func (a *App) toggleHelp() {
 	a.showRowList(helpViewID, "Help", a.helpRows(), 70, 80, func(view *uiView) {
 		view.onSelect = func(a *App, row uiRow) { a.activateHelpRow(row) }
 		view.selected = firstEnabledRow(view.rows)
+		a.helpColumns(view)
 	})
 }
 
+// refreshHelp builds help's rows again while it is open, as under the
+// keybind editor, whose bindings it lists.
+func (a *App) refreshHelp() {
+	view := a.views.views[helpViewID]
+	if view == nil || !view.visible {
+		return
+	}
+	a.setUIViewRows(view, a.helpRows())
+	a.helpColumns(view)
+}
+
+// helpColumns lays help's rows out in two columns, each name and what it
+// does, its keys or its value beside it, the first as wide as the widest
+// name.
+func (a *App) helpColumns(view *uiView) {
+	if a.fontFace == nil {
+		return
+	}
+	widest := 0
+	for i, row := range view.rows {
+		if row.heading {
+			continue
+		}
+		widest = max(widest, measureText(a.fontFace, row.text))
+		view.rows[i].cells = []string{row.text, row.secondary}
+	}
+	view.columns = []uiColumn{
+		{width: config.UISize{Value: math.Ceil(float64(widest) / float64(a.px(1)))}},
+		{fill: true},
+	}
+}
+
 func (a *App) activateHelpRow(row uiRow) {
+	if row.id == helpRowKeybinds {
+		a.openKeybindMenu(true) // over help, which Esc returns to
+		return
+	}
 	a.closeAllUI()
 	switch row.id {
 	case helpRowCommand:
@@ -43,8 +81,6 @@ func (a *App) activateHelpRow(row uiRow) {
 		a.input.Set(row.value)
 	case helpRowAction:
 		a.runAction(row.value)
-	case helpRowKeybinds:
-		a.toggleKeybindMenu()
 	}
 }
 
@@ -108,10 +144,7 @@ type actionBindings struct {
 // bindingsByAction lists each bound action with its keys and mouse
 // bindings, sorted by action name.
 func (a *App) bindingsByAction() []actionBindings {
-	keys := map[string][]string{}
-	for key, action := range a.config.KeyBindings {
-		keys[action] = append(keys[action], key)
-	}
+	keys := a.actionKeys()
 	for button, action := range a.mouseBindings {
 		keys[action] = append(keys[action], button)
 	}

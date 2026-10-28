@@ -5,6 +5,8 @@ import (
 	"log"
 	"maps"
 	"math"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -676,13 +678,43 @@ func (a *App) showRecentFiles() {
 		a.message = "no recent files"
 		return
 	}
-	a.closeAllUI()
-	a.showCoreList("recent-files", "Recent Files", paths, func(path string) {
-		a.CloseUI("recent-files")
-		if err := a.Open(path); err != nil {
-			a.message = err.Error()
+	rows := make([]uiRow, len(paths))
+	for i, path := range paths {
+		name, folder := recentFileParts(path)
+		rows[i] = uiRow{index: i, text: name, secondary: folder, value: path}
+		if s, ok := config.GetDocumentSession(path); ok {
+			rows[i].key = "p. " + strconv.Itoa(s.Page+1)
+		}
+	}
+	a.showRowList("recent-files", "Recent Files", rows, 70, 70, func(view *uiView) {
+		view.onSelect = func(a *App, row uiRow) {
+			a.CloseUI("recent-files")
+			if err := a.Open(row.value); err != nil {
+				a.message = err.Error()
+			}
 		}
 	})
+}
+
+// recentFileParts splits a recent file's path, or a remote document's URI,
+// into its name and the folder it is in, the home directory written ~ and
+// a deep folder cut to its last two, which tell folders apart.
+func recentFileParts(path string) (name, folder string) {
+	if strings.Contains(path, "://") {
+		i := strings.LastIndexByte(path, '/')
+		return path[i+1:], path[:i]
+	}
+	name, folder = filepath.Base(path), filepath.Dir(path)
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		if rel, ok := strings.CutPrefix(folder, home); ok && (rel == "" || rel[0] == filepath.Separator) {
+			folder = "~" + rel
+		}
+	}
+	sep := string(filepath.Separator)
+	if parts := strings.Split(folder, sep); len(parts) > 4 {
+		folder = "…" + sep + strings.Join(parts[len(parts)-2:], sep)
+	}
+	return name, folder
 }
 
 func (a *App) runSet(input string) {
@@ -692,16 +724,7 @@ func (a *App) runSet(input string) {
 	}
 	input = strings.TrimSpace(input)
 	if input == "" {
-		names := config.OptionNames()
-		if a.runtime != nil {
-			names = a.runtime.OptionNames()
-		}
-		rows := make([]uiRow, 0, len(names))
-		for i, name := range names {
-			value, _ := a.runtime.OptionValue(name)
-			rows = append(rows, uiRow{index: i, text: name, value: name, secondary: value})
-		}
-		a.showRowList("options", "Options", rows, 70, 70, func(*uiView) {})
+		a.showOptions()
 		return
 	}
 	if name, value, ok := strings.Cut(input, "="); ok {
@@ -733,6 +756,40 @@ func (a *App) runSet(input string) {
 		return
 	}
 	a.message = strings.TrimSpace(name) + "=" + value
+}
+
+// showOptions lists the options with their values. Enter on one that is
+// true or false switches it, and on another opens the command prompt to
+// set it, its value given.
+func (a *App) showOptions() {
+	a.showRowList("options", "Options", a.optionRows(), 70, 70, func(view *uiView) {
+		view.onSelect = func(a *App, row uiRow) {
+			if row.secondary != "true" && row.secondary != "false" {
+				a.closeAllUI()
+				a.mode = modeCommand
+				a.input.Set("set " + row.value + "=" + row.secondary)
+				return
+			}
+			if err := a.toggleOption(row.value); err != nil {
+				a.message = err.Error()
+				return
+			}
+			a.applyRuntimeChanges("set")
+			current, _ := a.runtime.OptionValue(row.value)
+			a.message = row.value + "=" + current
+			a.setUIViewRows(view, a.optionRows())
+		}
+	})
+}
+
+func (a *App) optionRows() []uiRow {
+	names := a.runtime.OptionNames()
+	rows := make([]uiRow, 0, len(names))
+	for i, name := range names {
+		value, _ := a.runtime.OptionValue(name)
+		rows = append(rows, uiRow{index: i, text: name, value: name, secondary: value})
+	}
+	return rows
 }
 
 func (a *App) runMouseBinding(event string) bool {

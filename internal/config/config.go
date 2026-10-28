@@ -1,6 +1,11 @@
 package config
 
-import lua "github.com/yuin/gopher-lua"
+import (
+	"maps"
+	"slices"
+
+	lua "github.com/yuin/gopher-lua"
+)
 
 type Config struct {
 	ConfigPath            string
@@ -15,6 +20,7 @@ type Config struct {
 	PageCacheMemoryMB     int
 	LinkSchemes           []string
 	HTTPHeaders           map[string]map[string]string // by host, for remote documents
+	Menus                 map[string]MenuPlacement     // by MenuNames, where onon's own menus sit
 	RenderThreads         int
 	MuPDFStoreMB          int
 	HintChars             string
@@ -163,6 +169,25 @@ type UIOverlay struct {
 	OnKey, OnAction, OnMouse, Draw, OnInput, OnSubmit     string
 	OnClick                                               string
 	Generation                                            int
+}
+
+// MenuViews are onon's own menus that the menus option places, by name,
+// each with the id of its view, and MenuNames their names, sorted.
+var (
+	MenuViews = map[string]string{
+		"annotation": "annotation-menu", "choice": "form-choice", "colors": "color-picker", "help": "help",
+		"keybind_keys": "core:keybind-keys", "keybinds": "core:keybinds", "matches": "matches", "options": "options",
+		"outline": "core:outline", "print": "print", "printers": "printers", "recent": "recent-files", "themes": "themes",
+	}
+	MenuNames = slices.Sorted(maps.Keys(MenuViews))
+)
+
+// MenuPlacement is where one of onon's own menus sits, each field left
+// zero keeping the menu's own: the most of the window it takes, as a menu
+// narrows to its rows, and the part of the window it sits in.
+type MenuPlacement struct {
+	Width, Height UISize
+	Anchor        string
 }
 
 // UIAnchors are the places a view may be anchored, and UIDocks the sides

@@ -1,6 +1,7 @@
 package viewer
 
 import (
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -76,12 +77,13 @@ func (a *App) showPrintDialog(selected int) {
 	if pages == "" {
 		pages = "all"
 	}
+	note, _ := a.printNote()
 	rows := []uiRow{
 		{text: "Printer", secondary: printer, value: "printer"},
 		{text: "Pages", secondary: pages, value: "pages"},
 		{text: "Copies", secondary: strconv.Itoa(s.copies), value: "copies"},
 		{text: "Two-sided", secondary: sides, value: "sides"},
-		{text: "Print", value: "print", button: true},
+		{text: "Print", secondary: note, value: "print", button: true},
 	}
 	for i := range rows {
 		rows[i].index = i
@@ -93,8 +95,23 @@ func (a *App) showPrintDialog(selected int) {
 	})
 }
 
+// printNote says what the dialog's settings will print, such as 4 of 614
+// pages, or what is wrong with them, and whether they can be printed.
+func (a *App) printNote() (string, bool) {
+	s := &a.printSettings
+	pages, err := parsePageRanges(s.pages, a.pageCount)
+	if err != nil {
+		return err.Error(), false
+	}
+	note := fmt.Sprintf("%d of %d pages", len(pages), a.pageCount)
+	if s.copies > 1 {
+		note += fmt.Sprintf(", %d copies", s.copies)
+	}
+	return note, true
+}
+
 // choosePrintRow edits the setting on a dialog row, returning to the dialog
-// with that row selected, or prints.
+// with that row selected, or prints, if the settings can be printed.
 func (a *App) choosePrintRow(row uiRow) {
 	s := &a.printSettings
 	back := func() { a.showPrintDialog(row.index) }
@@ -122,6 +139,10 @@ func (a *App) choosePrintRow(row uiRow) {
 		}
 		back()
 	case "print":
+		if note, ok := a.printNote(); !ok {
+			a.message = note
+			return
+		}
 		a.closeAllUI()
 		a.runPrint(*s, nil)
 	}
@@ -136,19 +157,59 @@ func (a *App) pickPrinter(printers []string, back func()) {
 	for i, p := range printers {
 		rows[i] = uiRow{index: i, text: p, value: p}
 	}
-	a.showRowList("printers", "Printer", rows, 40, 40, func(view *uiView) {
+	a.showRowListOver("printers", "Printer", rows, 40, 40, func(view *uiView) {
 		view.selected = max(0, slices.Index(printers, a.printSettings.printer))
 		view.onSelect = func(a *App, row uiRow) {
 			a.printSettings.printer = row.value
+			a.closeUIView(view, false)
 			back()
 		}
 	})
 }
 
+// parsePageRanges turns lp page ranges such as "1-3,5,7-" into 0-based
+// pages of a document count pages long; empty means every page.
+func parsePageRanges(ranges string, count int) ([]int, error) {
+	if strings.TrimSpace(ranges) == "" {
+		ranges = "1-"
+	}
+	var pages []int
+	for part := range strings.SplitSeq(ranges, ",") {
+		part = strings.TrimSpace(part)
+		lo, hi, isRange := strings.Cut(part, "-")
+		first, last := 1, count
+		var err error
+		if lo != "" || !isRange {
+			if first, err = strconv.Atoi(lo); err != nil {
+				return nil, fmt.Errorf("bad page range %q", part)
+			}
+		}
+		switch {
+		case !isRange:
+			last = first
+		case hi != "":
+			if last, err = strconv.Atoi(hi); err != nil {
+				return nil, fmt.Errorf("bad page range %q", part)
+			}
+		}
+		if first < 1 || last < first || last > count {
+			return nil, fmt.Errorf("page range %q is outside 1-%d", part, count)
+		}
+		for p := first; p <= last; p++ {
+			pages = append(pages, p-1)
+		}
+	}
+	return pages, nil
+}
+
+// startPrintJob is what runPrint prints with; tests replace it, so that
+// no test reaches a real printer.
+var startPrintJob = (*App).printJob
+
 // runPrint starts printing the saved file in the background with settings s,
 // or with lpArgs when given; pollPrintResult reports the outcome.
 func (a *App) runPrint(s printSettings, lpArgs []string) {
-	job, err := a.printJob(s, lpArgs)
+	job, err := startPrintJob(a, s, lpArgs)
 	if err != nil {
 		a.message = "print failed: " + err.Error()
 		return

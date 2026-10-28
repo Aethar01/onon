@@ -9,6 +9,7 @@ import (
 
 type outlineMenuState struct {
 	view                 *uiView
+	preview              *documentPreview
 	expanded             map[int]bool
 	visibleIndices       []int
 	visibleQuery         string
@@ -17,7 +18,7 @@ type outlineMenuState struct {
 
 func (a *App) toggleOutlineMenu() {
 	if a.outlineMenu.view != nil && a.outlineMenu.view.visible {
-		a.closeUIView(a.outlineMenu.view, false)
+		a.closeUIView(a.outlineMenu.view, true)
 		return
 	}
 	a.closeAllUI()
@@ -29,6 +30,7 @@ func (a *App) toggleOutlineMenu() {
 	}
 	a.outlineMenu = outlineMenuState{expanded: map[int]bool{}}
 	a.outlineMenu.view = a.newOutlineView()
+	a.outlineMenu.preview = a.previewDocument(a.outlineMenu.view, func(a *App, row uiRow) { a.previewOutlineEntry(row.index) })
 	if len(a.outline) > 0 {
 		a.outlineMenu.view.selected = a.outlineIndexForPage(a.page)
 		for i, item := range a.outline {
@@ -44,6 +46,7 @@ func (a *App) toggleOutlineMenu() {
 	}
 	a.refreshOutlineView()
 	a.showUIView(a.outlineMenu.view)
+	a.outlineMenu.view.notifiedSelected = a.outlineMenu.view.selected // the page shown is already where it opened
 }
 
 func (a *App) newOutlineView() *uiView {
@@ -53,8 +56,10 @@ func (a *App) newOutlineView() *uiView {
 		modal:      true,
 		searchable: true,
 		element:    config.ElementPanel,
-		place:      percentPlace(a.config.OutlineWidthPercent, a.config.OutlineHeightPercent),
+		place:      menuPlace(a.config.OutlineWidthPercent, a.config.OutlineHeightPercent),
 	}
+	// Wide enough for its levels to stand apart, however short its titles.
+	view.place.least = config.UISize{Value: 40, Percent: true}
 	view.header = func(a *App, view *uiView, visible int) string {
 		if view.searching || view.query != "" {
 			return fmt.Sprintf("Outline /%s (%d/%d)", view.query, visible, len(a.outline))
@@ -150,25 +155,17 @@ func (a *App) refreshOutlineView() {
 	visible := a.visibleOutlineIndices()
 	rows := make([]uiRow, 0, len(visible))
 	for _, index := range visible {
-		item := a.outline[index]
-		marker := "  "
-		if item.HasChildren {
-			marker = "+ "
-			if a.outlineMenu.expanded[index] {
-				marker = "- "
-			}
-		}
-		text := strings.TrimSpace(item.Title)
-		if text == "" {
-			text = "untitled"
-		}
-		secondary := ""
-		if item.Page >= 0 {
-			secondary = fmt.Sprintf("%d", item.Page+1)
-		}
-		rows = append(rows, uiRow{index: index, text: text, value: item.Title, secondary: secondary, depth: item.Depth, marker: marker})
+		rows = append(rows, a.outlineRow(index))
 	}
 	view.rows = rows
+	if view.fitRows == nil {
+		// Its width is every entry's, so filtering and expanding leave
+		// it where it is.
+		view.fitRows = make([]uiRow, len(a.outline))
+		for i := range a.outline {
+			view.fitRows[i] = a.outlineRow(i)
+		}
+	}
 	view.selected = clampOutlineSelection(view.selected, visible)
 	a.ensureUIViewSelectionVisible(view)
 }
@@ -185,6 +182,27 @@ func clampOutlineSelection(selected int, visible []int) int {
 	return visible[0]
 }
 
+// outlineRow is the row of the outline's entry index.
+func (a *App) outlineRow(index int) uiRow {
+	item := a.outline[index]
+	marker := ""
+	if item.HasChildren {
+		marker = "▸"
+		if a.outlineMenu.expanded[index] {
+			marker = "▾"
+		}
+	}
+	text := strings.TrimSpace(item.Title)
+	if text == "" {
+		text = "untitled"
+	}
+	secondary := ""
+	if item.Page >= 0 {
+		secondary = fmt.Sprintf("%d", item.Page+1)
+	}
+	return uiRow{index: index, text: text, value: item.Title, secondary: secondary, depth: item.Depth, marker: marker}
+}
+
 func (a *App) activateSelectedOutline() {
 	view := a.outlineMenu.view
 	if view == nil || view.selected < 0 || view.selected >= len(a.outline) {
@@ -193,6 +211,7 @@ func (a *App) activateSelectedOutline() {
 	item := a.outline[view.selected]
 	if item.External {
 		if a.openDocumentURI(item.URI) {
+			a.outlineMenu.preview.restore(a)
 			a.closeUIView(view, false)
 		}
 		return
@@ -200,8 +219,20 @@ func (a *App) activateSelectedOutline() {
 	if item.Page < 0 {
 		return
 	}
+	a.outlineMenu.preview.restore(a)
 	a.closeUIView(view, false)
 	a.jumpToDestination(item.Page, item.X, item.Y, item.HasX, item.HasY)
+}
+
+// previewOutlineEntry shows the place the outline's entry index names
+// behind the outline.
+func (a *App) previewOutlineEntry(index int) {
+	if index < 0 || index >= len(a.outline) {
+		return
+	}
+	if item := a.outline[index]; !item.External && item.Page >= 0 {
+		a.jumpToDestination(item.Page, item.X, item.Y, item.HasX, item.HasY)
+	}
 }
 
 func (a *App) collapseSelectedOutline() {
@@ -217,7 +248,7 @@ func (a *App) collapseSelectedOutline() {
 		return
 	}
 	if parent := a.outline[selected].Parent; parent >= 0 {
-		view.selected = parent
+		view.selected, view.pointerSelected = parent, false // the keys moved it
 		a.refreshOutlineView()
 	}
 }

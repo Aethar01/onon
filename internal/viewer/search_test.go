@@ -4,6 +4,7 @@ import (
 	"math"
 	"reflect"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -107,8 +108,8 @@ func TestSearchMatchesListsContextAndSelects(t *testing.T) {
 	if view == nil || len(view.rows) != 2 {
 		t.Fatalf("match list = %+v", view)
 	}
-	if view.rows[1].text != "a second needle" || view.rows[1].secondary != "p. 3" {
-		t.Fatalf("second row = %+v", view.rows[1])
+	if row := view.rows[1]; row.text != "a second needle" || row.key != "p. 3" || row.highlight != [2]int{9, 15} {
+		t.Fatalf("second row = %+v", row)
 	}
 	view.selected = 1
 	app.activateUIView(view) // Enter on the second match
@@ -319,5 +320,117 @@ func TestSearchWorkerReportsOnlyPagesWithHits(t *testing.T) {
 		case <-timeout:
 			t.Fatal("search did not finish")
 		}
+	}
+}
+
+func TestSearchMatchesPreviewTheMatchSelected(t *testing.T) {
+	doc, err := mupdf.Open(testpdf.WritePages(t, []string{"first needle here"}, []string{"nothing"}, []string{"a second needle"}), mupdf.OpenOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+	app := testLayoutApp(3)
+	app.doc = doc
+	app.winW, app.winH = 1000, 300
+	app.recomputeLayout(app.viewportSize())
+	app.search = searchState{query: "needle", current: 0, matches: map[int][]mupdf.SearchHit{}}
+	for page := range 3 {
+		hits, err := searchDocumentPage(doc, page, "needle", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		app.search.matches[page] = hits
+		for i := range hits {
+			app.search.order = append(app.search.order, searchHitRef{page: page, hit: i})
+		}
+	}
+
+	start := app.currentJumpPosition()
+	app.showSearchMatches()
+	view := app.activeUIView()
+	app.moveUIViewSelection(view, 1)
+	app.notifySelectionChange()
+	if app.page != 2 || app.search.current != 1 || len(app.jumpBack) != 0 {
+		t.Fatalf("previewing the second match: page %d, current %d, jumps %v", app.page+1, app.search.current, app.jumpBack)
+	}
+	app.runUIViewAction(view, "close")
+	if app.currentJumpPosition() != start || app.search.current != 0 {
+		t.Fatalf("closing left %+v, current %d, from %+v", app.currentJumpPosition(), app.search.current, start)
+	}
+}
+
+func TestSearchMatchContextLeadsToAMatchFarAlong(t *testing.T) {
+	line := "one two three four five six seven eight nine ten eleven twelve needle after"
+	doc, err := mupdf.Open(testpdf.WritePages(t, []string{line}), mupdf.OpenOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+	app := testLayoutApp(1)
+	app.doc = doc
+	hits, err := searchDocumentPage(doc, 0, "needle", nil)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("hits %v, %v", hits, err)
+	}
+	app.search = searchState{query: "needle", matches: map[int][]mupdf.SearchHit{0: hits}, order: []searchHitRef{{}}}
+	text, at := app.searchMatchContext(searchHitRef{}, parseSearchQuery("needle", 0), nil, map[searchLine]int{})
+	if !strings.HasPrefix(text, "…") || len(text) >= len(line) || text[at[0]:at[1]] != "needle" || at[0] > matchLead {
+		t.Fatalf("context %q, match at %v", text, at)
+	}
+}
+
+func TestSearchMatchContextCutsALineWithoutSpaces(t *testing.T) {
+	line := "https://example.com/" + strings.Repeat("abcdefgh", 8) + "/needle/rest"
+	doc, err := mupdf.Open(testpdf.WritePages(t, []string{line}), mupdf.OpenOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+	app := testLayoutApp(1)
+	app.doc = doc
+	hits, err := searchDocumentPage(doc, 0, "needle", nil)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("hits %v, %v", hits, err)
+	}
+	app.search = searchState{query: "needle", matches: map[int][]mupdf.SearchHit{0: hits}, order: []searchHitRef{{}}}
+	text, at := app.searchMatchContext(searchHitRef{}, parseSearchQuery("needle", 0), nil, map[searchLine]int{})
+	if !strings.HasPrefix(text, "…") || len(text) >= len(line) || text[at[0]:at[1]] != "needle" || at[0] > matchLead {
+		t.Fatalf("context %q, match at %v", text, at)
+	}
+}
+
+func TestLineMatchesFindsPlainAndRegularMatches(t *testing.T) {
+	line := "The needle, a Needle and needles"
+	plain := parseSearchQuery("needle", 0)
+	if got := lineMatches(line, plain, nil); !reflect.DeepEqual(got, [][2]int{{4, 10}, {14, 20}, {25, 31}}) {
+		t.Fatalf("plain matches %v", got)
+	}
+	words := parseSearchQuery(`\<needle\>`, 0)
+	re, err := compileSearchPattern(words)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := lineMatches(line, words, re); !reflect.DeepEqual(got, [][2]int{{4, 10}, {14, 20}}) {
+		t.Fatalf("whole-word matches %v", got)
+	}
+}
+
+func TestSearchMatchesMarkEachMatchOnALine(t *testing.T) {
+	doc, err := mupdf.Open(testpdf.WritePages(t, []string{"a needle and a needle"}), mupdf.OpenOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+	app := testLayoutApp(1)
+	app.doc = doc
+	hits, err := searchDocumentPage(doc, 0, "needle", nil)
+	if err != nil || len(hits) != 2 {
+		t.Fatalf("hits %v, %v", hits, err)
+	}
+	app.search = searchState{query: "needle", matches: map[int][]mupdf.SearchHit{0: hits}, order: []searchHitRef{{hit: 0}, {hit: 1}}}
+	app.showSearchMatches()
+	rows := app.activeModalUIView().rows
+	if rows[0].highlight != [2]int{2, 8} || rows[1].highlight != [2]int{15, 21} {
+		t.Fatalf("highlights %v and %v", rows[0].highlight, rows[1].highlight)
 	}
 }
