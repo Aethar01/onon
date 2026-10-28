@@ -24,19 +24,24 @@ func (a *App) annotationPalette() [][3]uint8 {
 // pickHighlightColor opens the colour picker for highlighting the selection.
 func (a *App) pickHighlightColor() {
 	if palette, ok := a.highlightReady(); ok {
-		a.pickColor("Highlight colour", palette, a.highlightSelection)
+		a.pickColor("Highlight colour", palette, false, a.highlightSelection)
 	}
 }
 
 // pickColor offers palette as swatch rows and calls apply with the chosen
-// index. Digits pick a colour directly; the last one used is preselected.
-func (a *App) pickColor(title string, palette [][3]uint8, apply func(int)) {
+// index, over the menu open if over. Digits pick a colour directly; the
+// last one used is preselected. Choosing one closes every menu.
+func (a *App) pickColor(title string, palette [][3]uint8, over bool, apply func(int)) {
 	rows := make([]uiRow, len(palette))
 	for i, c := range palette {
 		swatch := config.Color{RGB: c, Alpha: 1}
 		rows[i] = uiRow{index: i, key: strconv.Itoa(i + 1), text: fmt.Sprintf("#%02x%02x%02x", c[0], c[1], c[2]), value: strconv.Itoa(i), swatch: &swatch}
 	}
-	a.showRowList("color-picker", title, rows, 30, 40, func(view *uiView) {
+	show := a.showRowList
+	if over {
+		show = a.showRowListOver
+	}
+	show("color-picker", title, rows, 30, 40, func(view *uiView) {
 		view.searchable = false
 		view.selected = clampInt(a.highlightColor, 0, len(rows)-1)
 		// A colour's digit picks it.
@@ -45,12 +50,12 @@ func (a *App) pickColor(title string, palette [][3]uint8, apply func(int)) {
 			if err != nil || n < 1 || n > len(palette) || repeat {
 				return false
 			}
-			a.closeUIView(view, false)
+			a.closeAllUIWithCallbacks(false)
 			apply(n - 1)
 			return true
 		}
 		view.onSelect = func(a *App, row uiRow) {
-			a.closeUIView(view, false)
+			a.closeAllUIWithCallbacks(false)
 			n, _ := strconv.Atoi(row.value)
 			apply(n)
 		}

@@ -1035,9 +1035,19 @@ func (a *App) showCoreList(id, title string, rows []string, onSelect func(string
 // and may set the selection and hooks, runs before the view is shown.
 func (a *App) showRowList(id, title string, rows []uiRow, widthPercent, heightPercent int, setup func(*uiView)) *uiView {
 	a.closeAllUI()
+	return a.openRowList(id, title, rows, widthPercent, heightPercent, false, setup)
+}
+
+// showRowListOver opens a menu of rows, as showRowList does, over the menu
+// open, which closing it returns to with its selection as it was.
+func (a *App) showRowListOver(id, title string, rows []uiRow, widthPercent, heightPercent int, setup func(*uiView)) *uiView {
+	return a.openRowList(id, title, rows, widthPercent, heightPercent, true, setup)
+}
+
+func (a *App) openRowList(id, title string, rows []uiRow, widthPercent, heightPercent int, stack bool, setup func(*uiView)) *uiView {
 	view := &uiView{
 		id: id, owner: "core", title: title, rows: rows, selected: min(0, len(rows)-1),
-		searchable: true, modal: true, element: config.ElementPanel, place: menuPlace(widthPercent, heightPercent),
+		searchable: true, modal: true, stack: stack, element: config.ElementPanel, place: menuPlace(widthPercent, heightPercent),
 	}
 	setup(view)
 	a.showUIView(view)

@@ -43,7 +43,13 @@ func (a *App) toggleKeybindMenu() {
 		return
 	}
 	a.closeAllUI()
+	a.openKeybindMenu(false)
+}
+
+// openKeybindMenu opens the keybinding editor, over the menu open if over.
+func (a *App) openKeybindMenu(over bool) {
 	a.keybindMenu = keybindMenuState{view: a.newKeybindView()}
+	a.keybindMenu.view.stack = over
 	a.refreshKeybindRows()
 	a.showUIView(a.keybindMenu.view)
 }

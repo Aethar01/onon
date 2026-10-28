@@ -136,10 +136,11 @@ func (a *App) pickPrinter(printers []string, back func()) {
 	for i, p := range printers {
 		rows[i] = uiRow{index: i, text: p, value: p}
 	}
-	a.showRowList("printers", "Printer", rows, 40, 40, func(view *uiView) {
+	a.showRowListOver("printers", "Printer", rows, 40, 40, func(view *uiView) {
 		view.selected = max(0, slices.Index(printers, a.printSettings.printer))
 		view.onSelect = func(a *App, row uiRow) {
 			a.printSettings.printer = row.value
+			a.closeUIView(view, false)
 			back()
 		}
 	})

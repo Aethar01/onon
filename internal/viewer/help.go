@@ -32,6 +32,10 @@ func (a *App) toggleHelp() {
 }
 
 func (a *App) activateHelpRow(row uiRow) {
+	if row.id == helpRowKeybinds {
+		a.openKeybindMenu(true) // over help, which Esc returns to
+		return
+	}
 	a.closeAllUI()
 	switch row.id {
 	case helpRowCommand:
@@ -43,8 +47,6 @@ func (a *App) activateHelpRow(row uiRow) {
 		a.input.Set(row.value)
 	case helpRowAction:
 		a.runAction(row.value)
-	case helpRowKeybinds:
-		a.toggleKeybindMenu()
 	}
 }
 

@@ -85,3 +85,29 @@ func TestListsPageByScreen(t *testing.T) {
 		t.Fatalf("gg selected %d (document page %d)", view.selected, app.page)
 	}
 }
+
+func TestHelpOpensKeybindsOverItself(t *testing.T) {
+	app := testStyleApp("bar")
+	app.toggleHelp()
+	help := app.activeModalUIView()
+	help.selected = 3
+	app.activateHelpRow(uiRow{id: helpRowKeybinds})
+	if view := app.activeModalUIView(); view == nil || view.id != "core:keybinds" {
+		t.Fatalf("active view = %+v, want the keybind editor", view)
+	}
+	app.runUIViewAction(app.activeModalUIView(), "close")
+	if view := app.activeModalUIView(); view != help || help.selected != 3 {
+		t.Fatalf("closing the editor left %+v, want help at row 3", view)
+	}
+}
+
+func TestPrinterPickerReturnsToTheDialog(t *testing.T) {
+	app := testStyleApp("bar")
+	app.showPrintDialog(0)
+	dialog := app.activeModalUIView()
+	app.pickPrinter([]string{"one", "two"}, func() { app.showPrintDialog(0) })
+	app.runUIViewAction(app.activeModalUIView(), "close")
+	if app.activeModalUIView() != dialog {
+		t.Fatal("closing the printer picker did not return to the print dialog")
+	}
+}
