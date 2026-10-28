@@ -339,11 +339,15 @@ func (c *elementCanvas) Input(id string, x, y, w float64, o config.InputOptions)
 	rect := c.rect(x, y, w, h)
 	f.rect = rect
 	view.regions = append(view.regions, uiRegion{id: lua.LString(id), rect: rect})
-	if c.renderer != nil {
-		a.drawBox(c.renderer, &st, rect)
+	renderer := c.renderer
+	if !c.visible(rect) {
+		renderer = nil // laid out, for the keys and the pointer, but not drawn
+	}
+	if renderer != nil {
+		a.drawBox(renderer, &st, rect)
 	}
 	left := int(math.Round(float64(rect.X + padLeft)))
-	f.layout = a.drawEditBox(c.renderer, editBox{
+	f.layout = a.drawEditBox(renderer, editBox{
 		input: &f.input, display: f.display(), placeholder: o.Placeholder, face: face,
 		x: left, y: int(math.Round(float64(rect.Y + padTop))), width: int(rect.X+rect.W-padRight) - left, lines: f.lines,
 		scroll: &f.scroll, focused: focused, textColor: a.textColor(&st, false), phColor: a.textColor(&st, true),

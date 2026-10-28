@@ -237,6 +237,10 @@ func (c *elementCanvas) text(x, y float64, text string, clr config.Color, o conf
 	height := len(laid.lines) * lineHeight
 	if draw {
 		left, top := float64(c.box.X)+x*scale, float64(c.box.Y)+y*scale
+		c.extend(top - float64(c.box.Y) + float64(height))
+		if !c.visible(sdl.FRect{X: float32(left), Y: float32(top), W: float32(max(laid.width, int(o.Width*scale))), H: float32(height)}) {
+			return float64(laid.width) / scale, float64(height) / scale
+		}
 		ascent := face.Metrics().Ascent.Ceil()
 		rgba := a.styleColor(clr, c.style.Opacity.V)
 		for i, line := range laid.lines {
@@ -253,9 +257,26 @@ func (c *elementCanvas) text(x, y float64, text string, clr config.Color, o conf
 			}
 			a.drawTextWithFace(c.renderer, line, int(math.Round(lx)), int(math.Round(top))+i*lineHeight+ascent, rgba, face, embolden)
 		}
-		c.extend(top - float64(c.box.Y) + float64(height))
 	}
 	return float64(laid.width) / scale, float64(height) / scale
+}
+
+// visible reports whether any of r, in output pixels, would show: inside
+// the canvas's own clip, or the clip it was given, its view's body. What
+// would not is not drawn, and a page or part of one not asked for, so a
+// view can draw all it holds, as every page of a document, and pay for
+// only what shows.
+func (c *elementCanvas) visible(r sdl.FRect) bool {
+	var clip sdl.Rect
+	switch n := len(c.app.clips); {
+	case c.clipped:
+		clip = c.clip
+	case n > 0:
+		clip = c.app.clips[n-1]
+	default:
+		return true
+	}
+	return r.X < float32(clip.X+clip.W) && r.X+r.W > float32(clip.X) && r.Y < float32(clip.Y+clip.H) && r.Y+r.H > float32(clip.Y)
 }
 
 // extend notes that the canvas drew down to bottom output pixels below its
@@ -358,7 +379,7 @@ func (c *elementCanvas) Image(path string, x, y, w, h float64) (float64, float64
 		return 0, 0, img.err
 	}
 	w, h = fitSize(float64(img.w), float64(img.h), w, h, false)
-	if dst := c.rect(x, y, w, h); img.texture != nil {
+	if dst := c.rect(x, y, w, h); img.texture != nil && c.visible(dst) {
 		a := c.app.styleColor(config.Color{RGB: [3]uint8{0xff, 0xff, 0xff}, Alpha: 1}, c.style.Opacity.V).A
 		tintText(img.texture, color.RGBA{R: 0xff, G: 0xff, B: 0xff, A: a})
 		sdl.RenderTexture(c.renderer, img.texture, nil, &dst)
@@ -403,7 +424,9 @@ func (c *elementCanvas) Page(page int, x, y, w, h float64, area *config.PageArea
 		return 0, 0
 	}
 	if area != nil {
-		c.pageArea(page, c.rect(x, y, w, h), *area)
+		if box := c.rect(x, y, w, h); c.visible(box) {
+			c.pageArea(page, box, *area)
+		}
 		return w, h
 	}
 	// The page is drawn turned as the document's are, fitted by the box
@@ -413,6 +436,9 @@ func (c *elementCanvas) Page(page int, x, y, w, h float64, area *config.PageArea
 	minX, minY, maxX, maxY := rotatedBounds(bounds, a.rotation)
 	w, h = fitSize(maxX-minX, maxY-minY, w, h, true)
 	box := c.rect(x, y, w, h)
+	if !c.visible(box) {
+		return w, h // nor asked for, out of sight
+	}
 	scale := float64(box.W) / math.Max(1, maxX-minX)
 	a.wantThumbnail(page, scale)
 	if c.renderer == nil {

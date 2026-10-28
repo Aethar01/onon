@@ -164,3 +164,12 @@ view:show()`)
 		t.Fatalf("a password was copied or cut: message %q, text %q", app.message, view.fields["pw"].input.Value)
 	}
 }
+
+func TestTextInputAreaIsInWindowCoordinates(t *testing.T) {
+	if got := textInputArea(200, 100, 26, 2); got != (sdl.Rect{X: 100, Y: 50, W: 1, H: 13}) {
+		t.Fatalf("the cursor at 200,100 on a 2x screen is told as %+v", got)
+	}
+	if got := textInputArea(200, 100, 26, 0); got != (sdl.Rect{X: 200, Y: 100, W: 1, H: 26}) {
+		t.Fatalf("an unknown density is taken as 1: %+v", got)
+	}
+}

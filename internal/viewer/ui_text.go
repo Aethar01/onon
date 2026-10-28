@@ -193,12 +193,14 @@ func (a *App) drawComposition(renderer *sdl.Renderer, l *textLayout, start, n in
 }
 
 // placeTextInputArea tells the input method where the cursor is, so its
-// candidates show beside it.
+// candidates show beside it. onon draws in the renderer's pixels, which
+// the window's coordinates the input method takes are fewer of on a
+// screen of high density.
 func (a *App) placeTextInputArea(x, y float32, height int) {
 	if a.window == nil {
 		return
 	}
-	area := sdl.Rect{X: int32(x), Y: int32(y), W: 1, H: int32(height)}
+	area := textInputArea(x, y, height, sdl.GetWindowPixelDensity(a.window))
 	if area != a.textInputArea {
 		a.textInputArea = area
 		sdl.SetTextInputArea(a.window, &area, 0)
@@ -215,4 +217,13 @@ func (a *App) handleSDLTextEditing(e *sdl.TextEditingEvent) {
 // stretching to it with extend, as a press or drag of the pointer does.
 func pressText(l *textLayout, input *textInput, x, y float32, extend bool) {
 	input.SetCursor(l.runeAt(x, y), extend)
+}
+
+// textInputArea is the cursor at x, y, height high, in render pixels, as
+// the window's coordinates have it at density render pixels to one.
+func textInputArea(x, y float32, height int, density float32) sdl.Rect {
+	if density <= 0 {
+		density = 1
+	}
+	return sdl.Rect{X: int32(x / density), Y: int32(y / density), W: 1, H: int32(math.Ceil(float64(float32(height) / density)))}
 }

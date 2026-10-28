@@ -44,7 +44,7 @@ func (c *elementCanvas) Button(id string, x, y, w float64, label string) float64
 	if focused || hovered || c.view.pressedControl == id {
 		st = a.style(config.ElementButtonFocused)
 	}
-	if c.renderer == nil {
+	if c.renderer == nil || !c.visible(rect) {
 		return h
 	}
 	a.drawBox(c.renderer, &st, rect)
@@ -70,7 +70,7 @@ func (c *elementCanvas) Checkbox(id string, x, y float64, label string, checked 
 	}
 	rect := c.rect(x, y, size+gap, size)
 	focused, hovered := c.noteControl(id, rect)
-	if c.renderer == nil {
+	if c.renderer == nil || !c.visible(rect) {
 		return size + gap, size
 	}
 	a.drawCheckbox(c.renderer, sdl.FRect{X: rect.X, Y: rect.Y, W: rect.H, H: rect.H}, checked, focused || hovered)

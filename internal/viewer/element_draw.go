@@ -103,6 +103,9 @@ func (c *elementCanvas) drawPath(path []config.PathOp, clr config.Color, stroke 
 	if rgba.A == 0 || c.renderer == nil {
 		return
 	}
+	if !c.visible(sdl.FRect{X: float32(c.box.X + bounds.X), Y: float32(c.box.Y + bounds.Y), W: float32(bounds.W), H: float32(bounds.H)}) {
+		return // the mask is neither made nor drawn
+	}
 	shape := boxShape{Shape: config.Shape{Kind: "path"}, ops: c.app.pathKeys.pack(ops), scale: 1}
 	spec := maskSpec{shape: shape, w: bounds.W, h: bounds.H, stroke: stroke}
 	c.app.drawMask(c.renderer, spec, c.box.X+bounds.X, c.box.Y+bounds.Y, rgba)

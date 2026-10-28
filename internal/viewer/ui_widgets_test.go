@@ -337,3 +337,39 @@ func TestCanvasRenderRequests(t *testing.T) {
 		t.Fatal("a floating panel changed every view's layout")
 	}
 }
+
+// A view can draw everything it holds: what is out of sight costs no
+// drawing and no render.
+func TestCanvasCullsWhatIsOutOfSight(t *testing.T) {
+	app := luaUITestApp(t, "")
+	pages := testLayoutApp(200)
+	app.pageMetrics, app.pageCount = pages.pageMetrics, pages.pageCount
+	evalLua(t, app, `
+onon.ui.create({
+  dock = "left", width = 120,
+  draw = function(canvas, box)
+    local y = 0
+    for page = 1, onon.page_count() do
+      local _, h = canvas:page(page, 10, y, 100)
+      y = y + h + 10
+    end
+  end,
+}):show()`)
+	view := app.views.panels[0]
+	drawLuaView(t, app, view)
+	if n := len(app.canvas.thumbs); n == 0 || n > 6 {
+		t.Fatalf("drawing 200 pages wanted %d thumbnails, want only the few in sight", n)
+	}
+	if _, ok := app.canvas.thumbs[0]; !ok {
+		t.Fatal("the first page, in sight, was not wanted")
+	}
+	if view.extent < 200*200 {
+		t.Fatalf("what is out of sight still scrolls into it: extent %v", view.extent)
+	}
+	clear(app.canvas.thumbs)
+	view.scrollPx = 210 * 50 // to page 51
+	drawLuaView(t, app, view)
+	if _, ok := app.canvas.thumbs[50]; !ok || len(app.canvas.thumbs) > 6 {
+		t.Fatalf("scrolled to page 51, wanted %v", app.canvas.thumbs)
+	}
+}
