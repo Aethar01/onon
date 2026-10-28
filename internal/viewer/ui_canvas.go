@@ -261,6 +261,11 @@ func (c *elementCanvas) text(x, y float64, text string, clr config.Color, o conf
 	return float64(laid.width) / scale, float64(height) / scale
 }
 
+func (c *elementCanvas) Size() (float64, float64) {
+	scale := float64(c.app.px(1))
+	return float64(c.box.W) / scale, float64(c.box.H) / scale
+}
+
 // visible reports whether any of r, in output pixels, would show: inside
 // the canvas's own clip, or the clip it was given, its view's body. What
 // would not is not drawn, and a page or part of one not asked for, so a

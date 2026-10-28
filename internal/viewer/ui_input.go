@@ -311,10 +311,10 @@ func (a *App) drawEditBox(renderer *sdl.Renderer, b editBox) textLayout {
 	return l
 }
 
-func (c *elementCanvas) Input(id string, x, y, w float64, o config.InputOptions) float64 {
+func (c *elementCanvas) Input(id string, x, y, w float64, o config.InputOptions) (float64, float64) {
 	view := c.view
 	if view == nil {
-		return 0
+		return 0, 0
 	}
 	a := c.app
 	f := view.field(id)
@@ -331,7 +331,7 @@ func (c *elementCanvas) Input(id string, x, y, w float64, o config.InputOptions)
 	st := a.style(element)
 	face := a.styleFace(&st)
 	if face == nil {
-		return 0
+		return 0, 0
 	}
 	padTop, padRight, padBottom, padLeft := a.insets(st.Padding.V)
 	scale := float64(a.px(1))
@@ -354,7 +354,7 @@ func (c *elementCanvas) Input(id string, x, y, w float64, o config.InputOptions)
 		compositionColor: st.Text.V, cursor: tweenKey{kind: "cursor", view: view, text: id + "\x00" + f.input.Value},
 	})
 	c.restoreClip()
-	return h
+	return w, h
 }
 
 // restoreClip puts back the canvas's own clip, which drawing that clips

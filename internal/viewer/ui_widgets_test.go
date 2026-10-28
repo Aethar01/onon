@@ -26,7 +26,7 @@ func TestLuaUIButtonsAndCheckboxes(t *testing.T) {
 agree = false
 view = onon.ui.create({
   draw = function(canvas, box)
-    local h = canvas:input("name", 0, 0, box.w)
+    local _, h = canvas:input("name", 0, 0, box.w)
     canvas:checkbox("agree", 0, h + 4, "I agree", agree)
     canvas:button("ok", 0, h + 30, 80, "OK")
   end,
@@ -371,5 +371,56 @@ onon.ui.create({
 	drawLuaView(t, app, view)
 	if _, ok := app.canvas.thumbs[50]; !ok || len(app.canvas.thumbs) > 6 {
 		t.Fatalf("scrolled to page 51, wanted %v", app.canvas.thumbs)
+	}
+}
+
+func TestCanvasColumnLaysAFormOut(t *testing.T) {
+	app := luaUITestApp(t, "")
+	app.fontFace = basicfont.Face7x13
+	evalLua(t, app, `
+view = onon.ui.create({
+  title = "Form",
+  draw = function(canvas, box)
+    local col = canvas:column({ x = 10, y = 10 })
+    col:text("Name")
+    col:input("name", { placeholder = "Name" })
+    col:checkbox("agree", "I agree", true)
+    local w, h = col:button("save", "Save")
+    sizes = w .. "x" .. h .. " at " .. col:y() .. " of " .. box.w
+  end,
+  on_submit = function() local f = view:fields() onon.message("submit " .. f.name) end,
+})
+view:show()`)
+	view := app.activeUIView()
+	drawLuaView(t, app, view)
+	if got := strings.Join(view.focusOrder, ","); got != "name,agree,save" {
+		t.Fatalf("the column drew %q", got)
+	}
+	name, agree, save := view.fields["name"].rect, view.controls["agree"], view.controls["save"]
+	body := app.uiViewBody(view)
+	if name.X != body.X+10 || name.W != body.W-20 || save.W != body.W-20 {
+		t.Fatalf("the column's things are not its width, 10 in from each side: field %+v, button %+v, body %+v", name, save, body)
+	}
+	if !(name.Y > body.Y+10 && agree.Y >= name.Y+name.H+8 && save.Y >= agree.Y+agree.H+8) {
+		t.Fatalf("the column did not stack its things, 8 apart: %v, %v, %v", name.Y, agree.Y, save.Y)
+	}
+	evalLua(t, app, `onon.message(sizes)`)
+	if !strings.HasPrefix(app.message, strconv.Itoa(int(body.W-20))+"x") {
+		t.Fatalf("the button's size and the column's next place: %q", app.message)
+	}
+	app.typeUIText("alice")
+	app.viewKey(view, keyDown(sdl.KeycodeReturn, 0))
+	if app.message != "submit alice" {
+		t.Fatalf("on_submit reading view:fields(): %q", app.message)
+	}
+	evalLua(t, app, `view:set_title("Edit")`)
+	if view.title != "Edit" {
+		t.Fatalf("set_title left %q", view.title)
+	}
+	// A column used after its draw function has run cannot draw.
+	evalLua(t, app, `onon.ui.create({ draw = function(canvas) kept = canvas:column() end }):show()`)
+	drawLuaView(t, app, app.activeUIView())
+	if _, err := app.runtime.Eval(`kept:text("late")`); err == nil || !strings.Contains(err.Error(), "while it draws") {
+		t.Fatalf("a column kept past its draw function drew: %v", err)
 	}
 }

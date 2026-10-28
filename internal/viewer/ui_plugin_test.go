@@ -571,11 +571,20 @@ func TestLuaUIAnchorPoints(t *testing.T) {
 	app.pageMetrics, app.pageCount = pages.pageMetrics, pages.pageCount
 	app.relayoutWithViewportAnchor(nil)
 	evalLua(t, app, `
-onon.ui.create({ modal = false, anchor = { x = 30, y = 40 }, width = 50, height = 20, draw = function() end }):show()
-onon.ui.create({ modal = false, anchor = { page = 2, x = 10, y = 20 }, width = 50, height = 20, draw = function() end }):show()`)
+onon.ui.create({ modal = false, at = { x = 30, y = 40 }, width = 50, height = 20, draw = function() end }):show()
+onon.ui.create({ modal = false, at = { page = 2, x = 10, y = 20 }, width = 50, height = 20, draw = function() end }):show()
+onon.ui.create({ modal = false, at = { x = 300, y = 200 }, anchor = "bottom_right", width = 50, height = 20, draw = function() end }):show()
+onon.ui.create({ modal = false, at = { x = 300, y = 200 }, anchor = "center", width = 50, height = 20, draw = function() end }):show()`)
 	window, page := app.views.panels[0], app.views.panels[1]
 	if rect, _ := window.frameGeometry(app); rect != (sdl.FRect{X: 30, Y: 40, W: 50, H: 20}) {
 		t.Fatalf("view at a window point: %+v", rect)
+	}
+	// anchor names the part of the view at the point.
+	if rect, _ := app.views.panels[2].frameGeometry(app); rect != (sdl.FRect{X: 250, Y: 180, W: 50, H: 20}) {
+		t.Fatalf("view with its bottom right at a point: %+v", rect)
+	}
+	if rect, _ := app.views.panels[3].frameGeometry(app); rect != (sdl.FRect{X: 275, Y: 190, W: 50, H: 20}) {
+		t.Fatalf("view centred on a point: %+v", rect)
 	}
 	before, _ := page.frameGeometry(app)
 	x, y, _ := app.pageScreenOrigin(1)
@@ -788,7 +797,7 @@ func TestLuaUIFields(t *testing.T) {
 view = onon.ui.create({
   title = "Sign in",
   draw = function(canvas, box)
-    local h = canvas:input("name", 0, 0, box.w, { placeholder = "Name" })
+    local _, h = canvas:input("name", 0, 0, box.w, { placeholder = "Name" })
     canvas:input("password", 0, h + 4, box.w, { secret = true })
   end,
   on_input = function(text, id) onon.message("input " .. id .. "=" .. text) end,
@@ -959,5 +968,41 @@ view:show()`)
 	evalLua(t, app, `view:show() onon.message(view:field("name"))`)
 	if app.message != "set" {
 		t.Fatalf("reopened, the field reads %q, want its spec's text", app.message)
+	}
+}
+
+// The reference's examples run as written: each opens its views, which
+// draw without error.
+func TestUIViewsReferenceExamplesRun(t *testing.T) {
+	blocks := strings.Split(config.UIViewsReference, "```lua\n")[1:]
+	if len(blocks) == 0 {
+		t.Fatal("the reference has no Lua examples")
+	}
+	for i, block := range blocks {
+		code, _, _ := strings.Cut(block, "```")
+		app := luaUITestApp(t, "")
+		app.fontFace = basicfont.Face7x13
+		pages := testLayoutApp(5)
+		app.pageMetrics, app.pageCount = pages.pageMetrics, pages.pageCount
+		app.relayoutWithViewportAnchor(nil)
+		if _, err := app.runtime.Eval(code); err != nil {
+			t.Fatalf("example %d: %v\n%s", i+1, err, code)
+		}
+		views := append([]*uiView{app.activeUIView()}, app.views.panels...)
+		drawn := 0
+		for _, view := range views {
+			if view == nil || view.drawBody == nil {
+				continue
+			}
+			app.message = ""
+			drawLuaView(t, app, view)
+			if app.message != "" {
+				t.Fatalf("example %d's view %q drew with %q", i+1, view.title, app.message)
+			}
+			drawn++
+		}
+		if drawn == 0 {
+			t.Fatalf("example %d opened no view that draws", i+1)
+		}
 	}
 }

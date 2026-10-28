@@ -145,13 +145,13 @@ type Canvas interface {
 	// Region names a rect for the pointer events over it, reporting
 	// whether the pointer is over it.
 	Region(id lua.LValue, x, y, w, h float64) bool
-	// Input draws the text field id of a view, w wide, returning its
-	// height.
-	Input(id string, x, y, w float64, opts InputOptions) float64
-	// Button draws the button id of a view, w wide, returning its height,
-	// and Checkbox the check box id, returning its size.
-	Button(id string, x, y, w float64, label string) float64
+	// Input draws the text field id of a view, w wide, Button the button
+	// id, and Checkbox the check box id, each returning its size.
+	Input(id string, x, y, w float64, opts InputOptions) (float64, float64)
+	Button(id string, x, y, w float64, label string) (float64, float64)
 	Checkbox(id string, x, y float64, label string, checked bool) (float64, float64)
+	// Size is the box's size.
+	Size() (w, h float64)
 }
 
 // PageArea is the part of a page a canvas draws: from the point X, Y, in
@@ -296,6 +296,194 @@ func (r *Runtime) runDraw(fn *lua.LFunction, canvas Canvas, state DrawState, nre
 	return ret, err
 }
 
+func push2(L *lua.LState, a, b float64) int {
+	L.Push(lua.LNumber(a))
+	L.Push(lua.LNumber(b))
+	return 2
+}
+
+// imagePath is path as an image is read from: one not absolute from the
+// configuration's directory.
+func (c *drawCache) imagePath(path string) string {
+	if !filepath.IsAbs(path) && c.dir != "" {
+		return filepath.Join(c.dir, path)
+	}
+	return path
+}
+
+// textOptionKeys are the fields a table of text options has, which tell
+// it from a colour given as a table.
+var textOptionKeys = []string{"bold", "mono", "size", "width", "wrap", "align", "color"}
+
+// textArgs reads the colour and options of text from n on: a colour then
+// options, either left out, the colour also an option's field. The colour
+// is the foreground unless given.
+func textArgs(L *lua.LState, n int) (Color, TextOptions) {
+	clr := paletteColor("foreground", 1)
+	optsAt := n
+	switch v := L.Get(n).(type) {
+	case *lua.LNilType:
+		optsAt = n + 1
+	case *lua.LTable:
+		isOpts := false
+		for _, key := range textOptionKeys {
+			isOpts = isOpts || v.RawGetString(key) != lua.LNil
+		}
+		if !isOpts {
+			clr, optsAt = luaColorArg(L, n), n+1
+		}
+	case lua.LBool:
+	default:
+		clr, optsAt = luaColorArg(L, n), n+1
+	}
+	opts := luaTextOptions(L, optsAt)
+	if t, ok := L.Get(optsAt).(*lua.LTable); ok {
+		if c := t.RawGetString("color"); c != lua.LNil {
+			parsed, err := colorFromLua(c)
+			if err != nil {
+				L.ArgError(optsAt, "color: "+err.Error())
+			}
+			clr = parsed
+		}
+	}
+	return clr, opts
+}
+
+func luaColorArg(L *lua.LState, n int) Color {
+	c, err := colorFromLua(L.Get(n))
+	if err != nil {
+		L.ArgError(n, err.Error())
+	}
+	return c
+}
+
+// luaInputOptions reads a text field's options at n.
+func luaInputOptions(L *lua.LState, n int) InputOptions {
+	var o InputOptions
+	if opts, ok := L.Get(n).(*lua.LTable); ok {
+		o.Placeholder = lua.LVAsString(opts.RawGetString("placeholder"))
+		o.Secret = lua.LVAsBool(opts.RawGetString("secret"))
+		o.Lines = int(lua.LVAsNumber(opts.RawGetString("lines")))
+	}
+	return o
+}
+
+// luaPageArea reads the part of a page to draw at n, if given, which needs
+// a height to show it in.
+func luaPageArea(L *lua.LState, n int, height float64) *PageArea {
+	opts, ok := L.Get(n).(*lua.LTable)
+	if !ok {
+		return nil
+	}
+	area := &PageArea{X: float64(lua.LVAsNumber(opts.RawGetString("x"))), Y: float64(lua.LVAsNumber(opts.RawGetString("y"))), Zoom: 1}
+	if zoom, ok := opts.RawGetString("zoom").(lua.LNumber); ok {
+		if zoom <= 0 {
+			L.ArgError(n, "zoom must be more than 0")
+		}
+		area.Zoom = float64(zoom)
+	}
+	if height <= 0 {
+		L.ArgError(n-1, "a part of a page needs a height to show it in")
+	}
+	return area
+}
+
+// luaColumn lays a canvas's drawing out down a column: each thing drawn
+// takes the column's width, or its own, below the last, gap apart.
+type luaColumn struct {
+	canvas       *lua.LUserData
+	cache        *drawCache
+	x, y, w, gap float64
+}
+
+const luaColumnType = "onon.canvas.column"
+
+func luaColumnMetatable(L *lua.LState) *lua.LTable {
+	mt := L.NewTypeMetatable(luaColumnType)
+	if mt.RawGetString("__index") != lua.LNil {
+		return mt
+	}
+	// at checks the column and its canvas, drawing now.
+	at := func(L *lua.LState) (*luaColumn, Canvas) {
+		if ud, ok := L.Get(1).(*lua.LUserData); ok {
+			if col, ok := ud.Value.(*luaColumn); ok {
+				if c, ok := col.canvas.Value.(Canvas); ok {
+					return col, c
+				}
+				L.RaiseError("a column draws on its canvas while it draws, in the draw function")
+			}
+		}
+		L.ArgError(1, "expected a column")
+		return nil, nil
+	}
+	// next moves the column below what took h, returning its size.
+	next := func(L *lua.LState, col *luaColumn, w, h float64) int {
+		col.y += h + col.gap
+		return push2(L, w, h)
+	}
+	methods := L.NewTable()
+	L.SetFuncs(methods, map[string]lua.LGFunction{
+		"text": func(L *lua.LState) int {
+			col, c := at(L)
+			clr, opts := textArgs(L, 3)
+			if opts.Width == 0 {
+				opts.Width = col.w
+			}
+			// Text wraps to the column unless told not to.
+			if t, ok := L.Get(L.GetTop()).(*lua.LTable); !ok || t.RawGetString("wrap") == lua.LNil {
+				opts.Wrap = true
+			}
+			w, h := c.Text(col.x, col.y, L.CheckString(2), clr, opts)
+			return next(L, col, w, h)
+		},
+		"input": func(L *lua.LState) int {
+			col, c := at(L)
+			w, h := c.Input(L.CheckString(2), col.x, col.y, col.w, luaInputOptions(L, 3))
+			return next(L, col, w, h)
+		},
+		"button": func(L *lua.LState) int {
+			col, c := at(L)
+			w, h := c.Button(L.CheckString(2), col.x, col.y, float64(L.OptNumber(4, lua.LNumber(col.w))), L.CheckString(3))
+			return next(L, col, w, h)
+		},
+		"checkbox": func(L *lua.LState) int {
+			col, c := at(L)
+			w, h := c.Checkbox(L.CheckString(2), col.x, col.y, L.OptString(3, ""), L.ToBool(4))
+			return next(L, col, w, h)
+		},
+		"page": func(L *lua.LState) int {
+			col, c := at(L)
+			page := L.CheckInt(2)
+			if page < 1 {
+				L.ArgError(2, "pages start at 1")
+			}
+			height := float64(L.OptNumber(3, 0))
+			w, h := c.Page(page-1, col.x, col.y, col.w, height, luaPageArea(L, 4, height))
+			return next(L, col, w, h)
+		},
+		"image": func(L *lua.LState) int {
+			col, c := at(L)
+			w, h, err := c.Image(col.cache.imagePath(L.CheckString(2)), col.x, col.y, float64(L.OptNumber(3, 0)), float64(L.OptNumber(4, 0)))
+			if err != nil {
+				L.ArgError(2, err.Error())
+			}
+			return next(L, col, w, h)
+		},
+		"space": func(L *lua.LState) int {
+			col, _ := at(L)
+			col.y += float64(L.CheckNumber(2))
+			return 0
+		},
+		"y": func(L *lua.LState) int {
+			col, _ := at(L)
+			L.Push(lua.LNumber(col.y))
+			return 1
+		},
+	})
+	L.SetField(mt, "__index", methods)
+	return mt
+}
+
 // luaTextOptions reads canvas text options at n: true for bold, or a table
 // of bold, mono, size, width, wrap and align.
 func luaTextOptions(L *lua.LState, n int) TextOptions {
@@ -385,10 +573,9 @@ func luaCanvasMetatable(L *lua.LState, cache *drawCache) *lua.LTable {
 		},
 		"text": func(L *lua.LState) int {
 			c := check(L)
-			w, h := c.Text(float64(L.CheckNumber(2)), float64(L.CheckNumber(3)), L.CheckString(4), color(L, 5), luaTextOptions(L, 6))
-			L.Push(lua.LNumber(w))
-			L.Push(lua.LNumber(h))
-			return 2
+			clr, opts := textArgs(L, 5)
+			w, h := c.Text(float64(L.CheckNumber(2)), float64(L.CheckNumber(3)), L.CheckString(4), clr, opts)
+			return push2(L, w, h)
 		},
 		"measure": func(L *lua.LState) int {
 			w, h := check(L).Measure(L.CheckString(2), luaTextOptions(L, 3))
@@ -407,17 +594,11 @@ func luaCanvasMetatable(L *lua.LState, cache *drawCache) *lua.LTable {
 		},
 		"image": func(L *lua.LState) int {
 			c := check(L)
-			path := L.CheckString(2)
-			if !filepath.IsAbs(path) && cache.dir != "" {
-				path = filepath.Join(cache.dir, path)
-			}
-			w, h, err := c.Image(path, float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), float64(L.OptNumber(5, 0)), float64(L.OptNumber(6, 0)))
+			w, h, err := c.Image(cache.imagePath(L.CheckString(2)), float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), float64(L.OptNumber(5, 0)), float64(L.OptNumber(6, 0)))
 			if err != nil {
 				L.ArgError(2, err.Error())
 			}
-			L.Push(lua.LNumber(w))
-			L.Push(lua.LNumber(h))
-			return 2
+			return push2(L, w, h)
 		},
 		"page": func(L *lua.LState) int {
 			c := check(L)
@@ -425,46 +606,45 @@ func luaCanvasMetatable(L *lua.LState, cache *drawCache) *lua.LTable {
 			if page < 1 {
 				L.ArgError(2, "pages start at 1")
 			}
-			var area *PageArea
-			if opts, ok := L.Get(7).(*lua.LTable); ok {
-				area = &PageArea{X: float64(lua.LVAsNumber(opts.RawGetString("x"))), Y: float64(lua.LVAsNumber(opts.RawGetString("y"))), Zoom: 1}
-				if zoom, ok := opts.RawGetString("zoom").(lua.LNumber); ok {
-					if zoom <= 0 {
-						L.ArgError(7, "zoom must be more than 0")
-					}
-					area.Zoom = float64(zoom)
-				}
-				if L.OptNumber(6, 0) <= 0 {
-					L.ArgError(6, "a part of a page needs a height to show it in")
-				}
-			}
+			area := luaPageArea(L, 7, float64(L.OptNumber(6, 0)))
 			w, h := c.Page(page-1, float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), float64(L.CheckNumber(5)), float64(L.OptNumber(6, 0)), area)
-			L.Push(lua.LNumber(w))
-			L.Push(lua.LNumber(h))
-			return 2
+			return push2(L, w, h)
 		},
 		"input": func(L *lua.LState) int {
 			c := check(L)
-			var o InputOptions
-			if opts, ok := L.Get(6).(*lua.LTable); ok {
-				o.Placeholder = lua.LVAsString(opts.RawGetString("placeholder"))
-				o.Secret = lua.LVAsBool(opts.RawGetString("secret"))
-				o.Lines = int(lua.LVAsNumber(opts.RawGetString("lines")))
-			}
-			L.Push(lua.LNumber(c.Input(L.CheckString(2), float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), float64(L.CheckNumber(5)), o)))
-			return 1
+			w, h := c.Input(L.CheckString(2), float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), float64(L.CheckNumber(5)), luaInputOptions(L, 6))
+			return push2(L, w, h)
 		},
 		"button": func(L *lua.LState) int {
 			c := check(L)
-			L.Push(lua.LNumber(c.Button(L.CheckString(2), float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), float64(L.CheckNumber(5)), L.CheckString(6))))
-			return 1
+			w, h := c.Button(L.CheckString(2), float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), float64(L.CheckNumber(5)), L.CheckString(6))
+			return push2(L, w, h)
 		},
 		"checkbox": func(L *lua.LState) int {
 			c := check(L)
 			w, h := c.Checkbox(L.CheckString(2), float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), L.OptString(5, ""), L.ToBool(6))
-			L.Push(lua.LNumber(w))
-			L.Push(lua.LNumber(h))
-			return 2
+			return push2(L, w, h)
+		},
+		"column": func(L *lua.LState) int {
+			c := check(L)
+			col := &luaColumn{canvas: L.Get(1).(*lua.LUserData), gap: 8, cache: cache}
+			w, _ := c.Size()
+			if opts, ok := L.Get(2).(*lua.LTable); ok {
+				col.x = float64(lua.LVAsNumber(opts.RawGetString("x")))
+				col.y = float64(lua.LVAsNumber(opts.RawGetString("y")))
+				if gap, ok := opts.RawGetString("gap").(lua.LNumber); ok {
+					col.gap = float64(gap)
+				}
+				col.w = float64(lua.LVAsNumber(opts.RawGetString("width")))
+			}
+			if col.w <= 0 {
+				col.w = max(0, w-2*col.x) // as far in from the right as from the left
+			}
+			ud := L.NewUserData()
+			ud.Value = col
+			L.SetMetatable(ud, luaColumnMetatable(L))
+			L.Push(ud)
+			return 1
 		},
 		"region": func(L *lua.LState) int {
 			c := check(L)

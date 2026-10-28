@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -359,13 +360,14 @@ func (c *recordingCanvas) Page(page int, x, y, w, h float64, area *PageArea) (fl
 	c.calls = append(c.calls, "page "+formatNumber(float64(page)))
 	return w, h
 }
-func (c *recordingCanvas) Input(id string, x, y, w float64, o InputOptions) float64 {
+func (c *recordingCanvas) Input(id string, x, y, w float64, o InputOptions) (float64, float64) {
 	c.calls = append(c.calls, "input "+id)
-	return 20
+	return w, 20
 }
-func (c *recordingCanvas) Button(id string, x, y, w float64, label string) float64 {
+func (c *recordingCanvas) Size() (float64, float64) { return 300, 200 }
+func (c *recordingCanvas) Button(id string, x, y, w float64, label string) (float64, float64) {
 	c.calls = append(c.calls, "button "+id)
-	return 20
+	return w, 20
 }
 func (c *recordingCanvas) Checkbox(id string, x, y float64, label string, checked bool) (float64, float64) {
 	c.calls = append(c.calls, "checkbox "+id)
@@ -523,5 +525,36 @@ end
 		if err := rt.RunDraw(fn, &recordingCanvas{}, DrawState{Element: ElementRow, W: 300, H: 24}); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+// colourCanvas notes the colour and boldness text is drawn in.
+type colourCanvas struct {
+	recordingCanvas
+}
+
+func (c *colourCanvas) Text(x, y float64, text string, clr Color, o TextOptions) (float64, float64) {
+	c.calls = append(c.calls, text+" "+formatStyleColor(clr)+" "+strconv.FormatBool(o.Bold))
+	return 42, 16
+}
+
+func TestCanvasTextColourIsOptional(t *testing.T) {
+	rt := mustLoadThemeTestConfig(t, `
+onon.theme.elements.row.draw = function(canvas)
+  canvas:text(0, 0, "plain")
+  canvas:text(0, 0, "coloured", "accent")
+  canvas:text(0, 0, "options", { color = "muted", bold = true })
+  canvas:text(0, 0, "both", "accent", { bold = true })
+  canvas:text(0, 0, "bold", "accent", true)
+end
+`)
+	theme := rt.Config().Theme
+	canvas := &colourCanvas{}
+	if err := rt.RunDraw(theme.Style(ElementRow).Draw.V, canvas, DrawState{}); err != nil {
+		t.Fatal(err)
+	}
+	want := "plain foreground false|coloured accent false|options muted true|both accent true|bold accent true"
+	if got := strings.Join(canvas.calls, "|"); got != want {
+		t.Fatalf("text drawn as %q, want %q", got, want)
 	}
 }

@@ -137,8 +137,9 @@ type UIOverlay struct {
 	Modal bool
 	// Width and Height are the view's size. Anchor is where it sits in
 	// the document's part of the window: center, or an edge or corner such
-	// as top or bottom_right; At, if set, pins its top left to a point
-	// instead. A docked view takes a side of the window from the document.
+	// as top or bottom_right. With At, it is instead the part of the view
+	// that sits at that point. A docked view takes a side of the window
+	// from the document.
 	Width, Height UISize
 	Anchor        string
 	At            *UIPoint
@@ -189,16 +190,11 @@ type UISize struct {
 
 // UIPoint is a point in the window in logical pixels or, with Page set,
 // a point on that page (1-based) in the page's points, which moves with
-// the page. Corner is the corner of a view pinned to it that sits there,
-// top_left when empty.
+// the page.
 type UIPoint struct {
-	Page   int
-	X, Y   float64
-	Corner string
+	Page int
+	X, Y float64
 }
-
-// UICorners are the corners a view may be pinned by.
-var UICorners = []string{"top_left", "top_right", "bottom_left", "bottom_right"}
 
 type UIListRow struct {
 	Text      string
@@ -273,6 +269,10 @@ type Host interface {
 	// RedrawUI draws the view again, as a view with a draw function needs
 	// when what it draws changes.
 	RedrawUI(id string)
+	// SetUITitle changes a view's title, and UIFields gives the text of
+	// all its text fields.
+	SetUITitle(id, title string)
+	UIFields(id string) map[string]string
 	// UIField and SetUIField get and set the text of a view's text field.
 	UIField(id, field string) string
 	SetUIField(id, field, text string)

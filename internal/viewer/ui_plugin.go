@@ -21,6 +21,24 @@ func (a *App) ShowUI(spec config.UIOverlay) error {
 	return nil
 }
 
+func (a *App) SetUITitle(id, title string) {
+	if view := a.views.views[id]; view != nil {
+		view.title = title
+		view.headless = view.drawBody != nil && title == "" && view.prompt == ""
+		a.pendingRedraw = true
+	}
+}
+
+func (a *App) UIFields(id string) map[string]string {
+	fields := map[string]string{}
+	if view := a.views.views[id]; view != nil {
+		for name, f := range view.fields {
+			fields[name] = f.input.Value
+		}
+	}
+	return fields
+}
+
 func (a *App) RedrawUI(id string) {
 	if view := a.views.views[id]; view != nil && view.visible {
 		a.pendingRedraw = true

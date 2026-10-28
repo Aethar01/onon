@@ -98,6 +98,8 @@ func (h *stubHost) UIScroll(id string) int { return h.ui.Scroll }
 
 func (h *stubHost) UIQuery(id string) string { return h.ui.Query }
 
+func (h *stubHost) SetUITitle(id, title string)             { h.ui.Title = title }
+func (h *stubHost) UIFields(id string) map[string]string    { return h.ui.Fields }
 func (h *stubHost) RedrawUI(id string)                      {}
 func (h *stubHost) UIField(id, field string) string         { return h.ui.Fields[field] }
 func (h *stubHost) SetUIField(id, field, text string)       { h.ui.Fields[field] = text }
@@ -1356,7 +1358,9 @@ func TestUIViewSpec(t *testing.T) {
 		`onon.ui.create({ anchor = "middle" })`:              "unknown anchor",
 		`onon.ui.create({ width = 0 })`:                      "width must be logical pixels",
 		`onon.ui.create({ height = "101%" })`:                "height must be logical pixels",
-		`onon.ui.create({ anchor = { x = 1 } })`:             "an anchor point is",
+		`onon.ui.create({ anchor = { x = 1 } })`:             "anchor names a place",
+		`onon.ui.create({ at = { x = 1 } })`:                 "at is a point",
+		`onon.ui.create({ at = "top" })`:                     "at is a point",
 		`onon.ui.create({ dock = "middle" })`:                "unknown dock",
 		`onon.ui.create({ on_key = "x" })`:                   "on_key must be a function",
 		`onon.ui.create({ rows = { { swatch = "nope" } } })`: "swatch",

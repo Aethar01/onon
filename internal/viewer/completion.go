@@ -83,7 +83,8 @@ func (a *App) placeCompletion() {
 	view.place = viewPlacement{
 		width:  config.UISize{Value: float64(width) / scale},
 		height: config.UISize{Value: (float64(height) + 0.5) / scale},
-		at:     &config.UIPoint{X: float64(x) / scale, Y: float64(y) / scale, Corner: "bottom_left"},
+		at:     &config.UIPoint{X: float64(x) / scale, Y: float64(y) / scale},
+		anchor: "bottom_left", // its bottom left at the point
 	}
 }
 

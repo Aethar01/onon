@@ -228,7 +228,7 @@ func (a *App) placeView(view *uiView) (sdl.FRect, int) {
 		h = min(full, head+rows*rowHeight+bottom)
 	}
 	if p.at != nil {
-		return a.pinnedRect(*p.at, w, h), rows
+		return a.pinnedRect(*p.at, p.anchor, w, h), rows
 	}
 	x, y := int(area.X)+(int(area.W)-w)/2, int(area.Y)+(int(area.H)-full)/2
 	if strings.HasSuffix(p.anchor, "left") {
@@ -244,19 +244,26 @@ func (a *App) placeView(view *uiView) (sdl.FRect, int) {
 	return sdl.FRect{X: float32(x), Y: float32(y), W: float32(w), H: float32(h)}, rows
 }
 
-// pinnedRect is the frame of a view w by h with the corner pt names at
-// pt. One pinned to a window point is kept in the window; one pinned to a
-// page goes out of sight with it.
-func (a *App) pinnedRect(pt config.UIPoint, w, h int) sdl.FRect {
+// pinnedRect is the frame of a view w by h whose part anchor names, such
+// as its top left, its bottom or its centre, sits at pt. One pinned to a
+// window point is kept in the window; one pinned to a page goes out of
+// sight with it.
+func (a *App) pinnedRect(pt config.UIPoint, anchor string, w, h int) sdl.FRect {
 	x, y, ok := a.uiPointOnScreen(pt)
 	if !ok {
 		return sdl.FRect{X: -1e6, Y: -1e6, W: float32(w), H: float32(h)}
 	}
-	if strings.HasSuffix(pt.Corner, "right") {
+	switch {
+	case strings.HasSuffix(anchor, "right"):
 		x -= float64(w)
+	case !strings.HasSuffix(anchor, "left"):
+		x -= float64(w) / 2
 	}
-	if strings.HasPrefix(pt.Corner, "bottom") {
+	switch {
+	case strings.HasPrefix(anchor, "bottom"):
 		y -= float64(h)
+	case !strings.HasPrefix(anchor, "top"):
+		y -= float64(h) / 2
 	}
 	if pt.Page == 0 {
 		x = clampFloat(x, 0, math.Max(0, float64(a.winW-w)))

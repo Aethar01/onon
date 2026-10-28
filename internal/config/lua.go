@@ -252,25 +252,33 @@ func uiOverlayFromLuaSpec(L *lua.LState, rt *Runtime, spec *lua.LTable) UIOverla
 			*field = size
 		}
 	}
+	anchorGiven := false
 	switch anchor := spec.RawGetString("anchor").(type) {
 	case *lua.LNilType:
 	case lua.LString:
-		overlay.Anchor = string(anchor)
+		overlay.Anchor, anchorGiven = string(anchor), true
 		if !slices.Contains(UIAnchors, overlay.Anchor) {
-			L.RaiseError("ui.create: unknown anchor %q; use one of %s, or a point", overlay.Anchor, strings.Join(UIAnchors, ", "))
+			L.RaiseError("ui.create: unknown anchor %q; use one of %s", overlay.Anchor, strings.Join(UIAnchors, ", "))
 		}
-	case *lua.LTable:
-		x, xok := anchor.RawGetString("x").(lua.LNumber)
-		y, yok := anchor.RawGetString("y").(lua.LNumber)
-		page := anchor.RawGetString("page")
-		pageNumber, pageok := page.(lua.LNumber)
-		corner := lua.LVAsString(anchor.RawGetString("corner"))
-		if !xok || !yok || page != lua.LNil && (!pageok || pageNumber < 1) || corner != "" && !slices.Contains(UICorners, corner) {
-			L.RaiseError("ui.create: an anchor point is { x = number, y = number [, page = page number] [, corner = %s] }", strings.Join(UICorners, " | "))
-		}
-		overlay.At = &UIPoint{Page: int(pageNumber), X: float64(x), Y: float64(y), Corner: corner}
 	default:
-		L.RaiseError("ui.create: anchor must be a place or a point")
+		L.RaiseError("ui.create: anchor names a place, such as \"top_right\"; pin a view to a point with at = { x = 10, y = 40 }")
+	}
+	switch at := spec.RawGetString("at").(type) {
+	case *lua.LNilType:
+	case *lua.LTable:
+		x, xok := at.RawGetString("x").(lua.LNumber)
+		y, yok := at.RawGetString("y").(lua.LNumber)
+		page := at.RawGetString("page")
+		pageNumber, pageok := page.(lua.LNumber)
+		if !xok || !yok || page != lua.LNil && (!pageok || pageNumber < 1) {
+			L.RaiseError("ui.create: at is a point, { x = number, y = number [, page = page number] }")
+		}
+		overlay.At = &UIPoint{Page: int(pageNumber), X: float64(x), Y: float64(y)}
+		if !anchorGiven {
+			overlay.Anchor = "top_left" // its top left at the point
+		}
+	default:
+		L.RaiseError("ui.create: at is a point, { x = number, y = number [, page = page number] }")
 	}
 	if columns, ok := spec.RawGetString("columns").(*lua.LTable); ok {
 		for i := 1; i <= columns.Len(); i++ {
@@ -423,6 +431,29 @@ func newLuaView(L *lua.LState, rt *Runtime, overlay UIOverlay) *lua.LTable {
 			L.Push(lua.LString(overlay.Fields[field]))
 		}
 		return 1
+	}))
+	L.SetField(view, "fields", L.NewFunction(func(L *lua.LState) int {
+		fields := overlay.Fields
+		switch {
+		case shown():
+			fields = rt.host.UIFields(overlay.ID)
+		case final != nil:
+			fields = final.Fields
+		}
+		tbl := L.NewTable()
+		for id, text := range fields {
+			tbl.RawSetString(id, lua.LString(text))
+		}
+		L.Push(tbl)
+		return 1
+	}))
+	L.SetField(view, "set_title", L.NewFunction(func(L *lua.LState) int {
+		overlay.Title = L.CheckString(2)
+		L.SetField(view, "title", lua.LString(overlay.Title))
+		if shown() {
+			rt.host.SetUITitle(overlay.ID, overlay.Title)
+		}
+		return 0
 	}))
 	L.SetField(view, "set_field", L.NewFunction(func(L *lua.LState) int {
 		field, text := L.CheckString(2), L.CheckString(3)

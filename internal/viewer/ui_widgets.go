@@ -30,9 +30,9 @@ func (c *elementCanvas) noteControl(id string, rect sdl.FRect) (focused, hovered
 	return view.focus == id && a.keyView() == view, hovered
 }
 
-func (c *elementCanvas) Button(id string, x, y, w float64, label string) float64 {
+func (c *elementCanvas) Button(id string, x, y, w float64, label string) (float64, float64) {
 	if c.view == nil || c.app.fontFace == nil {
-		return 0
+		return 0, 0
 	}
 	a := c.app
 	st := a.style(config.ElementButton)
@@ -45,7 +45,7 @@ func (c *elementCanvas) Button(id string, x, y, w float64, label string) float64
 		st = a.style(config.ElementButtonFocused)
 	}
 	if c.renderer == nil || !c.visible(rect) {
-		return h
+		return w, h
 	}
 	a.drawBox(c.renderer, &st, rect)
 	face := a.styleFace(&st)
@@ -54,7 +54,7 @@ func (c *elementCanvas) Button(id string, x, y, w float64, label string) float64
 	baseline := int(rect.Y+padTop) + face.Metrics().Ascent.Ceil()
 	a.drawTextFace(c.renderer, text, int(math.Round(float64(tx))), baseline, a.textColor(&st, false), st.Bold.V)
 	c.restoreClip()
-	return h
+	return w, h
 }
 
 func (c *elementCanvas) Checkbox(id string, x, y float64, label string, checked bool) (float64, float64) {
