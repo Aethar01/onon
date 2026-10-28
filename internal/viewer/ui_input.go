@@ -92,10 +92,23 @@ func (a *App) uiEditTarget() (uiEdit, bool) {
 	if f := view.fields[view.focus]; f != nil {
 		return uiEdit{view: view, id: view.focus, input: &f.input}, true
 	}
-	if view.prompt != "" {
+	if view.prompt != "" && (view.focus == promptFocus || view.focus == "") {
 		return uiEdit{view: view, input: &view.promptInput}, true
 	}
 	return uiEdit{}, false
+}
+
+// promptFocus is the focus of a view's prompt, which no field, button or
+// check box a plugin names can be.
+const promptFocus = "\x00prompt"
+
+// tabOrder is what Tab moves through in view: its prompt, then what its
+// body drew that the keys can reach.
+func (view *uiView) tabOrder() []string {
+	if view.prompt == "" {
+		return view.focusOrder
+	}
+	return append([]string{promptFocus}, view.focusOrder...)
 }
 
 // editingInput is the text being typed into: a view's, or a prompt's in
@@ -108,6 +121,16 @@ func (a *App) editingInput() *textInput {
 		return &a.input
 	}
 	return nil
+}
+
+// editingSecret reports whether the text being typed into is hidden, as
+// a password is.
+func (a *App) editingSecret() bool {
+	if target, ok := a.uiEditTarget(); ok {
+		f := target.view.fields[target.id]
+		return f != nil && f.secret
+	}
+	return a.mode != modeNormal && a.inputMasked()
 }
 
 // editUIText makes an edit to a view's text, telling the view if it
@@ -199,7 +222,6 @@ func (a *App) handleUIEditKey(view *uiView, key keys.Key, name string) bool {
 // cursor where it was pressed and starting a selection a drag stretches,
 // and reports whether there was one.
 func (a *App) pressUIField(view *uiView, x, y float32) bool {
-	inside := func(r sdl.FRect) bool { return x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H }
 	press := func(l *textLayout, input *textInput) bool {
 		if l.face != nil && len(l.lines) > 0 {
 			pressText(l, input, x, y, false)
@@ -212,13 +234,13 @@ func (a *App) pressUIField(view *uiView, x, y float32) bool {
 		return true
 	}
 	for _, id := range view.focusOrder {
-		if f := view.fields[id]; f != nil && inside(f.rect) {
+		if f := view.fields[id]; f != nil && pointInFRect(x, y, f.rect) {
 			view.focus = id
 			return press(&f.layout, &f.input)
 		}
 	}
-	if view.prompt != "" && inside(view.promptRect) {
-		view.focus = ""
+	if view.prompt != "" && pointInFRect(x, y, view.promptRect) {
+		view.focus = promptFocus
 		return press(&view.promptLayout, &view.promptInput)
 	}
 	return false

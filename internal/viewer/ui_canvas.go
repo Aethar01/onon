@@ -13,7 +13,6 @@ import (
 	"runtime"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"onon/internal/config"
 	"onon/internal/mupdf"
@@ -189,7 +188,12 @@ func (a *App) canvasTextLines(face font.Face, text string, o config.TextOptions)
 		case limit <= 0:
 			laid.lines = append(laid.lines, para)
 		case o.Wrap:
-			laid.lines = append(laid.lines, wrapText(face, para, limit)...)
+			// Wrapped as a text field wraps, the spaces a line breaks
+			// after not drawn.
+			runes := []rune(para)
+			for _, seg := range wrapSegments(face, runes, limit) {
+				laid.lines = append(laid.lines, strings.TrimRight(string(runes[seg[0]:seg[1]]), " "))
+			}
 		default:
 			laid.lines = append(laid.lines, truncateText(face, para, limit))
 		}
@@ -202,49 +206,6 @@ func (a *App) canvasTextLines(face font.Face, text string, o config.TextOptions)
 	}
 	a.canvas.lines[key] = laid
 	return laid
-}
-
-// wrapText breaks s into lines at most limit pixels wide in face, between
-// words, a word too long for a line broken where it reaches the edge.
-func wrapText(face font.Face, s string, limit int) []string {
-	var lines []string
-	line := ""
-	for _, word := range strings.Fields(s) {
-		candidate := word
-		if line != "" {
-			candidate = line + " " + word
-		}
-		if measureText(face, candidate) <= limit {
-			line = candidate
-			continue
-		}
-		if line != "" {
-			lines = append(lines, line)
-		}
-		for measureText(face, word) > limit {
-			cut := fittingPrefix(face, word, limit)
-			lines = append(lines, word[:cut])
-			word = word[cut:]
-		}
-		line = word
-	}
-	return append(lines, line)
-}
-
-// fittingPrefix is the length in bytes of the longest prefix of s, of at
-// least one rune, that fits in limit pixels.
-func fittingPrefix(face font.Face, s string, limit int) int {
-	_, first := utf8.DecodeRuneInString(s)
-	cut := first
-	for i := first; i < len(s); {
-		_, size := utf8.DecodeRuneInString(s[i:])
-		if measureText(face, s[:i+size]) > limit {
-			break
-		}
-		i += size
-		cut = i
-	}
-	return cut
 }
 
 func (c *elementCanvas) Text(x, y float64, text string, clr config.Color, o config.TextOptions) (float64, float64) {
@@ -604,7 +565,7 @@ func (c *elementCanvas) Region(id lua.LValue, x, y, w, h float64) bool {
 	r := c.rect(x, y, w, h)
 	c.view.regions = append(c.view.regions, uiRegion{id: id, rect: r})
 	p := c.app.pointer
-	return c.pointerOver && p.X >= r.X && p.X < r.X+r.W && p.Y >= r.Y && p.Y < r.Y+r.H
+	return c.pointerOver && pointInFRect(p.X, p.Y, r)
 }
 
 // regionAt is the id of the region of view at x, y, the one drawn last
@@ -612,7 +573,7 @@ func (c *elementCanvas) Region(id lua.LValue, x, y, w, h float64) bool {
 func (view *uiView) regionAt(x, y float32) lua.LValue {
 	for i := len(view.regions) - 1; i >= 0; i-- {
 		r := view.regions[i].rect
-		if x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H {
+		if pointInFRect(x, y, r) {
 			return view.regions[i].id
 		}
 	}

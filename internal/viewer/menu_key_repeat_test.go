@@ -129,3 +129,36 @@ func TestKeybindEditorCapturesChords(t *testing.T) {
 		t.Fatalf("zx bound to %q, want overview; message %q", got, app.message)
 	}
 }
+
+// The binding capture started on is the one bound, wherever the pointer
+// moves the selection while the keys are pressed.
+func TestKeybindCaptureKeepsItsRow(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	rt, err := config.Open(filepath.Join(dir, "config.lua"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+	app, err := New("", rt, 0, nil, NewOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.toggleKeybindMenu()
+	view := app.keybindMenu.view
+	view.selected = 1
+	chosen, _ := app.selectedKeybind()
+	app.activateUIView(view)
+	view.selected = 2 // the pointer passes over another row
+	other, _ := app.selectedKeybind()
+	start := time.Now()
+	app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: sdl.KeycodeZ})
+	app.finishKeybindCapture(start.Add(time.Duration(app.config.SequenceTimeoutMS+1) * time.Millisecond))
+	if got := app.config.KeyBindings["z"]; got != chosen.action {
+		t.Fatalf("z bound to %q, want the chosen %q", got, chosen.action)
+	}
+	if got := app.config.KeyBindings[other.key]; got != other.action {
+		t.Fatalf("the row passed over lost its binding: %s is %q", other.key, got)
+	}
+}

@@ -156,6 +156,12 @@ func modalListScrollForSelection(scroll, selected, rows, total, scrollOff int) i
 	return clampInt(scroll, 0, maxScroll)
 }
 
+// pointInFRect reports whether x, y is in rect, its left and top edges in
+// and its right and bottom out, so rects side by side share no point.
+func pointInFRect(x, y float32, rect sdl.FRect) bool {
+	return x >= rect.X && x < rect.X+rect.W && y >= rect.Y && y < rect.Y+rect.H
+}
+
 func pointInRect(x, y int, rect sdl.FRect) bool {
 	return float32(x) >= rect.X && float32(x) <= rect.X+rect.W && float32(y) >= rect.Y && float32(y) <= rect.Y+rect.H
 }

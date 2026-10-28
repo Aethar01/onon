@@ -108,9 +108,10 @@ type uiView struct {
 	draggingScrollbar    bool
 	scrollbarDragOffsetY int
 	// pointerDown is set from a press in the view to its release, and
-	// pointerOver while the pointer is over it, over hoveredRegion.
-	pointerDown, pointerOver bool
-	hoveredRegion            lua.LValue
+	// pointerOver while the pointer is over it, over hoveredRegion;
+	// pressTaken while the press is a field's or a button's.
+	pointerDown, pointerOver, pressTaken bool
+	hoveredRegion                        lua.LValue
 
 	// prompt labels the text field in the header whose text is the query.
 	prompt       string
@@ -300,12 +301,8 @@ func (v *uiView) visibleRows() []uiRow {
 	return rows
 }
 
+// frameGeometry is the view's frame and how many rows of a list it shows.
 func (v *uiView) frameGeometry(a *App) (sdl.FRect, int) {
-	return a.viewGeometry(v)
-}
-
-// contentGeometry is the view's frame and how many rows it shows.
-func (v *uiView) contentGeometry(a *App) (sdl.FRect, int) {
 	return a.viewGeometry(v)
 }
 
@@ -395,7 +392,7 @@ func (a *App) viewBottomPadding(view *uiView) int {
 // uiViewBody is the part of view below its header, where its rows are
 // drawn, or a draw function draws.
 func (a *App) uiViewBody(view *uiView) sdl.FRect {
-	rect, _ := view.contentGeometry(a)
+	rect, _ := view.frameGeometry(a)
 	head := float32(a.uiViewHeadHeight(view))
 	return sdl.FRect{X: rect.X, Y: rect.Y + head, W: rect.W, H: max(0, rect.H-head)}
 }
@@ -536,7 +533,7 @@ func (a *App) moveUIViewSelection(view *uiView, delta int) {
 		return
 	}
 	view.selected = items[row].index
-	_, rows := view.contentGeometry(a)
+	_, rows := view.frameGeometry(a)
 	view.scroll = modalListScrollForSelection(view.scroll, row, rows, len(items), a.config.ScrollOff)
 	settleList(view)
 	a.pendingRedraw = true
@@ -546,7 +543,7 @@ func (a *App) moveUIViewSelection(view *uiView, delta int) {
 // Up and Down move a screen of rows, and first and last page jump to the
 // ends. ok is false for other actions.
 func (a *App) listPageDelta(view *uiView, action string) (delta int, ok bool) {
-	_, rows := view.contentGeometry(a)
+	_, rows := view.frameGeometry(a)
 	switch action {
 	case "next_page":
 		return max(1, rows), true
@@ -571,7 +568,7 @@ func (a *App) ensureUIViewSelectionVisible(view *uiView) {
 		return
 	}
 	row := uiViewSelectedRow(view, items)
-	_, rows := view.contentGeometry(a)
+	_, rows := view.frameGeometry(a)
 	view.scroll = modalListScrollForSelection(view.scroll, row, rows, len(items), a.config.ScrollOff)
 	settleList(view)
 }
@@ -624,7 +621,7 @@ func (a *App) drawUIViewFrame(renderer *sdl.Renderer, view *uiView) error {
 }
 
 func (a *App) drawUIViewContent(renderer *sdl.Renderer, view *uiView, rect sdl.FRect) error {
-	listRect, rows := view.contentGeometry(a)
+	listRect, rows := view.frameGeometry(a)
 	items := view.visibleRows()
 	switch {
 	case view.prompt != "":
@@ -748,7 +745,7 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 			}
 			text := item.text
 			if item.depth > 0 || item.marker != "" {
-				text = strings.Repeat("  ", item.depth) + item.marker + item.text
+				text = strings.Repeat("  ", max(0, item.depth)) + item.marker + item.text
 			}
 			// The right-hand column gets at most 45% of a narrow row.
 			secondary := a.truncateModalListText(item.secondary, int(rect.W*0.45))
@@ -843,7 +840,7 @@ func (a *App) uiViewIndexAt(view *uiView, x, y int) (uiRow, bool) {
 	if view == nil {
 		return uiRow{}, false
 	}
-	rect, rows := view.contentGeometry(a)
+	rect, rows := view.frameGeometry(a)
 	rowHeight, head := a.modalListRowHeight(), a.uiViewHeadHeight(view)
 	if _, ok := a.modalListRowAt(rect, rows, head, rowHeight, x, y); !ok {
 		return uiRow{}, false
@@ -874,7 +871,7 @@ func uiRowsFromConfig(rows []config.UIListRow) []uiRow {
 	result := make([]uiRow, len(rows))
 	for i, row := range rows {
 		result[i] = uiRow{
-			index: i, id: row.ID, text: row.Text, value: row.Value, secondary: row.Secondary, depth: row.Depth,
+			index: i, id: row.ID, text: row.Text, value: row.Value, secondary: row.Secondary, depth: max(0, row.Depth),
 			disabled: row.Disabled || row.Heading, key: row.Key, marker: row.Marker, heading: row.Heading, swatch: row.Swatch, lua: row.Lua,
 			button: row.Button, checkbox: row.Checkbox, checked: row.Checked, cells: row.Cells,
 		}

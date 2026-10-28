@@ -3,6 +3,9 @@ package viewer
 import "fmt"
 
 func (a *App) copyActiveTextInputToClipboard() bool {
+	if a.editingSecret() {
+		return true // a password stays where it is typed
+	}
 	if input := a.editingInput(); input != nil {
 		text, ok := input.SelectedText()
 		if !ok || text == "" {
@@ -31,6 +34,9 @@ func (a *App) copyActiveTextInputToClipboard() bool {
 }
 
 func (a *App) cutActiveTextInputToClipboard() bool {
+	if a.editingSecret() {
+		return true
+	}
 	if input := a.editingInput(); input != nil {
 		text, ok := input.SelectedText()
 		if !ok || text == "" {

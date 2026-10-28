@@ -36,6 +36,10 @@ func (a *App) CloseUI(id string) {
 	a.closeUIView(view, true)
 }
 
+func (a *App) UIExists(id string) bool {
+	return a.views.views[id] != nil
+}
+
 func (a *App) UIVisible(id string) bool {
 	view := a.views.views[id]
 	return view != nil && view.visible
@@ -74,7 +78,7 @@ func (a *App) SetUIScroll(id string, scroll int) {
 		a.setViewScroll(view, float64(scroll)*float64(a.px(1)))
 		return
 	}
-	_, rows := view.contentGeometry(a)
+	_, rows := view.frameGeometry(a)
 	view.scroll = clampInt(scroll, 0, max(0, len(view.visibleRows())-rows))
 	a.pendingRedraw = true
 }
@@ -156,7 +160,7 @@ func (a *App) createLuaView(spec config.UIOverlay) *uiView {
 		view.field(id).input.Set(text)
 	}
 	if spec.Prompt != "" {
-		view.prompt = spec.Prompt
+		view.prompt, view.focus = spec.Prompt, promptFocus
 		view.promptInput.Set(spec.Query)
 		view.searchable = false // typing goes to the prompt, without /
 	}

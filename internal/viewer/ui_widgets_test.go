@@ -232,3 +232,49 @@ onon.ui.create({ draw = function(canvas) canvas:page(1, 0, 0, 100, nil, { x = 0,
 		t.Fatalf("a page area without a height: %q", app.message)
 	}
 }
+
+func TestPromptAndFieldsShareFocus(t *testing.T) {
+	app := luaUITestApp(t, "")
+	app.fontFace = basicfont.Face7x13
+	app.sequenceLookup = map[string]string{}
+	evalLua(t, app, `
+view = onon.ui.create({
+  prompt = "Find",
+  draw = function(canvas, box)
+    canvas:input("name", 0, 0, box.w)
+    canvas:button("go", 0, 30, 60, "Go")
+  end,
+  on_click = function(id) onon.message("clicked " .. id) end,
+})
+view:show()`)
+	view := app.activeUIView()
+	drawLuaView(t, app, view)
+	if !app.typeUIText("q") || view.promptInput.Value != "q" {
+		t.Fatalf("typing went to %q, not the prompt the view opened on", view.focus)
+	}
+	app.viewKey(view, keyDown(sdl.KeycodeTab, 0))
+	drawLuaView(t, app, view)
+	app.typeUIText("n")
+	if view.fields["name"].input.Value != "n" {
+		t.Fatal("Tab from the prompt did not reach the field")
+	}
+	// A click back on the prompt keeps it, however the body draws.
+	frame, _ := view.frameGeometry(app)
+	view.promptRect = sdl.FRect{X: frame.X + 60, Y: frame.Y + 2, W: 100, H: 20} // as the header draws it
+	r := view.promptRect
+	view.promptLayout = textLayout{face: app.fontFace, lines: layoutLines(app.fontFace, "q", 0, false), x: r.X, y: r.Y, lineHeight: 13}
+	app.viewMouseButton(view, &sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: uint8(sdl.ButtonLeft), X: r.X + 1, Y: r.Y + 1})
+	app.viewMouseButton(view, &sdl.MouseButtonEvent{Type: sdl.EventMouseButtonUp, Button: uint8(sdl.ButtonLeft), X: r.X + 1, Y: r.Y + 1})
+	drawLuaView(t, app, view)
+	app.typeUIText("r")
+	if view.promptInput.Value != "rq" || view.fields["name"].input.Value != "n" { // the click put the cursor at the start
+		t.Fatalf("after clicking the prompt: prompt %q, field %q", view.promptInput.Value, view.fields["name"].input.Value)
+	}
+	// Space on a focused button clicks it, and types nothing anywhere.
+	view.focus = "go"
+	app.viewKey(view, keyDown(sdl.KeycodeSpace, 0))
+	app.handleSDLTextInput(&sdl.TextInputEvent{})
+	if app.typeUIText(" ") || view.promptInput.Value != "rq" || app.message != "clicked go" {
+		t.Fatalf("Space on a button: prompt %q, message %q", view.promptInput.Value, app.message)
+	}
+}

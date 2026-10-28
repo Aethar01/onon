@@ -290,7 +290,7 @@ func TestMenuHeadFollowsPaddingAndHeader(t *testing.T) {
 	}
 	view := &uiView{id: "test", title: "Test", rows: uiRowsFromStrings([]string{"a", "b", "c"}), modal: true, place: percentPlace(70, 70)}
 	app.showUIView(view)
-	rect, _ := view.contentGeometry(app)
+	rect, _ := view.frameGeometry(app)
 	if row, ok := app.uiViewIndexAt(view, int(rect.X)+20, int(rect.Y)+want+1); !ok || row.index != 0 {
 		t.Fatalf("just below the head = row %d, %v; want the first", row.index, ok)
 	}

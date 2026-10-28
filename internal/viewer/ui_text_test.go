@@ -98,6 +98,10 @@ view:show()`)
 	y := f.layout.y + 2
 	app.viewMouseButton(view, &sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: uint8(sdl.ButtonLeft), X: at(2), Y: y})
 	app.viewMouseMotion(view, &sdl.MouseMotionEvent{X: at(5), Y: y, State: sdl.ButtonLMask})
+	// The selection follows the pointer as it drags, not only on release.
+	if text, _ := f.input.SelectedText(); text != "cde" {
+		t.Fatalf("mid-drag the field selected %q, want cde", text)
+	}
 	app.viewMouseButton(view, &sdl.MouseButtonEvent{Type: sdl.EventMouseButtonUp, Button: uint8(sdl.ButtonLeft), X: at(6), Y: y})
 	if text, _ := f.input.SelectedText(); text != "cdef" || f.input.mouseSelecting {
 		t.Fatalf("dragged across the field selected %q, still selecting %v", text, f.input.mouseSelecting)
@@ -122,5 +126,41 @@ func TestCompositionShowsAtTheCursor(t *testing.T) {
 	app.handleSDLTextInput(&sdl.TextInputEvent{})
 	if maskText("abc") != "•••" {
 		t.Fatalf("mask = %q", maskText("abc"))
+	}
+}
+
+func TestStatusPromptLaysOutItsComposition(t *testing.T) {
+	app := testStyleApp("bar")
+	app.mode = modeCommand
+	app.input.Set("ab")
+	app.input.Cursor = 1
+	app.composition = "xyz"
+	layout := app.statusTextLayout(app.statusLayout())
+	if got := layout.lines[0].text; got != "axyzb" {
+		t.Fatalf("the prompt is laid out as %q, want its composition in it", got)
+	}
+	x0, _ := layout.at(1)
+	x1, _ := layout.at(4)
+	if x1-x0 != float32(measureText(app.fontFace, "xyz")) {
+		t.Fatalf("the composition's underline spans %v, want the composition's width", x1-x0)
+	}
+}
+
+func TestSecretFieldsAreNotCopied(t *testing.T) {
+	app := luaUITestApp(t, "")
+	app.fontFace = basicfont.Face7x13
+	evalLua(t, app, `
+view = onon.ui.create({ draw = function(canvas, box) canvas:input("pw", 0, 0, box.w, { secret = true }) end })
+view:set_field("pw", "hunter2")
+view:show()`)
+	view := app.activeUIView()
+	drawLuaView(t, app, view)
+	view.fields["pw"].input.SelectAll()
+	app.message = ""
+	if !app.copyActiveTextInputToClipboard() || !app.cutActiveTextInputToClipboard() {
+		t.Fatal("copy and cut in a password field were left to the document")
+	}
+	if app.message != "" || view.fields["pw"].input.Value != "hunter2" {
+		t.Fatalf("a password was copied or cut: message %q, text %q", app.message, view.fields["pw"].input.Value)
 	}
 }

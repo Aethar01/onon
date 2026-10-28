@@ -254,14 +254,14 @@ func TestCompletionScrollsWithAFastSelection(t *testing.T) {
 	view := &uiView{visible: true, headless: true, element: config.ElementCompletion, rows: completionRowsFor(items)}
 	app.completion = completionState{view: view, items: items}
 	app.placeCompletion()
-	if _, visible := view.contentGeometry(app); visible != 5 {
+	if _, visible := view.frameGeometry(app); visible != 5 {
 		t.Fatalf("completions show %d rows, want completion_max_items, 5", visible)
 	}
 	start := time.Now()
 	for step := range 40 {
 		app.motion.now = start.Add(time.Duration(step) * 30 * time.Millisecond) // key repeat
 		app.moveCompletion(1)
-		_, visible := view.contentGeometry(app)
+		_, visible := view.frameGeometry(app)
 		offset := app.listOffset(view, visible, len(view.rows))
 		// The list glides behind the selection, which stays in view.
 		if selected := view.selected; float64(selected+1) <= offset || float64(selected) >= offset+float64(visible) {
@@ -270,7 +270,7 @@ func TestCompletionScrollsWithAFastSelection(t *testing.T) {
 	}
 	// Settled, the selection keeps a row of context.
 	app.motion.now = app.motion.now.Add(time.Second)
-	_, visible := view.contentGeometry(app)
+	_, visible := view.frameGeometry(app)
 	offset := app.listOffset(view, visible, len(view.rows))
 	selected := view.selected
 	if offset != math.Round(offset) || float64(selected) < offset+1 && offset > 0 || float64(selected) > offset+float64(visible)-2 && offset+float64(visible) < float64(len(view.rows)) {

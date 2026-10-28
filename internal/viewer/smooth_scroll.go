@@ -254,7 +254,7 @@ func (a *App) modalSmoothScrollBounds(view *uiView) (int, bool) {
 	if view == nil || !view.visible || !view.modal {
 		return 0, false
 	}
-	_, rows := view.contentGeometry(a)
+	_, rows := view.frameGeometry(a)
 	return max(0, len(view.visibleRows())-rows), true
 }
 

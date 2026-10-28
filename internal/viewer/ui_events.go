@@ -22,7 +22,7 @@ func (a *App) viewKey(view *uiView, e *sdl.KeyboardEvent) {
 		return
 	}
 	token := key.String()
-	if len(view.focusOrder) > 0 && a.handleUIControlKey(view, token) || a.handleUIEditKey(view, key, token) {
+	if (len(view.focusOrder) > 0 || view.prompt != "") && a.handleUIControlKey(view, token) || a.handleUIEditKey(view, key, token) {
 		return
 	}
 	if view.searchable && a.handleUIViewSearchKey(view, e) {
@@ -137,7 +137,7 @@ func (a *App) scrollUIViewBy(view *uiView, delta int) {
 	if view == nil {
 		return
 	}
-	_, rows := view.contentGeometry(a)
+	_, rows := view.frameGeometry(a)
 	scrollUIView(view, delta, rows)
 	a.pendingRedraw = true
 }
@@ -178,10 +178,18 @@ func (a *App) viewMouseButton(view *uiView, e *sdl.MouseButtonEvent) {
 	ev, inside := a.viewMouseEvent(view, e.X, e.Y)
 	down := e.Type == sdl.EventMouseButtonDown
 	left := e.Button == uint8(sdl.ButtonLeft)
+	// A press on a field or button is theirs to its release, a drag across
+	// a field selecting.
 	if down && inside && left && a.pressUIControl(view, e.X, e.Y) {
+		view.pointerDown, view.pressTaken = true, true
 		return
 	}
-	if !down && left && a.releaseUIControl(view, e.X, e.Y) {
+	if !down && view.pressTaken {
+		view.pointerDown, view.pressTaken = false, false
+		if left {
+			a.releaseUIControl(view, e.X, e.Y)
+			a.dragUIField(view, e.X, e.Y, true)
+		}
 		return
 	}
 	if down && inside || !down && view.pointerDown {
@@ -201,7 +209,6 @@ func (a *App) viewMouseButton(view *uiView, e *sdl.MouseButtonEvent) {
 		return
 	}
 	if !down {
-		a.dragUIField(view, e.X, e.Y, true)
 		view.draggingScrollbar = false
 		return
 	}
@@ -224,6 +231,9 @@ func (a *App) viewMouseButton(view *uiView, e *sdl.MouseButtonEvent) {
 // needs drawing again: as the pointer moves between its rows or regions,
 // drags its scrollbar, or leaves it.
 func (a *App) viewMouseMotion(view *uiView, e *sdl.MouseMotionEvent) bool {
+	if view.pressTaken {
+		return a.dragUIField(view, e.X, e.Y, false)
+	}
 	ev, inside := a.viewMouseEvent(view, e.X, e.Y)
 	leaving := view.pointerOver && !inside && !view.pointerDown
 	view.pointerOver = inside
@@ -247,9 +257,6 @@ func (a *App) viewMouseMotion(view *uiView, e *sdl.MouseMotionEvent) bool {
 	}
 	if view.draggingScrollbar {
 		a.viewDragScrollbar(view, e.Y)
-		return true
-	}
-	if view.pointerDown && a.dragUIField(view, e.X, e.Y, false) {
 		return true
 	}
 	return a.uiViewHover(view, int(e.X), int(e.Y)) || redraw
@@ -323,7 +330,7 @@ func (a *App) viewScrollRange(view *uiView) (shown, total int, offset float64) {
 	if a.bodyScrolls(view) {
 		return int(a.uiViewBody(view).H), int(math.Ceil(view.extent)), view.scrollPx
 	}
-	_, rows := view.contentGeometry(a)
+	_, rows := view.frameGeometry(a)
 	return rows, len(view.visibleRows()), view.offset
 }
 

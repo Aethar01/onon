@@ -24,7 +24,10 @@ type keybindMenuState struct {
 	capturedAt      time.Time
 	selectingAction bool
 	captureAction   string
-	rows            []keybindRow
+	// captureRow is the binding, or action, capture was started for,
+	// whatever the pointer selects while the keys are pressed.
+	captureRow keybindRow
+	rows       []keybindRow
 }
 
 type keybindRow struct {
@@ -58,8 +61,8 @@ func (a *App) keybindMenuHeader() string {
 	m := &a.keybindMenu
 	if m.capturing {
 		action := m.captureAction
-		if row, ok := a.selectedKeybind(); ok && action == "" {
-			action = row.action
+		if action == "" {
+			action = m.captureRow.action
 		}
 		if len(m.captured) > 0 {
 			return action + ": " + strings.Join(m.captured, " ") + " …"
@@ -129,7 +132,7 @@ func (a *App) chooseKeybindRow(row uiRow) {
 		if m.selectingAction {
 			m.captureAction = r.action
 		}
-		m.capturing = true
+		m.capturing, m.captureRow = true, r
 	}
 }
 
@@ -214,8 +217,8 @@ func (a *App) deleteSelectedKeybind() {
 
 func (a *App) rebindSelectedKey(key string) {
 	m := &a.keybindMenu
-	row, ok := a.selectedKeybind()
-	if a.runtime == nil || m.view == nil || !ok {
+	row := m.captureRow
+	if a.runtime == nil || m.view == nil || !m.capturing {
 		return
 	}
 	action := row.action

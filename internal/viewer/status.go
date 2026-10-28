@@ -199,6 +199,7 @@ func (a *App) drawStatusLeft(renderer *sdl.Renderer, l statusLayout, st *config.
 // prefix, scrolled with it.
 func (a *App) statusTextLayout(l statusLayout) textLayout {
 	display, _ := a.inputDisplay()
+	display, _, _ = a.compose(&a.input, display)
 	top, bottom := a.statusTextSpan(l)
 	return textLayout{
 		face:       a.fontFace,

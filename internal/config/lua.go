@@ -352,6 +352,10 @@ func luaUISize(value lua.LValue) (UISize, error) {
 
 func newLuaView(L *lua.LState, rt *Runtime, overlay UIOverlay) *lua.LTable {
 	view := L.NewTable()
+	// The host keeps a view once shown, closed or not: what it holds, such
+	// as text typed into it, is read from it and written to it there, as
+	// from on_close.
+	known := func() bool { return rt.host != nil && rt.host.UIExists(overlay.ID) }
 	L.SetField(view, "id", lua.LString(overlay.ID))
 	L.SetField(view, "title", lua.LString(overlay.Title))
 	L.SetField(view, "show", L.NewFunction(func(L *lua.LState) int {
@@ -371,28 +375,28 @@ func newLuaView(L *lua.LState, rt *Runtime, overlay UIOverlay) *lua.LTable {
 	}))
 	L.SetField(view, "set_rows", L.NewFunction(func(L *lua.LState) int {
 		overlay.Rows = luaTableUIRows(L, L.CheckAny(2))
-		if rt.host != nil && rt.host.UIVisible(overlay.ID) {
+		if known() {
 			rt.host.SetUIRows(overlay.ID, overlay.Rows)
 		}
 		return 0
 	}))
 	L.SetField(view, "set_selected", L.NewFunction(func(L *lua.LState) int {
 		overlay.Selected = L.CheckInt(2)
-		if rt.host != nil && rt.host.UIVisible(overlay.ID) {
+		if known() {
 			rt.host.SetUISelected(overlay.ID, overlay.Selected)
 		}
 		return 0
 	}))
 	L.SetField(view, "set_scroll", L.NewFunction(func(L *lua.LState) int {
 		overlay.Scroll = L.CheckInt(2)
-		if rt.host != nil && rt.host.UIVisible(overlay.ID) {
+		if known() {
 			rt.host.SetUIScroll(overlay.ID, overlay.Scroll)
 		}
 		return 0
 	}))
 	L.SetField(view, "set_query", L.NewFunction(func(L *lua.LState) int {
 		overlay.Query = L.CheckString(2)
-		if rt.host != nil && rt.host.UIVisible(overlay.ID) {
+		if known() {
 			rt.host.SetUIQuery(overlay.ID, overlay.Query)
 		}
 		return 0
@@ -400,7 +404,7 @@ func newLuaView(L *lua.LState, rt *Runtime, overlay UIOverlay) *lua.LTable {
 	shown := func() bool { return rt.host != nil && rt.host.UIVisible(overlay.ID) }
 	L.SetField(view, "field", L.NewFunction(func(L *lua.LState) int {
 		field := L.CheckString(2)
-		if shown() {
+		if known() {
 			L.Push(lua.LString(rt.host.UIField(overlay.ID, field)))
 		} else {
 			L.Push(lua.LString(overlay.Fields[field]))
@@ -413,7 +417,7 @@ func newLuaView(L *lua.LState, rt *Runtime, overlay UIOverlay) *lua.LTable {
 			overlay.Fields = map[string]string{}
 		}
 		overlay.Fields[field] = text
-		if shown() {
+		if known() {
 			rt.host.SetUIField(overlay.ID, field, text)
 		}
 		return 0
@@ -436,7 +440,7 @@ func newLuaView(L *lua.LState, rt *Runtime, overlay UIOverlay) *lua.LTable {
 	}))
 	L.SetField(view, "size", L.NewFunction(func(L *lua.LState) int {
 		w, h := 0.0, 0.0
-		if shown() {
+		if known() {
 			w, h = rt.host.UIViewSize(overlay.ID)
 		}
 		L.Push(lua.LNumber(w))
@@ -454,7 +458,7 @@ func newLuaView(L *lua.LState, rt *Runtime, overlay UIOverlay) *lua.LTable {
 		return 1
 	}))
 	L.SetField(view, "selected", L.NewFunction(func(L *lua.LState) int {
-		if rt.host != nil && rt.host.UIVisible(overlay.ID) {
+		if known() {
 			L.Push(lua.LNumber(rt.host.UISelected(overlay.ID)))
 		} else {
 			L.Push(lua.LNumber(overlay.Selected))
@@ -462,7 +466,7 @@ func newLuaView(L *lua.LState, rt *Runtime, overlay UIOverlay) *lua.LTable {
 		return 1
 	}))
 	L.SetField(view, "scroll", L.NewFunction(func(L *lua.LState) int {
-		if rt.host != nil && rt.host.UIVisible(overlay.ID) {
+		if known() {
 			L.Push(lua.LNumber(rt.host.UIScroll(overlay.ID)))
 		} else {
 			L.Push(lua.LNumber(overlay.Scroll))
@@ -470,7 +474,7 @@ func newLuaView(L *lua.LState, rt *Runtime, overlay UIOverlay) *lua.LTable {
 		return 1
 	}))
 	L.SetField(view, "query", L.NewFunction(func(L *lua.LState) int {
-		if rt.host != nil && rt.host.UIVisible(overlay.ID) {
+		if known() {
 			L.Push(lua.LString(rt.host.UIQuery(overlay.ID)))
 		} else {
 			L.Push(lua.LString(overlay.Query))

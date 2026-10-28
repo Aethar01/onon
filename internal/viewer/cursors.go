@@ -80,18 +80,17 @@ func (a *App) viewCursor() cursorKind {
 	if view == nil {
 		return cursorDefault
 	}
-	inside := func(r sdl.FRect) bool { return x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H }
 	for id, r := range view.controls {
-		if inside(r) && slices.Contains(view.focusOrder, id) {
+		if pointInFRect(x, y, r) && slices.Contains(view.focusOrder, id) {
 			return cursorPointer
 		}
 	}
 	for _, id := range view.focusOrder {
-		if f := view.fields[id]; f != nil && inside(f.rect) {
+		if f := view.fields[id]; f != nil && pointInFRect(x, y, f.rect) {
 			return cursorText
 		}
 	}
-	if view.prompt != "" && inside(view.promptRect) {
+	if view.prompt != "" && pointInFRect(x, y, view.promptRect) {
 		return cursorText
 	}
 	return cursorDefault

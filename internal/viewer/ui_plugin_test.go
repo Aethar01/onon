@@ -858,3 +858,33 @@ panel:show()`)
 		t.Fatal("a press on the document left the panel the keys")
 	}
 }
+
+func TestLuaUIRowDepthNeverNegative(t *testing.T) {
+	rows := uiRowsFromConfig([]config.UIListRow{{Text: "a", Depth: -1, Marker: "* "}})
+	if rows[0].depth != 0 {
+		t.Fatalf("depth -1 kept as %d", rows[0].depth)
+	}
+	// Drawn, a row whose depth is negative all the same does not panic.
+	app := testStyleApp("bar")
+	view := &uiView{id: "v", visible: true, modal: true, place: percentPlace(70, 70), rows: []uiRow{{text: "a", depth: -3, marker: "* "}}}
+	app.views.active = view
+	app.drawUIListItems(nil, sdl.FRect{W: 400, H: 300}, 1, view, view.rows)
+}
+
+func TestLuaUIViewReadsWhatWasTypedAfterClosing(t *testing.T) {
+	app := luaUITestApp(t, "")
+	app.fontFace = basicfont.Face7x13
+	evalLua(t, app, `
+view = onon.ui.create({
+  draw = function(canvas, box) canvas:input("name", 0, 0, box.w) end,
+  on_close = function() closing = view:field("name") end,
+})
+view:show()`)
+	view := app.activeUIView()
+	drawLuaView(t, app, view)
+	app.typeUIText("alice")
+	evalLua(t, app, `view:close() onon.message(closing .. "/" .. view:field("name"))`)
+	if app.message != "alice/alice" {
+		t.Fatalf("on_close and after read %q, want what was typed", app.message)
+	}
+}

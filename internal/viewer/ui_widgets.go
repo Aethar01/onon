@@ -26,7 +26,7 @@ func (c *elementCanvas) noteControl(id string, rect sdl.FRect) (focused, hovered
 	view.focusOrder = append(view.focusOrder, id)
 	view.regions = append(view.regions, uiRegion{id: lua.LString(id), rect: rect})
 	p := a.pointer
-	hovered = c.pointerOver && p.X >= rect.X && p.X < rect.X+rect.W && p.Y >= rect.Y && p.Y < rect.Y+rect.H
+	hovered = c.pointerOver && pointInFRect(p.X, p.Y, rect)
 	return view.focus == id && a.keyView() == view, hovered
 }
 
@@ -114,7 +114,7 @@ func (a *App) pressUIControl(view *uiView, x, y float32) bool {
 		return true
 	}
 	for id, r := range view.controls {
-		if x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H && slices.Contains(view.focusOrder, id) {
+		if pointInFRect(x, y, r) && slices.Contains(view.focusOrder, id) {
 			view.focus, view.pressedControl = id, id
 			if !view.modal {
 				a.focusUIView(view, true)
@@ -135,7 +135,7 @@ func (a *App) releaseUIControl(view *uiView, x, y float32) bool {
 		return false
 	}
 	view.pressedControl = ""
-	if r := view.controls[id]; x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H {
+	if r := view.controls[id]; pointInFRect(x, y, r) {
 		a.clickUIControl(view, id)
 	}
 	a.pendingRedraw = true
@@ -148,22 +148,23 @@ func (a *App) releaseUIControl(view *uiView, x, y float32) bool {
 func (a *App) handleUIControlKey(view *uiView, name string) bool {
 	switch name {
 	case "<Tab>", "<S-Tab>":
-		n := len(view.focusOrder)
-		if n == 0 {
+		order := view.tabOrder()
+		n := len(order)
+		if n < 2 && (n == 0 || order[0] == view.focus) {
 			return false
 		}
 		step := 1
 		if name == "<S-Tab>" {
 			step = n - 1
 		}
-		i := slices.Index(view.focusOrder, view.focus)
+		i := slices.Index(order, view.focus)
 		if i < 0 {
 			i = n - 1 // the first Tab focuses the first control
 			if step != 1 {
 				i = 0
 			}
 		}
-		view.focus = view.focusOrder[(i+step)%n]
+		view.focus = order[(i+step)%n]
 		if f := view.fields[view.focus]; f != nil {
 			f.input.SelectAll()
 		}

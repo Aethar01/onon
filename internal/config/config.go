@@ -251,6 +251,9 @@ type Host interface {
 	ShowUI(overlay UIOverlay) error
 	CloseUI(id string)
 	UIVisible(id string) bool
+	// UIExists reports whether the host keeps the view, shown once, open
+	// or closed.
+	UIExists(id string) bool
 	SetUIRows(id string, rows []UIListRow)
 	SetUISelected(id string, selected int)
 	SetUIScroll(id string, scroll int)

@@ -63,7 +63,7 @@ func (a *App) listOffset(view *uiView, rows, total int) float64 {
 // scrollListTo shows view from offset, as a wheel, pan or autoscroll
 // does, keeping its scroll the nearest whole row.
 func (a *App) scrollListTo(view *uiView, offset float64) {
-	_, rows := view.contentGeometry(a)
+	_, rows := view.frameGeometry(a)
 	maxOffset := max(0, len(view.visibleRows())-rows)
 	view.offset = clampFloat(offset, 0, float64(maxOffset))
 	view.scroll = clampInt(int(math.Round(view.offset)), 0, maxOffset)
