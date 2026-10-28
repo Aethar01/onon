@@ -276,8 +276,8 @@ func (a *App) handleLinkButton(e *sdl.MouseButtonEvent) bool {
 
 func (a *App) handleSDLMouseMotion(e *sdl.MouseMotionEvent) bool {
 	a.pointer = sdl.FPoint{X: e.X, Y: e.Y}
-	defer a.updateCursor()
 	if view := a.activeModalUIView(); view != nil {
+		defer a.updateCursor()
 		if a.autoscroll != nil {
 			a.noteAutoscrollPointer() // the frame loop does the scrolling
 			return false
@@ -299,6 +299,7 @@ func (a *App) handleSDLMouseMotion(e *sdl.MouseMotionEvent) bool {
 		return a.scrollX != oldX || a.scrollY != oldY
 	}
 	if a.dragDockEdge(e.X, e.Y) {
+		a.updateCursor()
 		return true
 	}
 	if taken, redraw := a.handlePanelMouseMotion(e); taken {

@@ -7,6 +7,7 @@ import (
 	"onon/internal/config"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
+	"golang.org/x/image/font"
 )
 
 // viewPlacement is where a view sits: its size, and an anchor, a point it
@@ -115,6 +116,16 @@ func (a *App) withDocumentViewport(renderer *sdl.Renderer, draw func()) {
 	draw()
 }
 
+// viewportOrigin is where the document's part of the window starts, below
+// and right of the views docked at the top and left.
+func (a *App) viewportOrigin() (float64, float64) {
+	if len(a.views.panels) == 0 || !a.hasDock() {
+		return 0, 0 // nothing moves it from the window's corner
+	}
+	r := a.documentRect()
+	return float64(r.X), float64(r.Y)
+}
+
 // uiPointOnScreen is where pt is in the window, and false when it is on a
 // page not shown.
 func (a *App) uiPointOnScreen(pt config.UIPoint) (float64, float64, bool) {
@@ -146,6 +157,49 @@ func (a *App) uiPointOnScreen(pt config.UIPoint) (float64, float64, bool) {
 // anchored to, or a centred one its top, so filtering leaves the header
 // in place.
 func (a *App) viewGeometry(view *uiView) (sdl.FRect, int) {
+	// A view's geometry is asked for many times a frame and an event, and
+	// changes only with what the key holds; one pinned to a page moves
+	// with it, so it is worked out each time.
+	if at := view.place.at; at != nil && at.Page > 0 {
+		return a.placeView(view)
+	}
+	key := viewGeometryKey{
+		winW: a.winW, winH: a.winH, status: a.statusVisible(), styles: a.styles, font: a.fontFace, scale: a.uiScale,
+		panels: a.views.layoutGen, rows: len(view.visibleRows()), place: view.place,
+		headless: view.headless, titles: view.hasColumnTitles(), body: view.drawBody != nil,
+	}
+	if g := &view.geometry; g.ok && g.key == key {
+		return g.rect, g.rows
+	}
+	rect, rows := a.placeView(view)
+	view.geometry = viewGeometryCache{key: key, rect: rect, rows: rows, ok: a.styles != nil}
+	return rect, rows
+}
+
+// viewGeometryKey is what a view's geometry depends on: the window, the
+// status bar, the theme and font, the panels docked, the rows it fits, and
+// its own placement and parts.
+type viewGeometryKey struct {
+	winW, winH             int
+	status                 bool
+	styles                 *[config.ElementCount]config.Style
+	font                   font.Face
+	scale                  float64
+	panels                 uint64
+	rows                   int
+	place                  viewPlacement
+	headless, titles, body bool
+}
+
+type viewGeometryCache struct {
+	key  viewGeometryKey
+	rect sdl.FRect
+	rows int
+	ok   bool
+}
+
+// placeView works out view's geometry for viewGeometry.
+func (a *App) placeView(view *uiView) (sdl.FRect, int) {
 	p := &view.place
 	rowHeight, head, bottom := a.modalListRowHeight(), a.uiViewHeadHeight(view), a.viewBottomPadding(view)
 	if p.dock != "" {
@@ -281,6 +335,7 @@ func (a *App) dragDockEdge(x, y float32) bool {
 		} else {
 			view.place.height = length
 		}
+		a.views.layoutGen++ // every view sits beside it
 	})
 	a.pendingRedraw = true
 	return true

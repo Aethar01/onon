@@ -62,6 +62,9 @@ func (a *App) updateCursor() {
 // and down at a docked view's edge, a hand over a button or check box, and
 // an I-beam over text to type in.
 func (a *App) viewCursor() cursorKind {
+	if a.views.active == nil && len(a.views.panels) == 0 {
+		return cursorDefault
+	}
 	x, y := a.pointer.X, a.pointer.Y
 	edge := a.views.resizing
 	if edge == nil {

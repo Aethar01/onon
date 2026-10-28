@@ -148,12 +148,14 @@ func (a *App) typeUIText(text string) bool {
 // Enter starts a new line, Ctrl- or Cmd-Enter submits, and the arrows,
 // Home and End move by line. Keys that type text are taken, the text
 // coming as it is typed. It reports whether it took the key.
-func (a *App) handleUIEditKey(view *uiView, key keys.Key) bool {
+func (a *App) handleUIEditKey(view *uiView, key keys.Key, name string) bool {
+	if view.prompt == "" && len(view.fields) == 0 {
+		return false // nothing to type in
+	}
 	target, ok := a.uiEditTarget()
 	if !ok || target.view != view {
 		return false
 	}
-	name := key.String()
 	field := view.fields[target.id]
 	multiline := field != nil && field.lines > 1
 	switch name {

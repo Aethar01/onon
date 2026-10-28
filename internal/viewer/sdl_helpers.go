@@ -434,13 +434,14 @@ func (a *App) drawTextWithFace(renderer *sdl.Renderer, s string, x, baselineY in
 		return err
 	}
 	tintText(entry.texture, clr)
-	dst := sdl.FRect{X: float32(x), Y: float32(baselineY - entry.ascent), W: float32(entry.width), H: float32(entry.height)}
-	if err := renderBool(sdl.RenderTexture(renderer, entry.texture, nil, &dst), "render text"); err != nil {
+	dst := &a.drawRects[0] // the app's own, which SDL is given without an allocation
+	*dst = sdl.FRect{X: float32(x), Y: float32(baselineY - entry.ascent), W: float32(entry.width), H: float32(entry.height)}
+	if err := renderBool(sdl.RenderTexture(renderer, entry.texture, nil, dst), "render text"); err != nil {
 		return err
 	}
 	if embolden {
 		dst.X += float32(max(1, a.ipx(0.5)))
-		return renderBool(sdl.RenderTexture(renderer, entry.texture, nil, &dst), "render text")
+		return renderBool(sdl.RenderTexture(renderer, entry.texture, nil, dst), "render text")
 	}
 	return nil
 }

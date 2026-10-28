@@ -21,7 +21,8 @@ func (a *App) viewKey(view *uiView, e *sdl.KeyboardEvent) {
 	if !ok || e.Type != sdl.EventKeyDown {
 		return
 	}
-	if a.handleUIControlKey(view, key) || a.handleUIEditKey(view, key) {
+	token := key.String()
+	if len(view.focusOrder) > 0 && a.handleUIControlKey(view, token) || a.handleUIEditKey(view, key, token) {
 		return
 	}
 	if view.searchable && a.handleUIViewSearchKey(view, e) {
@@ -35,7 +36,6 @@ func (a *App) viewKey(view *uiView, e *sdl.KeyboardEvent) {
 		a.focusUIView(view, false)
 		return
 	}
-	token := key.String()
 	action, bound := a.sequenceLookup[token]
 	if e.Repeat && (!bound || !a.isCountableAction(action) || a.hasPrefix(token)) {
 		return

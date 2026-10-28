@@ -75,6 +75,7 @@ type uiView struct {
 	place    viewPlacement
 	// resizable lets the pointer drag a docked view's inner edge.
 	resizable bool
+	geometry  viewGeometryCache // see viewGeometry
 	visible   bool
 
 	rows       []uiRow
@@ -175,11 +176,13 @@ type uiRowFilter struct {
 	rows   []uiRow
 }
 
-// uiKeyWidth is the widest key of rows, measured in face.
+// uiKeyWidth is the widest key of rows, measured in face, and whether
+// any has a swatch or check box.
 type uiKeyWidth struct {
-	rows  []uiRow
-	face  font.Face
-	width int
+	rows               []uiRow
+	face               font.Face
+	width              int
+	swatches, checkbox bool
 }
 
 type uiManager struct {
@@ -198,6 +201,9 @@ type uiManager struct {
 	focused *uiView
 	// resizing is the docked view whose edge is being dragged.
 	resizing *uiView
+	// layoutGen counts the changes to the panels open, which views placed
+	// beside the docked ones depend on.
+	layoutGen uint64
 }
 
 func (m *uiManager) add(view *uiView) {
@@ -214,6 +220,7 @@ func (m *uiManager) show(view *uiView) {
 	m.add(view)
 	view.visible = true
 	if !view.modal {
+		m.layoutGen++
 		m.panels = append(slices.DeleteFunc(m.panels, func(p *uiView) bool { return p == view }), view)
 		return
 	}
@@ -242,6 +249,9 @@ func (m *uiManager) close(view *uiView) {
 		if n := len(m.stack); n > 0 {
 			m.active, m.stack = m.stack[n-1], m.stack[:n-1]
 		}
+	}
+	if !view.modal {
+		m.layoutGen++
 	}
 	m.panels = slices.DeleteFunc(m.panels, func(p *uiView) bool { return p == view })
 	if m.hovered == view {
@@ -736,7 +746,10 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 				}
 				continue
 			}
-			text := strings.Repeat("  ", max(0, item.depth)) + item.marker + item.text
+			text := item.text
+			if item.depth > 0 || item.marker != "" {
+				text = strings.Repeat("  ", item.depth) + item.marker + item.text
+			}
 			// The right-hand column gets at most 45% of a narrow row.
 			secondary := a.truncateModalListText(item.secondary, int(rect.W*0.45))
 			secondaryWidth := measureText(a.fontFace, secondary)
@@ -793,17 +806,15 @@ func (p listPrefix) width() int { return p.swatch + p.checkbox + p.key + p.keyGa
 // the key column at most keyLimit wide.
 func (a *App) rowPrefix(view *uiView, items []uiRow, keyLimit int) listPrefix {
 	var p listPrefix
-	size := a.uiLineHeight()
-	for _, item := range items {
-		if item.swatch != nil {
-			p.swatch = size + a.ipx(a.style(config.ElementSwatch).Gap.V)
-		}
-		if item.checkbox {
-			p.checkbox = size + a.ipx(8)
-		}
-	}
 	if p.key = a.keyColumnWidth(view, items, keyLimit); p.key > 0 {
 		p.keyGap = a.ipx(16)
+	}
+	size := a.uiLineHeight()
+	if view.keyWidth.swatches {
+		p.swatch = size + a.ipx(a.style(config.ElementSwatch).Gap.V)
+	}
+	if view.keyWidth.checkbox {
+		p.checkbox = size + a.ipx(8)
 	}
 	return p
 }
@@ -816,6 +827,8 @@ func (a *App) keyColumnWidth(view *uiView, items []uiRow, limit int) int {
 	if k.face != a.fontFace || len(k.rows) != len(items) || len(items) > 0 && &k.rows[0] != &items[0] {
 		*k = uiKeyWidth{rows: items, face: a.fontFace}
 		for _, item := range items {
+			k.swatches = k.swatches || item.swatch != nil
+			k.checkbox = k.checkbox || item.checkbox
 			if item.key != "" && !item.button {
 				k.width = max(k.width, measureText(a.fontFace, item.key))
 			}

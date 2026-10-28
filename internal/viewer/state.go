@@ -174,6 +174,7 @@ type sdlState struct {
 	styles      *[config.ElementCount]config.Style // the theme's styles, resolved; nil until drawn
 	pathKeys    pathKeys                           // draw functions' paths, packed
 	canvas      canvasCache                        // what canvases draw beyond the UI font
+	drawRects   [2]sdl.FRect                       // rects handed to SDL while drawing, kept to save allocating them
 	frameStart  time.Time                          // when the current animation frame began
 	// displayFrame is the window's display's refresh interval, or 0 when
 	// unknown; see animationFrameDuration.

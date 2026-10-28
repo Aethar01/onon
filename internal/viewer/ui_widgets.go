@@ -5,7 +5,6 @@ import (
 	"slices"
 
 	"onon/internal/config"
-	"onon/internal/keys"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
 	lua "github.com/yuin/gopher-lua"
@@ -146,8 +145,7 @@ func (a *App) releaseUIControl(view *uiView, x, y float32) bool {
 // handleUIControlKey handles the keys that move between a view's controls,
 // Tab and Shift-Tab, and click a focused button or check box, Space and
 // Enter, reporting whether it took the key.
-func (a *App) handleUIControlKey(view *uiView, key keys.Key) bool {
-	name := key.String()
+func (a *App) handleUIControlKey(view *uiView, name string) bool {
 	switch name {
 	case "<Tab>", "<S-Tab>":
 		n := len(view.focusOrder)
