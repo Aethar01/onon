@@ -170,10 +170,19 @@ func TestKeybindEditorCapturesChords(t *testing.T) {
 // moves the selection while the keys are pressed.
 func TestKeybindCaptureKeepsItsRow(t *testing.T) {
 	app := testKeybindApp(t)
-	keys := chooseAction(t, app, "copy")
-	if len(app.keybindMenu.keys) < 2 {
-		t.Fatalf("copy has keys %q, want two", app.keybindMenu.keys)
+	// The default bindings differ by system: take an action that has two
+	// keys on this one.
+	action := ""
+	for _, a := range app.keybindMenu.actions {
+		if len(app.actionKeys()[a]) >= 2 {
+			action = a
+			break
+		}
 	}
+	if action == "" {
+		t.Fatal("no action has two keys")
+	}
+	keys := chooseAction(t, app, action)
 	chosen, other := app.keybindMenu.keys[0], app.keybindMenu.keys[1]
 	keys.selected = 1
 	app.activateUIView(keys)
@@ -182,13 +191,13 @@ func TestKeybindCaptureKeepsItsRow(t *testing.T) {
 	start := time.Now()
 	app.viewKey(keys, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: code})
 	app.finishKeybindCapture(start.Add(time.Duration(app.config.SequenceTimeoutMS+1) * time.Millisecond))
-	if got := app.config.KeyBindings[name]; got != "copy" {
-		t.Fatalf("%s bound to %q, want copy", name, got)
+	if got := app.config.KeyBindings[name]; got != action {
+		t.Fatalf("%s bound to %q, want %s", name, got, action)
 	}
 	if _, kept := app.config.KeyBindings[chosen]; kept {
 		t.Fatalf("%s kept its binding: the capture added one rather than rebinding", chosen)
 	}
-	if got := app.config.KeyBindings[other]; got != "copy" {
+	if got := app.config.KeyBindings[other]; got != action {
 		t.Fatalf("the row passed over lost its binding: %s is %q", other, got)
 	}
 }
