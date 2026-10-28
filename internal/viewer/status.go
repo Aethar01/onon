@@ -5,7 +5,6 @@ import (
 	"image/color"
 	"math"
 	"strings"
-	"unicode/utf8"
 
 	"onon/internal/config"
 
@@ -164,6 +163,7 @@ func (a *App) drawStatusLeft(renderer *sdl.Renderer, l statusLayout, st *config.
 	}
 	prefix := a.inputPrefix()
 	display, _ := a.inputDisplay()
+	display, composeStart, composeLen := a.compose(&a.input, display)
 	parts := []struct {
 		text string
 		clr  color.RGBA
@@ -182,7 +182,23 @@ func (a *App) drawStatusLeft(renderer *sdl.Renderer, l statusLayout, st *config.
 		}
 		x += measureText(a.fontFace, part.text)
 	}
+	layout := a.statusTextLayout(l)
+	a.drawComposition(renderer, &layout, composeStart, composeLen, st.Text.V)
 	return nil
+}
+
+// statusTextLayout is the status bar prompt's text as drawn, after its
+// prefix, scrolled with it.
+func (a *App) statusTextLayout(l statusLayout) textLayout {
+	display, _ := a.inputDisplay()
+	top, bottom := a.statusTextSpan(l)
+	return textLayout{
+		face:       a.fontFace,
+		lines:      layoutLines(a.fontFace, display, 0, false),
+		x:          float32(a.promptOrigin() + measureText(a.fontFace, a.inputPrefix())),
+		y:          float32(top),
+		lineHeight: bottom - top,
+	}
 }
 
 // drawStatusMessage draws the left text outside a prompt: a new message
@@ -222,8 +238,7 @@ func (a *App) promptStart() int {
 func (a *App) inputDisplay() (display, left string) {
 	display, left = a.input.Value, a.input.Left()
 	if a.inputMasked() {
-		display = strings.Repeat("*", utf8.RuneCountInString(display))
-		left = strings.Repeat("*", utf8.RuneCountInString(left))
+		display, left = maskText(display), maskText(left)
 	}
 	return display, left
 }
@@ -250,21 +265,10 @@ func (a *App) promptOrigin() int {
 }
 
 func (a *App) drawInputSelection(renderer *sdl.Renderer, l statusLayout) error {
-	if a.mode == modeNormal {
-		return nil
+	if a.mode != modeNormal {
+		layout := a.statusTextLayout(l)
+		a.drawTextSelection(renderer, &layout, &a.input)
 	}
-	start, end, ok := a.input.SelectionRange()
-	if !ok {
-		return nil
-	}
-	display, _ := a.inputDisplay()
-	left, rest := splitAtRune(display, start)
-	selected, _ := splitAtRune(rest, end-start)
-	x := a.promptOrigin() + measureText(a.fontFace, a.inputPrefix()+left)
-	w := max(1, measureText(a.fontFace, selected))
-	top, bottom := a.statusTextSpan(l)
-	st := a.style(config.ElementInputSelection)
-	a.drawBox(renderer, &st, sdl.FRect{X: float32(x), Y: float32(top), W: float32(w), H: float32(max(1, bottom-top))})
 	return nil
 }
 
@@ -275,16 +279,11 @@ func (a *App) statusTextSpan(l statusLayout) (int, int) {
 }
 
 func (a *App) drawInputCursor(renderer *sdl.Renderer, l statusLayout) error {
-	if a.mode == modeNormal {
-		return nil
+	if a.mode != modeNormal {
+		display, _ := a.inputDisplay()
+		layout := a.statusTextLayout(l)
+		a.drawTextCursor(renderer, &layout, &a.input, tweenKey{kind: "cursor", text: display})
 	}
-	display, left := a.inputDisplay()
-	// The cursor glides when moved through the text, and snaps to where
-	// typing or deleting puts it, which a glide would only lag behind.
-	x := a.animate(tweenKey{kind: "cursor", text: display}, float64(a.promptOrigin()+measureText(a.fontFace, a.inputPrefix()+left)), a.config.Theme.Motion.Cursor)
-	top, bottom := a.statusTextSpan(l)
-	st := a.style(config.ElementCursor)
-	a.drawBox(renderer, &st, sdl.FRect{X: float32(math.Round(x)), Y: float32(top), W: a.lineWidth(st.Width.V), H: float32(bottom - top)})
 	return nil
 }
 
@@ -339,13 +338,13 @@ func (a *App) formatStatusBar(template string) string {
 		message = promptToken + a.input.Value
 		inputToken = a.input.Value
 	case modePassword:
-		message = a.inputPrefix() + strings.Repeat("*", len([]rune(a.input.Value)))
+		message = a.inputPrefix() + maskText(a.input.Value)
 		inputToken = message
 	case modePrompt:
 		message = a.inputPrefix() + a.input.Value
 		inputToken = a.input.Value
 		if a.promptState.masked {
-			message = a.inputPrefix() + strings.Repeat("*", len([]rune(a.input.Value)))
+			message = a.inputPrefix() + maskText(a.input.Value)
 			inputToken = message
 		}
 	}

@@ -305,7 +305,11 @@ func (a *App) handleSDLEvent(event *sdl.Event) error {
 		a.handleSDLKeyDown(&e)
 	case sdl.EventTextInput:
 		e := event.Text()
+		a.composition = ""
 		a.handleSDLTextInput(&e)
+	case sdl.EventTextEditing:
+		e := event.Edit()
+		a.handleSDLTextEditing(&e)
 	case sdl.EventMouseWheel:
 		a.preview = nil
 		if a.autoscroll != nil {
@@ -427,6 +431,9 @@ func (a *App) syncTextInput() {
 		return
 	}
 	want := a.textInputNeeded()
+	if !want {
+		a.composition = ""
+	}
 	if want == sdl.TextInputActive(a.window) {
 		return
 	}

@@ -20,17 +20,17 @@ import (
 // uiField is a text field a view's canvas draws.
 type uiField struct {
 	input  textInput
-	rect   sdl.FRect // where it was last drawn, in the window
-	textX  float32   // where its text starts, scrolled
-	scroll int       // how far its text is scrolled left, keeping the cursor in it
-	face   font.Face
+	rect   sdl.FRect  // where it was last drawn, in the window
+	layout textLayout // its text as last drawn
+	scroll [2]int     // how far it is scrolled: left in pixels, down in lines
+	lines  int        // how many lines it shows; more than one wraps and takes newlines
 	secret bool
 }
 
 // display is the text the field shows: its own, or dots for a secret.
 func (f *uiField) display() string {
 	if f.secret {
-		return strings.Repeat("•", utf8.RuneCountInString(f.input.Value))
+		return maskText(f.input.Value)
 	}
 	return f.input.Value
 }
@@ -146,14 +146,18 @@ func (a *App) typeUIText(text string) bool {
 
 // handleUIEditKey handles a key pressed in view while it has a field or
 // prompt to type in: Tab and Shift-Tab move between its fields, Enter
-// submits, and the editing keys edit. Keys that type text are taken, the
-// text coming as it is typed. It reports whether it took the key.
+// submits, and the editing keys edit. In a field of more than one line,
+// Enter starts a new line, Ctrl- or Cmd-Enter submits, and the arrows,
+// Home and End move by line. Keys that type text are taken, the text
+// coming as it is typed. It reports whether it took the key.
 func (a *App) handleUIEditKey(view *uiView, key keys.Key) bool {
 	target, ok := a.uiEditTarget()
 	if !ok || target.view != view {
 		return false
 	}
 	name := key.String()
+	field := view.fields[target.id]
+	multiline := field != nil && field.lines > 1
 	switch name {
 	case "<Tab>", "<S-Tab>":
 		if n := len(view.fieldOrder); n > 0 {
@@ -167,12 +171,30 @@ func (a *App) handleUIEditKey(view *uiView, key keys.Key) bool {
 			a.pendingRedraw = true
 			return true
 		}
-	case "<CR>":
+	case "<CR>", "<C-CR>", "<D-CR>":
+		if multiline && name == "<CR>" {
+			a.editUIText(target, func(t *textInput) { t.InsertText("\n") })
+			return true
+		}
 		if view.onSubmit != nil {
 			view.onSubmit(a, target.id, target.input.Value)
 			return true
 		}
 		return false
+	}
+	if multiline {
+		l := &field.layout
+		move := map[string]func(int) int{
+			"Up":   func(i int) int { return l.moveLines(i, -1) },
+			"Down": func(i int) int { return l.moveLines(i, 1) },
+			"Home": func(i int) int { return l.lines[l.line(i)].start },
+			"End":  func(i int) int { return l.lines[l.line(i)].end },
+		}
+		if to, ok := move[key.Name]; ok && key.Mod&^keys.Shift == 0 && len(l.lines) > 0 {
+			extend := key.Mod&keys.Shift != 0
+			a.editUIText(target, func(t *textInput) { t.SetCursor(to(t.Cursor), extend) })
+			return true
+		}
 	}
 	if edit, ok := textEditFor(runtime.GOOS, name); ok {
 		edit(a)
@@ -185,20 +207,15 @@ func (a *App) handleUIEditKey(view *uiView, key keys.Key) bool {
 	return key.Mod&(keys.Ctrl|keys.Cmd) == 0 && key.Mod&keys.Alt != 0 && utf8.RuneCountInString(key.Name) == 1
 }
 
-// pressUIField focuses the field of view at x, y, putting the cursor
-// where it was pressed, and reports whether there was one.
+// pressUIField focuses the field or prompt of view at x, y, putting the
+// cursor where it was pressed and starting a selection a drag stretches,
+// and reports whether there was one.
 func (a *App) pressUIField(view *uiView, x, y float32) bool {
-	for _, id := range view.fieldOrder {
-		f := view.fields[id]
-		r := f.rect
-		if x < r.X || x >= r.X+r.W || y < r.Y || y >= r.Y+r.H {
-			continue
-		}
-		view.focusField = id
-		if f.face != nil {
-			f.input.Set(f.input.Value)
-			f.input.Cursor = runeIndexAt(f.face, f.display(), float64(x-f.textX))
-			f.input.Anchor = f.input.Cursor
+	inside := func(r sdl.FRect) bool { return x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H }
+	press := func(l *textLayout, input *textInput) bool {
+		if l.face != nil && len(l.lines) > 0 {
+			pressText(l, input, x, y, false)
+			input.mouseSelecting = true
 		}
 		if !view.modal {
 			a.focusUIView(view, true)
@@ -206,7 +223,38 @@ func (a *App) pressUIField(view *uiView, x, y float32) bool {
 		a.pendingRedraw = true
 		return true
 	}
+	for _, id := range view.fieldOrder {
+		if f := view.fields[id]; inside(f.rect) {
+			view.focusField = id
+			return press(&f.layout, &f.input)
+		}
+	}
+	if view.prompt != "" && inside(view.promptRect) {
+		view.focusField = ""
+		return press(&view.promptLayout, &view.promptInput)
+	}
 	return false
+}
+
+// dragUIField stretches the selection of the field or prompt of view being
+// selected with the pointer to x, y, done once the button is let go, and
+// reports whether one was.
+func (a *App) dragUIField(view *uiView, x, y float32, done bool) bool {
+	drag := func(l *textLayout, input *textInput) bool {
+		if !input.mouseSelecting || len(l.lines) == 0 {
+			return false
+		}
+		pressText(l, input, x, y, true)
+		input.mouseSelecting = !done
+		a.pendingRedraw = true
+		return true
+	}
+	for _, f := range view.fields {
+		if drag(&f.layout, &f.input) {
+			return true
+		}
+	}
+	return drag(&view.promptLayout, &view.promptInput)
 }
 
 // textBoxScroll keeps the cursor at cursorX within width, scrolled by
@@ -221,37 +269,59 @@ func textBoxScroll(scroll, cursorX, textW, width int) int {
 	return clampInt(scroll, 0, max(0, textW-width+1))
 }
 
-// drawEditableText draws text being edited in face along a line from x,
-// at most width wide, with input's selection and, if focused, its
-// cursor, scrolled to keep the cursor in sight, returning where the text
-// starts. With no text, placeholder is drawn instead, in placeholderColor.
-func (a *App) drawEditableText(renderer *sdl.Renderer, face font.Face, input *textInput, display string, x, top, width int, scroll *int, focused bool, textColor, placeholderColor color.RGBA, placeholder string) float32 {
-	m := face.Metrics()
-	ascent, height := m.Ascent.Ceil(), faceLineHeight(face)
-	left, _ := splitAtRune(display, input.Cursor)
-	cursorX := measureText(face, left)
-	*scroll = textBoxScroll(*scroll, cursorX, measureText(face, display), width)
-	textX := x - *scroll
-	clip := sdl.FRect{X: float32(x), Y: float32(top), W: float32(width), H: float32(height)}
+// editBox is a box of text being typed into: the text, as shown, in a face,
+// lines lines high and width wide from x, y, scrolled to keep the cursor
+// in sight; a box of one line scrolls across, and one of more wraps and
+// scrolls down. With no text, the placeholder shows.
+type editBox struct {
+	input                *textInput
+	display, placeholder string
+	face                 font.Face
+	x, y, width, lines   int
+	scroll               *[2]int
+	focused              bool
+	textColor, phColor   color.RGBA
+	compositionColor     config.Color
+	cursor               tweenKey
+}
+
+// drawEditBox draws b, with its selection, the input method's composition
+// and, if focused, its cursor, returning its text as laid out.
+func (a *App) drawEditBox(renderer *sdl.Renderer, b editBox) textLayout {
+	multiline := b.lines > 1
+	display, composeStart, composeLen := a.compose(b.input, b.display)
+	l := textLayout{face: b.face, lines: layoutLines(b.face, display, b.width, multiline), lineHeight: faceLineHeight(b.face)}
+	cursorX, _ := l.at(b.input.Cursor)
+	if multiline {
+		line := l.line(b.input.Cursor)
+		b.scroll[1] = clampInt(b.scroll[1], line-b.lines+1, line)
+		b.scroll[0] = 0
+	} else {
+		b.scroll[0] = textBoxScroll(b.scroll[0], int(cursorX), measureText(b.face, display), b.width)
+	}
+	l.x, l.y = float32(b.x-b.scroll[0]), float32(b.y-b.scroll[1]*l.lineHeight)
+	if renderer == nil {
+		return l
+	}
+	clip := sdl.FRect{X: float32(b.x), Y: float32(b.y), W: float32(b.width), H: float32(b.lines * l.lineHeight)}
+	ascent := b.face.Metrics().Ascent.Ceil()
 	a.withClip(renderer, clip, func() error {
-		if start, end, ok := input.SelectionRange(); ok && focused {
-			before, rest := splitAtRune(display, start)
-			selected, _ := splitAtRune(rest, end-start)
-			st := a.style(config.ElementInputSelection)
-			a.drawBox(renderer, &st, sdl.FRect{X: float32(textX + measureText(face, before)), Y: float32(top), W: float32(max(1, measureText(face, selected))), H: float32(height)})
+		if b.focused {
+			a.drawTextSelection(renderer, &l, b.input)
 		}
-		if display == "" && placeholder != "" {
-			a.drawTextWithFace(renderer, placeholder, textX, top+ascent, placeholderColor, face, false)
-		} else {
-			a.drawTextWithFace(renderer, display, textX, top+ascent, textColor, face, false)
+		if display == "" && b.placeholder != "" {
+			a.drawTextWithFace(renderer, b.placeholder, int(l.x), int(l.y)+ascent, b.phColor, b.face, false)
 		}
-		if focused {
-			st := a.style(config.ElementCursor)
-			a.drawBox(renderer, &st, sdl.FRect{X: float32(textX + cursorX), Y: float32(top), W: a.lineWidth(st.Width.V), H: float32(height)})
+		for i, ln := range l.lines {
+			a.drawTextWithFace(renderer, ln.text, int(l.x), int(l.y)+i*l.lineHeight+ascent, b.textColor, b.face, false)
+		}
+		a.drawComposition(renderer, &l, composeStart, composeLen, b.compositionColor)
+		if b.focused {
+			a.drawTextCursor(renderer, &l, b.input, b.cursor)
 		}
 		return nil
 	})
-	return float32(textX)
+	return l
 }
 
 func (c *elementCanvas) Input(id string, x, y, w float64, o config.InputOptions) float64 {
@@ -261,7 +331,7 @@ func (c *elementCanvas) Input(id string, x, y, w float64, o config.InputOptions)
 	}
 	a := c.app
 	f := view.field(id)
-	f.secret = o.Secret
+	f.secret, f.lines = o.Secret, max(1, o.Lines)
 	view.fieldOrder = append(view.fieldOrder, id)
 	if view.fields[view.focusField] == nil {
 		view.focusField = id
@@ -272,24 +342,26 @@ func (c *elementCanvas) Input(id string, x, y, w float64, o config.InputOptions)
 		element = config.ElementInputFocused
 	}
 	st := a.style(element)
-	f.face = a.styleFace(&st)
-	if f.face == nil {
+	face := a.styleFace(&st)
+	if face == nil {
 		return 0
 	}
 	padTop, padRight, padBottom, padLeft := a.insets(st.Padding.V)
 	scale := float64(a.px(1))
-	h := (float64(faceLineHeight(f.face)) + float64(padTop+padBottom)) / scale
+	h := (float64(f.lines*faceLineHeight(face)) + float64(padTop+padBottom)) / scale
 	rect := c.rect(x, y, w, h)
 	f.rect = rect
 	view.regions = append(view.regions, uiRegion{id: lua.LString(id), rect: rect})
-	if c.renderer == nil {
-		return h
+	if c.renderer != nil {
+		a.drawBox(c.renderer, &st, rect)
 	}
-	a.drawBox(c.renderer, &st, rect)
 	left := int(math.Round(float64(rect.X + padLeft)))
-	width := int(rect.X+rect.W-padRight) - left
-	f.textX = a.drawEditableText(c.renderer, f.face, &f.input, f.display(), left, int(math.Round(float64(rect.Y+padTop))), width, &f.scroll, focused,
-		a.textColor(&st, false), a.textColor(&st, true), o.Placeholder)
+	f.layout = a.drawEditBox(c.renderer, editBox{
+		input: &f.input, display: f.display(), placeholder: o.Placeholder, face: face,
+		x: left, y: int(math.Round(float64(rect.Y + padTop))), width: int(rect.X+rect.W-padRight) - left, lines: f.lines,
+		scroll: &f.scroll, focused: focused, textColor: a.textColor(&st, false), phColor: a.textColor(&st, true),
+		compositionColor: st.Text.V, cursor: tweenKey{kind: "cursor", view: view, text: id + "\x00" + f.input.Value},
+	})
 	c.restoreClip()
 	return h
 }
@@ -323,8 +395,13 @@ func (a *App) drawPromptHeader(renderer *sdl.Renderer, view *uiView, rect sdl.FR
 		end -= w + a.ipx(st.Gap.V)
 	}
 	textTop := baseline - a.fontFace.Metrics().Ascent.Ceil()
-	a.drawEditableText(renderer, a.fontFace, &view.promptInput, view.promptInput.Value, x, textTop, max(1, end-x), &view.promptScroll, a.keyView() == view,
-		a.textColor(&st, false), a.textColor(&st, true), "")
+	view.promptRect = sdl.FRect{X: float32(x), Y: top, W: float32(max(1, end-x)), H: float32(height)}
+	view.promptLayout = a.drawEditBox(renderer, editBox{
+		input: &view.promptInput, display: view.promptInput.Value, face: a.fontFace,
+		x: x, y: textTop, width: max(1, end-x), lines: 1, scroll: &view.promptScroll, focused: a.keyView() == view,
+		textColor: a.textColor(&st, false), phColor: a.textColor(&st, true), compositionColor: st.Text.V,
+		cursor: tweenKey{kind: "cursor", view: view, text: view.promptInput.Value},
+	})
 }
 
 func formatCount(shown, total int) string {

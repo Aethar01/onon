@@ -150,10 +150,12 @@ type Canvas interface {
 }
 
 // InputOptions are how a text field is drawn: a placeholder shown while
-// it is empty, and with Secret its text hidden, as a password's.
+// it is empty, with Secret its text hidden, as a password's, and with
+// Lines more than one, that many lines, wrapping and taking newlines.
 type InputOptions struct {
 	Placeholder string
 	Secret      bool
+	Lines       int
 }
 
 // TextOptions are how a canvas draws text. Size is in logical pixels, the
@@ -422,6 +424,7 @@ func luaCanvasMetatable(L *lua.LState, cache *drawCache) *lua.LTable {
 			if opts, ok := L.Get(6).(*lua.LTable); ok {
 				o.Placeholder = lua.LVAsString(opts.RawGetString("placeholder"))
 				o.Secret = lua.LVAsBool(opts.RawGetString("secret"))
+				o.Lines = int(lua.LVAsNumber(opts.RawGetString("lines")))
 			}
 			L.Push(lua.LNumber(c.Input(L.CheckString(2), float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), float64(L.CheckNumber(5)), o)))
 			return 1

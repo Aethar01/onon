@@ -233,6 +233,11 @@ type inputState struct {
 	savedPos       int
 	pointer        sdl.FPoint // last pointer position, for actions on what is under it
 	inputScroll    int        // pixels the status-bar prompt is scrolled left
+	// composition is what the input method is composing, shown at the
+	// cursor of the text typed into until typed; textInputArea is where it
+	// was last told the cursor is.
+	composition    string
+	textInputArea  sdl.Rect
 	passwordPrompt pendingPasswordPrompt
 	mouseBindings  map[string]string
 	searchInput    searchMode

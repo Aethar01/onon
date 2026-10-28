@@ -108,7 +108,9 @@ type uiView struct {
 	// prompt labels the text field in the header whose text is the query.
 	prompt       string
 	promptInput  textInput
-	promptScroll int
+	promptScroll [2]int
+	promptRect   sdl.FRect  // where its text was last drawn
+	promptLayout textLayout // its text as last drawn
 	// fields are the text fields drawBody has drawn, fieldOrder those it
 	// drew last, in order, and focusField the one typing goes to.
 	fields     map[string]*uiField

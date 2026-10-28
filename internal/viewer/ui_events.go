@@ -198,6 +198,7 @@ func (a *App) viewMouseButton(view *uiView, e *sdl.MouseButtonEvent) {
 		return
 	}
 	if !down {
+		a.dragUIField(view, e.X, e.Y, true)
 		view.draggingScrollbar = false
 		return
 	}
@@ -243,6 +244,9 @@ func (a *App) viewMouseMotion(view *uiView, e *sdl.MouseMotionEvent) bool {
 	}
 	if view.draggingScrollbar {
 		a.viewDragScrollbar(view, e.Y)
+		return true
+	}
+	if view.pointerDown && a.dragUIField(view, e.X, e.Y, false) {
 		return true
 	}
 	return a.uiViewHover(view, int(e.X), int(e.Y)) || redraw
