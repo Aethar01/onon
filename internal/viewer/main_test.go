@@ -1,6 +1,7 @@
 package viewer
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -12,7 +13,8 @@ import (
 
 // TestMain runs the tests with the user's directories pointed at a
 // temporary one, so no test reads or writes the real configuration or
-// session database.
+// session database, and with printing refused, so no test reaches a real
+// printer; fakePrinting records the jobs a test starts.
 func TestMain(m *testing.M) {
 	remotetest.ServeIfFakeSSH()
 	if code, ok := remote.RunAskpass(); ok {
@@ -32,6 +34,9 @@ func runIsolated(m *testing.M) int {
 		os.Setenv(name, dir)
 	}
 	os.Unsetenv("XDG_CONFIG_DIRS")
+	startPrintJob = func(*App, printSettings, []string) (func() (string, error), error) {
+		return nil, errors.New("tests do not print")
+	}
 	defer config.CloseSessionDatabase()
 	return m.Run()
 }

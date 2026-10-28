@@ -68,41 +68,6 @@ func parseLpArgs(args []string) (printSettings, error) {
 	return s, nil
 }
 
-// parsePageRanges turns lp page ranges such as "1-3,5,7-" into 0-based
-// pages of a document count pages long; empty means every page.
-func parsePageRanges(ranges string, count int) ([]int, error) {
-	if strings.TrimSpace(ranges) == "" {
-		ranges = "1-"
-	}
-	var pages []int
-	for part := range strings.SplitSeq(ranges, ",") {
-		part = strings.TrimSpace(part)
-		lo, hi, isRange := strings.Cut(part, "-")
-		first, last := 1, count
-		var err error
-		if lo != "" || !isRange {
-			if first, err = strconv.Atoi(lo); err != nil {
-				return nil, fmt.Errorf("bad page range %q", part)
-			}
-		}
-		switch {
-		case !isRange:
-			last = first
-		case hi != "":
-			if last, err = strconv.Atoi(hi); err != nil {
-				return nil, fmt.Errorf("bad page range %q", part)
-			}
-		}
-		if first < 1 || last < first || last > count {
-			return nil, fmt.Errorf("page range %q is outside 1-%d", part, count)
-		}
-		for p := first; p <= last; p++ {
-			pages = append(pages, p-1)
-		}
-	}
-	return pages, nil
-}
-
 func printDuplex(sides string) winprint.Duplex {
 	switch sides {
 	case "two-sided-long-edge":
