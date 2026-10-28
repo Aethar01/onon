@@ -179,7 +179,7 @@ func (a *App) handleAnimatedMouseWheel(e *sdl.MouseWheelEvent) {
 		return
 	}
 	if view := a.activeModalUIView(); view != nil {
-		if view.onWheel == nil || !view.onWheel(a, e) {
+		if !a.viewWheel(view, e) {
 			a.queueModalSmoothScroll(view, modalWheelRows(e))
 		}
 		return

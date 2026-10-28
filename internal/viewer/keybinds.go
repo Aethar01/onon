@@ -7,12 +7,14 @@ import (
 	"time"
 
 	"onon/internal/config"
-
-	"github.com/jupiterrider/purego-sdl3/sdl"
+	"onon/internal/keys"
 )
 
-const newKeybindLabel = "New keybind..."
+const newKeybindLabel = "+ New keybind..."
 
+// The keybind menu lists the bindings under a button for a new one.
+// Choosing a binding, or an action for a new one, captures the keys to
+// bind it to.
 type keybindMenuState struct {
 	view      *uiView
 	capturing bool
@@ -37,78 +39,144 @@ func (a *App) toggleKeybindMenu() {
 	}
 	a.closeAllUI()
 	a.keybindMenu = keybindMenuState{view: a.newKeybindView()}
-	a.keybindMenu.view.selected = -1
 	a.refreshKeybindRows()
 	a.showUIView(a.keybindMenu.view)
 }
 
-func (a *App) refreshKeybindRows() {
-	if a.keybindMenu.selectingAction {
-		a.refreshKeybindActionRows()
-		return
+func (a *App) newKeybindView() *uiView {
+	view := &uiView{
+		id: "core:keybinds", owner: "core", modal: true, element: config.ElementPanel, place: percentPlace(76, 80),
+		header:   func(a *App, _ *uiView, _ int) string { return a.keybindMenuHeader() },
+		keyHook:  func(a *App, key keys.Key, repeat bool) bool { return a.keybindMenuKey(key, repeat) },
+		onAction: func(a *App, _ *uiView, action string) bool { return a.keybindMenuAction(action) },
+		onSelect: func(a *App, row uiRow) { a.chooseKeybindRow(row) },
 	}
-	rows := make([]keybindRow, 0, len(a.config.KeyBindings))
-	for key, action := range a.config.KeyBindings {
-		rows = append(rows, keybindRow{key: key, action: action})
-	}
-	sort.Slice(rows, func(i, j int) bool {
-		if rows[i].action == rows[j].action {
-			return rows[i].key < rows[j].key
+	return view
+}
+
+func (a *App) keybindMenuHeader() string {
+	m := &a.keybindMenu
+	if m.capturing {
+		action := m.captureAction
+		if row, ok := a.selectedKeybind(); ok && action == "" {
+			action = row.action
 		}
-		return rows[i].action < rows[j].action
-	})
-	a.keybindMenu.rows = rows
-	a.keybindMenu.view.rows = keybindUIRows(rows)
-	a.keybindMenu.view.selected = clampInt(a.keybindMenu.view.selected, -1, max(-1, len(rows)-1))
-	a.ensureKeybindSelectionVisible()
+		if len(m.captured) > 0 {
+			return action + ": " + strings.Join(m.captured, " ") + " …"
+		}
+		return "Press keys for " + action + " (Esc cancels)"
+	}
+	if m.selectingAction {
+		return fmt.Sprintf("Select action (%d)", len(m.rows))
+	}
+	return fmt.Sprintf("Keybinds (%d)", len(m.rows))
 }
 
-func (a *App) refreshKeybindActionRows() {
-	actions := config.Actions()
-	if a.runtime != nil {
-		actions = a.runtime.ActionNames()
-	}
-	sort.Strings(actions)
-	rows := make([]keybindRow, 0, len(actions))
-	for _, action := range actions {
-		rows = append(rows, keybindRow{action: action})
-	}
-	a.keybindMenu.rows = rows
-	a.keybindMenu.view.rows = keybindUIRows(rows)
-	a.keybindMenu.view.selected = clampInt(a.keybindMenu.view.selected, 0, max(0, len(rows)-1))
-	a.ensureKeybindSelectionVisible()
-}
-
-func (a *App) handleKeybindMenuKey(e *sdl.KeyboardEvent) bool {
-	if e.Type != sdl.EventKeyDown || e.Repeat {
+// keybindMenuKey captures keys while capturing, Escape cancelling, and
+// otherwise deletes the selected binding with Delete or Backspace.
+func (a *App) keybindMenuKey(key keys.Key, repeat bool) bool {
+	m := &a.keybindMenu
+	if m.capturing {
+		if repeat {
+			return true
+		}
+		token := key.String()
+		if token == "<Esc>" {
+			m.capturing, m.captured, m.captureAction = false, nil, ""
+			return true
+		}
+		m.captured = append(m.captured, token)
+		m.capturedAt = time.Now()
+		a.wakeAfter(time.Duration(a.config.SequenceTimeoutMS) * time.Millisecond)
 		return true
 	}
-	if !a.keybindMenu.capturing && !a.keybindMenu.selectingAction && (e.Key == sdl.KeycodeDelete || e.Key == sdl.KeycodeBackspace) {
+	if token := key.String(); !m.selectingAction && !repeat && (token == "<Del>" || token == "<BS>") {
 		a.deleteSelectedKeybind()
 		return true
 	}
-	if key, ok := keyToken(e); ok {
-		token := key.String()
-		if a.keybindMenu.capturing {
-			if token == "<Esc>" {
-				a.keybindMenu.capturing = false
-				a.keybindMenu.captured = nil
-				return true
-			}
-			a.keybindMenu.captured = append(a.keybindMenu.captured, token)
-			a.keybindMenu.capturedAt = time.Now()
-			a.wakeAfter(time.Duration(a.config.SequenceTimeoutMS) * time.Millisecond)
+	return false
+}
+
+// keybindMenuAction goes back from choosing an action to the bindings on
+// close, and closes the menu on its own toggle.
+func (a *App) keybindMenuAction(action string) bool {
+	m := &a.keybindMenu
+	switch action {
+	case "close", "keybinds":
+		if m.selectingAction {
+			m.selectingAction = false
+			m.view.selected, m.view.scroll = 0, 0
+			a.refreshKeybindRows()
 			return true
 		}
-		if action, ok := a.sequenceLookup[token]; ok {
-			prevMode := a.mode
-			a.runKeybindMenuAction(action)
-			if prevMode == modeNormal && a.mode != modeNormal {
-				a.ignoreKeyText(key)
-			}
+		if action == "keybinds" {
+			a.closeUIView(m.view, false)
+			return true
 		}
 	}
-	return true
+	return false
+}
+
+func (a *App) chooseKeybindRow(row uiRow) {
+	m := &a.keybindMenu
+	if row.button {
+		m.selectingAction = true
+		m.view.selected, m.view.scroll = 0, 0
+		a.refreshKeybindRows()
+		return
+	}
+	if r, ok := a.selectedKeybind(); ok {
+		if m.selectingAction {
+			m.captureAction = r.action
+		}
+		m.capturing = true
+	}
+}
+
+// selectedKeybind is the binding, or action, of the selected row.
+func (a *App) selectedKeybind() (keybindRow, bool) {
+	m := &a.keybindMenu
+	i := m.view.selected
+	if !m.selectingAction {
+		i-- // past the button
+	}
+	if i < 0 || i >= len(m.rows) {
+		return keybindRow{}, false
+	}
+	return m.rows[i], true
+}
+
+func (a *App) refreshKeybindRows() {
+	m := &a.keybindMenu
+	var rows []uiRow
+	if m.selectingAction {
+		actions := config.Actions()
+		if a.runtime != nil {
+			actions = a.runtime.ActionNames()
+		}
+		sort.Strings(actions)
+		m.rows = make([]keybindRow, 0, len(actions))
+		for i, action := range actions {
+			m.rows = append(m.rows, keybindRow{action: action})
+			rows = append(rows, uiRow{index: i, text: action, value: action})
+		}
+	} else {
+		m.rows = make([]keybindRow, 0, len(a.config.KeyBindings))
+		for key, action := range a.config.KeyBindings {
+			m.rows = append(m.rows, keybindRow{key: key, action: action})
+		}
+		sort.Slice(m.rows, func(i, j int) bool {
+			if m.rows[i].action == m.rows[j].action {
+				return m.rows[i].key < m.rows[j].key
+			}
+			return m.rows[i].action < m.rows[j].action
+		})
+		rows = append(rows, uiRow{index: 0, text: newKeybindLabel, button: true})
+		for _, row := range m.rows {
+			rows = append(rows, uiRow{index: len(rows), key: row.key, text: row.action, value: row.action})
+		}
+	}
+	a.setUIViewRows(m.view, rows)
 }
 
 // captureDeadline is when the keys captured so far are bound, or the zero
@@ -131,11 +199,8 @@ func (a *App) finishKeybindCapture(now time.Time) {
 }
 
 func (a *App) deleteSelectedKeybind() {
-	if a.runtime == nil || a.keybindMenu.view == nil || a.keybindMenu.view.selected < 0 || a.keybindMenu.view.selected >= len(a.keybindMenu.rows) {
-		return
-	}
-	row := a.keybindMenu.rows[a.keybindMenu.view.selected]
-	if row.key == "" {
+	row, ok := a.selectedKeybind()
+	if a.runtime == nil || !ok || row.key == "" {
 		return
 	}
 	if err := a.runtime.UnbindKey(row.key); err != nil {
@@ -147,68 +212,23 @@ func (a *App) deleteSelectedKeybind() {
 	a.refreshKeybindRows()
 }
 
-func (a *App) runKeybindMenuAction(action string) {
-	if delta, ok := a.listPageDelta(a.keybindMenu.view, action); ok {
-		a.moveKeybindSelection(delta)
-		return
-	}
-	switch action {
-	case "scroll_down":
-		a.moveKeybindSelection(1)
-	case "scroll_up":
-		a.moveKeybindSelection(-1)
-	case "confirm":
-		a.confirmKeybindMenuSelection()
-	case "close", "keybinds":
-		if a.keybindMenu.selectingAction {
-			a.keybindMenu.selectingAction = false
-			a.keybindMenu.view.selected = -1
-			a.keybindMenu.view.scroll = 0
-			a.refreshKeybindRows()
-			return
-		}
-		a.closeActiveUI()
-	default:
-		a.runAction(action)
-	}
-}
-
-func (a *App) confirmKeybindMenuSelection() {
-	if !a.keybindMenu.selectingAction && a.keybindMenu.view.selected == -1 {
-		a.startNewKeybind()
-		return
-	}
-	if len(a.keybindMenu.rows) == 0 {
-		return
-	}
-	a.keybindMenu.captureAction = a.keybindMenu.rows[a.keybindMenu.view.selected].action
-	a.keybindMenu.capturing = true
-}
-
-func (a *App) startNewKeybind() {
-	a.keybindMenu.selectingAction = true
-	a.keybindMenu.view.selected = 0
-	a.keybindMenu.view.scroll = 0
-	a.refreshKeybindRows()
-}
-
 func (a *App) rebindSelectedKey(key string) {
-	if a.runtime == nil || a.keybindMenu.view == nil || a.keybindMenu.view.selected < 0 || a.keybindMenu.view.selected >= len(a.keybindMenu.rows) {
+	m := &a.keybindMenu
+	row, ok := a.selectedKeybind()
+	if a.runtime == nil || m.view == nil || !ok {
 		return
 	}
-	row := a.keybindMenu.rows[a.keybindMenu.view.selected]
 	action := row.action
-	if a.keybindMenu.captureAction != "" {
-		action = a.keybindMenu.captureAction
+	if m.captureAction != "" {
+		action = m.captureAction
 	}
 	if strings.HasPrefix(action, "__lua_callback_") {
 		a.message = "cannot persist callback keybind"
-		a.keybindMenu.capturing = false
-		a.keybindMenu.captureAction = ""
+		m.capturing, m.captureAction = false, ""
 		return
 	}
 	var err error
-	if row.key == "" {
+	if row.key == "" || m.selectingAction {
 		err = a.runtime.SetKeyBinding(key, action)
 	} else {
 		err = a.runtime.RebindKey(row.key, key, action)
@@ -219,208 +239,6 @@ func (a *App) rebindSelectedKey(key string) {
 		a.message = fmt.Sprintf("bound %s to %s", key, action)
 	}
 	a.applyConfig(a.runtime.Config(), nil)
-	a.keybindMenu.capturing = false
-	a.keybindMenu.captureAction = ""
-	a.keybindMenu.selectingAction = false
+	m.capturing, m.captureAction, m.selectingAction = false, "", false
 	a.refreshKeybindRows()
-}
-
-func (a *App) moveKeybindSelection(delta int) {
-	if len(a.keybindMenu.rows) == 0 && a.keybindMenu.selectingAction {
-		return
-	}
-	minSelection := 0
-	if !a.keybindMenu.selectingAction {
-		minSelection = -1
-	}
-	if a.keybindMenu.view.selected < minSelection {
-		a.keybindMenu.view.selected = minSelection
-	}
-	_, rows := a.keybindMenuListGeometry()
-	if a.keybindMenu.selectingAction {
-		a.moveUIViewSelection(a.keybindMenu.view, delta)
-		return
-	}
-	a.keybindMenu.view.selected = clampInt(a.keybindMenu.view.selected+delta, minSelection, len(a.keybindMenu.rows)-1)
-	if a.keybindMenu.view.selected >= 0 {
-		a.keybindMenu.view.scroll = modalListScrollForSelection(a.keybindMenu.view.scroll, a.keybindMenu.view.selected, rows, len(a.keybindMenu.rows), a.config.ScrollOff)
-	}
-}
-
-func (a *App) ensureKeybindSelectionVisible() {
-	if a.keybindMenu.view.selected < 0 {
-		a.keybindMenu.view.scroll = 0
-		return
-	}
-	a.ensureUIViewSelectionVisible(a.keybindMenu.view)
-}
-
-func (a *App) dragKeybindScrollbar(y int) {
-	a.uiViewDragScrollbar(a.keybindMenu.view, y)
-}
-
-func (a *App) clickKeybindMenu(x, y int) {
-	view := a.keybindMenu.view
-	if a.uiViewStartScrollbarDrag(view, x, y) {
-		return
-	}
-	menuRect, _ := a.keybindMenuGeometry()
-	if !a.keybindMenu.selectingAction {
-		if pointInRect(x, y, a.keybindNewButtonRect(menuRect)) {
-			view.selected = -1
-			a.startNewKeybind()
-			return
-		}
-	}
-	item, ok := a.uiViewIndexAt(view, x, y)
-	if !ok {
-		if !pointInRect(x, y, menuRect) {
-			a.closeUIView(view, false)
-		}
-		return
-	}
-	view.selected = item.index
-	a.confirmKeybindMenuSelection()
-}
-
-func (a *App) hoverKeybindMenu(x, y int) {
-	if !a.keybindMenu.selectingAction {
-		menuRect, _ := a.keybindMenuGeometry()
-		if pointInRect(x, y, a.keybindNewButtonRect(menuRect)) {
-			a.keybindMenu.view.selected = -1
-			return
-		}
-	}
-	a.uiViewHover(a.keybindMenu.view, x, y)
-}
-
-func (a *App) keybindMenuGeometry() (sdl.FRect, int) {
-	return a.modalListGeometry(76, 80)
-}
-
-func (a *App) keybindMenuListGeometry() (sdl.FRect, int) {
-	rect, rows := a.keybindMenuGeometry()
-	if a.keybindMenu.selectingAction {
-		return rect, rows
-	}
-	rowHeight := a.keybindMenuRowHeight()
-	rect.Y += float32(rowHeight * 2)
-	rect.H -= float32(rowHeight * 2)
-	return rect, max(1, rows-2)
-}
-
-func (a *App) keybindNewButtonRect(rect sdl.FRect) sdl.FRect {
-	rowHeight := a.keybindMenuRowHeight()
-	inset := a.px(6) // a framed box within the sheet
-	return sdl.FRect{X: rect.X + inset, Y: rect.Y + float32(a.modalListHeadHeight()) + inset, W: rect.W - 2*inset, H: float32(rowHeight)}
-}
-
-func (a *App) keybindMenuRowHeight() int {
-	return a.modalListRowHeight()
-}
-
-func (a *App) drawKeybindMenu(renderer *sdl.Renderer) error {
-	rect, _ := a.keybindMenuGeometry()
-	return a.drawPanel(renderer, config.ElementPanel, rect, func() error { return a.drawKeybindMenuContent(renderer, rect) })
-}
-
-func (a *App) drawKeybindMenuContent(renderer *sdl.Renderer, rect sdl.FRect) error {
-	rowHeight := a.keybindMenuRowHeight()
-	baselineOffset := a.modalListBaselineOffset(rowHeight)
-	header := fmt.Sprintf(" Keybinds (%d)", len(a.keybindMenu.rows))
-	if a.keybindMenu.selectingAction {
-		header = fmt.Sprintf(" Select action (%d)", len(a.keybindMenu.rows))
-	}
-	if a.keybindMenu.capturing && len(a.keybindMenu.rows) > 0 {
-		action := a.keybindMenu.rows[a.keybindMenu.view.selected].action
-		if a.keybindMenu.captureAction != "" {
-			action = a.keybindMenu.captureAction
-		}
-		header = " Press keys for " + action + " (Esc cancels)"
-		if len(a.keybindMenu.captured) > 0 {
-			header = " " + action + ": " + strings.Join(a.keybindMenu.captured, " ") + " …"
-		}
-	}
-	title, detail := splitHeader(strings.TrimSpace(header))
-	if err := a.drawModalListHeader(renderer, rect, title, detail); err != nil {
-		return err
-	}
-	listRect, listRows := a.keybindMenuListGeometry()
-	if !a.keybindMenu.selectingAction {
-		// The button is drawn as a selected row while it is selected.
-		button := a.keybindNewButtonRect(rect)
-		element := config.ElementButton
-		if a.keybindMenu.view.selected == -1 {
-			element = config.ElementRowSelected
-		}
-		st := a.style(element)
-		a.drawBox(renderer, &st, button)
-		if err := a.drawTextFace(renderer, "+ "+newKeybindLabel, int(rect.X)+a.modalListTextInset(), int(button.Y)+baselineOffset, a.textColor(&st, false), st.Bold.V); err != nil {
-			return err
-		}
-	}
-	view := a.keybindListView()
-	return a.drawUIListItems(renderer, listRect, listRows, view, view.visibleRows())
-}
-
-func (a *App) newKeybindView() *uiView {
-	view := &uiView{
-		id:            "core:keybinds",
-		owner:         "core",
-		modal:         true,
-		searchable:    false,
-		widthPercent:  76,
-		heightPercent: 80,
-		listGeometry: func(a *App) (sdl.FRect, int) {
-			return a.keybindMenuListGeometry()
-		},
-		draw: func(a *App, renderer *sdl.Renderer) error {
-			return a.drawKeybindMenu(renderer)
-		},
-	}
-	view.onKey = func(a *App, e *sdl.KeyboardEvent) bool { return a.handleKeybindMenuKey(e) }
-	view.onMouseButton = func(a *App, e *sdl.MouseButtonEvent) bool {
-		if e.Type == sdl.EventMouseButtonUp && e.Button == uint8(sdl.ButtonLeft) {
-			view.draggingScrollbar = false
-			return true
-		}
-		if e.Type == sdl.EventMouseButtonDown && e.Button == uint8(sdl.ButtonLeft) {
-			a.clickKeybindMenu(int(e.X), int(e.Y))
-		}
-		return true
-	}
-	view.onMouseMotion = func(a *App, e *sdl.MouseMotionEvent) bool {
-		if view.draggingScrollbar {
-			old := view.scroll
-			a.dragKeybindScrollbar(int(e.Y))
-			return old != view.scroll
-		}
-		oldSelected := view.selected
-		a.hoverKeybindMenu(int(e.X), int(e.Y))
-		return oldSelected != view.selected
-	}
-	return view
-}
-
-func keybindUIRows(rows []keybindRow) []uiRow {
-	items := make([]uiRow, 0, len(rows))
-	for index, row := range rows {
-		text := row.action
-		items = append(items, uiRow{index: index, text: text, value: row.action})
-	}
-	return items
-}
-
-func (a *App) keybindListView() *uiView {
-	view := a.keybindMenu.view
-	if view == nil {
-		return nil
-	}
-	view.rows = keybindUIRows(a.keybindMenu.rows)
-	if !a.keybindMenu.selectingAction {
-		for index, row := range a.keybindMenu.rows {
-			view.rows[index].key = row.key
-		}
-	}
-	return view
 }

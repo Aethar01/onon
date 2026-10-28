@@ -6,74 +6,56 @@ import (
 	"time"
 
 	"onon/internal/config"
+	"onon/internal/keys"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
 )
 
-func TestRepeatableMenuActionAllowsHeldNavigation(t *testing.T) {
+// heldMenu is an open menu of rows and app with bindings, for keys held
+// down in it.
+func heldMenu(bindings map[string]string) (*App, *uiView) {
 	app := testLayoutApp(5)
-	view := &uiView{visible: true, modal: true}
+	app.winW, app.winH = 1000, 800
+	view := &uiView{visible: true, modal: true, place: percentPlace(70, 70), rows: uiRowsFromStrings([]string{"a", "b", "c", "d"})}
 	app.views.active = view
-	app.setKeyBindings(map[string]string{
-		"<Down>": "scroll_down",
-	})
+	app.setKeyBindings(bindings)
+	return app, view
+}
 
-	action, ok := app.repeatableMenuAction(&sdl.KeyboardEvent{Key: sdl.KeycodeDown, Repeat: true})
-	if !ok || action != "scroll_down" {
-		t.Fatalf("expected repeated menu navigation to resolve scroll_down, got %q, ok=%v", action, ok)
+func TestHeldNavigationRepeatsInMenus(t *testing.T) {
+	app, view := heldMenu(map[string]string{"<Down>": "scroll_down", "j": "scroll_down"})
+	app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: sdl.KeycodeDown, Repeat: true})
+	app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: sdl.KeycodeJ, Repeat: true})
+	if view.selected != 2 {
+		t.Fatalf("held navigation moved to row %d, want 2", view.selected)
 	}
 }
 
-func TestRepeatableMenuActionRequiresActiveMenu(t *testing.T) {
-	app := testLayoutApp(5)
-	app.setKeyBindings(map[string]string{
-		"<Down>": "scroll_down",
-	})
-
-	if action, ok := app.repeatableMenuAction(&sdl.KeyboardEvent{Key: sdl.KeycodeDown, Repeat: true}); ok {
-		t.Fatalf("expected document repeat handling to remain unchanged, got %q", action)
+func TestHeldPrefixDoesNotRepeatInMenus(t *testing.T) {
+	app, view := heldMenu(map[string]string{"j": "scroll_down", "jj": "first_page"})
+	app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: sdl.KeycodeJ, Repeat: true})
+	if view.selected != 0 {
+		t.Fatalf("a held prefix moved to row %d", view.selected)
 	}
 }
 
-func TestRepeatableMenuActionRejectsMultiKeyPrefix(t *testing.T) {
-	app := testLayoutApp(5)
-	view := &uiView{visible: true, modal: true}
-	app.views.active = view
-	app.setKeyBindings(map[string]string{
-		"j":  "scroll_down",
-		"jj": "first_page",
-	})
-
-	if action, ok := app.repeatableMenuAction(&sdl.KeyboardEvent{Key: sdl.KeycodeJ, Repeat: true}); ok {
-		t.Fatalf("expected repeated prefix to remain ignored, got %q", action)
+func TestHeldConfirmDoesNotRepeatInMenus(t *testing.T) {
+	app, view := heldMenu(map[string]string{"<CR>": "confirm"})
+	chosen := 0
+	view.onSelect = func(*App, uiRow) { chosen++ }
+	app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: sdl.KeycodeReturn, Repeat: true})
+	if chosen != 0 {
+		t.Fatal("a held Enter chose a row")
 	}
 }
 
-func TestRepeatableMenuActionRejectsNonCountableAction(t *testing.T) {
-	app := testLayoutApp(5)
-	view := &uiView{visible: true, modal: true}
-	app.views.active = view
-	app.setKeyBindings(map[string]string{
-		"<CR>": "confirm",
-	})
-
-	if action, ok := app.repeatableMenuAction(&sdl.KeyboardEvent{Key: sdl.KeycodeReturn, Repeat: true}); ok {
-		t.Fatalf("expected confirm not to repeat, got %q", action)
-	}
-}
-
-func TestRepeatableMenuActionIgnoredWhileCapturingKeybind(t *testing.T) {
-	app := testLayoutApp(5)
-	view := &uiView{visible: true, modal: true}
-	app.views.active = view
-	app.keybindMenu.view = view
-	app.keybindMenu.capturing = true
-	app.setKeyBindings(map[string]string{
-		"<Down>": "scroll_down",
-	})
-
-	if action, ok := app.repeatableMenuAction(&sdl.KeyboardEvent{Key: sdl.KeycodeDown, Repeat: true}); ok {
-		t.Fatalf("expected key capture repeat to remain ignored, got %q", action)
+func TestHeldKeysAreNotCapturedAsKeybinds(t *testing.T) {
+	app, view := heldMenu(map[string]string{"<Down>": "scroll_down"})
+	app.keybindMenu = keybindMenuState{view: view, capturing: true}
+	view.keyHook = func(a *App, key keys.Key, repeat bool) bool { return a.keybindMenuKey(key, repeat) }
+	app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: sdl.KeycodeDown, Repeat: true})
+	if len(app.keybindMenu.captured) != 0 || view.selected != 0 {
+		t.Fatalf("a held key while capturing: captured %q, selected %d", app.keybindMenu.captured, view.selected)
 	}
 }
 
@@ -94,7 +76,7 @@ func TestPluginUIViewSearchRepeatsBackspace(t *testing.T) {
 	app := &App{uiState: uiState{views: uiManager{active: view}}}
 	e := sdl.KeyboardEvent{CommonEvent: sdl.CommonEvent{Type: sdl.EventKeyDown}, Key: sdl.KeycodeBackspace, Repeat: true}
 
-	app.handleGenericUIViewKey(view, &e)
+	app.viewKey(view, &e)
 
 	if view.query != "ab" {
 		t.Fatalf("expected repeated plugin UI backspace to edit query, got %q", view.query)
@@ -115,17 +97,25 @@ func TestKeybindEditorCapturesChords(t *testing.T) {
 		t.Fatal(err)
 	}
 	app.toggleKeybindMenu()
-	app.startNewKeybind()
-	for i, row := range app.keybindMenu.rows {
-		if row.action == "overview" {
-			app.keybindMenu.view.selected = i
+	view := app.keybindMenu.view
+	if !view.rows[0].button {
+		t.Fatalf("the first row is not the new keybind button: %+v", view.rows[0])
+	}
+	view.selected = 0
+	app.activateUIView(view)
+	if !app.keybindMenu.selectingAction {
+		t.Fatal("the button did not offer the actions")
+	}
+	for i, row := range view.rows {
+		if row.value == "overview" {
+			view.selected = i
 		}
 	}
-	app.confirmKeybindMenuSelection()
+	app.activateUIView(view)
 
 	start := time.Now()
 	for _, key := range []sdl.Keycode{sdl.KeycodeZ, sdl.KeycodeX} {
-		app.handleKeybindMenuKey(&sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: key})
+		app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: key})
 	}
 	app.finishKeybindCapture(start) // still within the pause: nothing bound yet
 	if !app.keybindMenu.capturing {

@@ -264,12 +264,16 @@ func uiOverlayFromLuaSpec(L *lua.LState, rt *Runtime, spec *lua.LTable) UIOverla
 		y, yok := anchor.RawGetString("y").(lua.LNumber)
 		page := anchor.RawGetString("page")
 		pageNumber, pageok := page.(lua.LNumber)
-		if !xok || !yok || page != lua.LNil && (!pageok || pageNumber < 1) {
-			L.RaiseError("ui.create: an anchor point is { x = number, y = number [, page = page number] }")
+		corner := lua.LVAsString(anchor.RawGetString("corner"))
+		if !xok || !yok || page != lua.LNil && (!pageok || pageNumber < 1) || corner != "" && !slices.Contains(UICorners, corner) {
+			L.RaiseError("ui.create: an anchor point is { x = number, y = number [, page = page number] [, corner = %s] }", strings.Join(UICorners, " | "))
 		}
-		overlay.At = &UIPoint{Page: int(pageNumber), X: float64(x), Y: float64(y)}
+		overlay.At = &UIPoint{Page: int(pageNumber), X: float64(x), Y: float64(y), Corner: corner}
 	default:
 		L.RaiseError("ui.create: anchor must be a place or a point")
+	}
+	if empty := spec.RawGetString("empty"); empty != lua.LNil {
+		overlay.Empty = lua.LVAsString(empty)
 	}
 	if prompt := spec.RawGetString("prompt"); prompt != lua.LNil {
 		if prompt.Type() != lua.LTString {

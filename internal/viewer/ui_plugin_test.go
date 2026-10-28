@@ -299,12 +299,12 @@ onon.ui.create({
   end,
 }):show()`)
 	view := app.activeUIView()
-	view.onKey(app, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: sdl.KeycodeX})
+	app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: sdl.KeycodeX})
 	if app.message != "key x" {
 		t.Fatalf("on_key message = %q", app.message)
 	}
 	// Keys on_key leaves go to the list.
-	view.onKey(app, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: sdl.KeycodeDown})
+	app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: sdl.KeycodeDown})
 	if view.selected != 1 {
 		t.Fatalf("selected after Down = %d, want 1", view.selected)
 	}
@@ -434,7 +434,7 @@ onon.ui.create({
 		t.Fatal("a view that draws, without a title, has a header")
 	}
 	body := app.uiViewBody(view)
-	view.onMouseButton(app, &sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: uint8(sdl.ButtonLeft), X: body.X + 10, Y: body.Y + 4})
+	app.viewMouseButton(view, &sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: uint8(sdl.ButtonLeft), X: body.X + 10, Y: body.Y + 4})
 	if app.message != "10,4" {
 		t.Fatalf("on_mouse at %q, want 10,4", app.message)
 	}
@@ -457,21 +457,21 @@ onon.ui.create({
 	body := app.uiViewBody(view)
 	rowsDrawn := 0
 	drawRows := func() error { rowsDrawn++; return nil }
-	if err := view.drawBody(app, nil, body, drawRows); err != nil {
+	if err := app.drawViewBody(nil, view, body, drawRows); err != nil {
 		t.Fatal(err)
 	}
 	if want := "panel " + strconv.Itoa(int(body.W)) + " 1"; app.message != want || rowsDrawn != 0 {
 		t.Fatalf("first draw: message %q rows %d, want %q and no rows", app.message, rowsDrawn, want)
 	}
 	// A failing function is reported, and the rows drawn in its place.
-	if err := view.drawBody(app, nil, body, drawRows); err != nil {
+	if err := app.drawViewBody(nil, view, body, drawRows); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(app.message, "boom") || rowsDrawn != 1 {
 		t.Fatalf("failed draw: message %q rows %d", app.message, rowsDrawn)
 	}
 	app.message = ""
-	view.drawBody(app, nil, body, drawRows)
+	app.drawViewBody(nil, view, body, drawRows)
 	if app.message != "" || rowsDrawn != 2 {
 		t.Fatalf("a failed function ran again: message %q rows %d", app.message, rowsDrawn)
 	}
@@ -605,7 +605,7 @@ func TestCanvasTextLines(t *testing.T) {
 // would.
 func drawLuaView(t *testing.T, app *App, view *uiView) {
 	t.Helper()
-	if err := view.drawBody(app, nil, app.uiViewBody(view), func() error { return nil }); err != nil {
+	if err := app.drawViewBody(nil, view, app.uiViewBody(view), func() error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -630,7 +630,7 @@ view:show()`)
 	if view.extent != 500 {
 		t.Fatalf("extent = %v, want 500", view.extent)
 	}
-	view.onWheel(app, &sdl.MouseWheelEvent{Y: -1, MouseX: body.X + 5, MouseY: body.Y + 5})
+	app.viewWheel(view, &sdl.MouseWheelEvent{Y: -1, MouseX: body.X + 5, MouseY: body.Y + 5})
 	if view.scrollPx <= 0 {
 		t.Fatal("the wheel did not scroll the drawn body")
 	}
@@ -642,7 +642,7 @@ view:show()`)
 	if want := strconv.Itoa(int(500 - body.H)); app.message != want {
 		t.Fatalf("view:scroll() = %s, want %s", app.message, want)
 	}
-	view.onMouseButton(app, &sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: uint8(sdl.ButtonLeft), X: body.X + 5, Y: body.Y + 5})
+	app.viewMouseButton(view, &sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: uint8(sdl.ButtonLeft), X: body.X + 5, Y: body.Y + 5})
 	if want := "press " + strconv.Itoa(int(500-body.H)+5); app.message != want {
 		t.Fatalf("on_mouse in scrolled content: %q, want %q", app.message, want)
 	}
@@ -678,11 +678,11 @@ view:show()`)
 	if app.message != "true" {
 		t.Fatalf("region under the pointer hovered = %s", app.message)
 	}
-	view.onMouseButton(app, &sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: uint8(sdl.ButtonLeft), X: body.X + 20, Y: body.Y + 15})
+	app.viewMouseButton(view, &sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: uint8(sdl.ButtonLeft), X: body.X + 20, Y: body.Y + 15})
 	if app.message != "press button" {
 		t.Fatalf("press over the button: %q", app.message)
 	}
-	view.onMouseButton(app, &sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: uint8(sdl.ButtonLeft), X: body.X + 150, Y: body.Y + 50})
+	app.viewMouseButton(view, &sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: uint8(sdl.ButtonLeft), X: body.X + 150, Y: body.Y + 50})
 	if app.message != "press back" {
 		t.Fatalf("press beside the button: %q", app.message)
 	}
@@ -752,18 +752,18 @@ onon.ui.create({
 	if got := len(view.visibleRows()); got != 1 {
 		t.Fatalf("rows matching the prompt = %d, want 1", got)
 	}
-	view.onKey(app, keyDown(sdl.KeycodeBackspace, 0))
+	app.viewKey(view, keyDown(sdl.KeycodeBackspace, 0))
 	if view.query != "be" || len(view.visibleRows()) != 2 {
 		t.Fatalf("backspace in the prompt: query %q", view.query)
 	}
 	// A key that types is the prompt's, not a binding's.
 	app.sequenceLookup = map[string]string{"j": "scroll_down", "<CR>": "confirm"}
-	view.onKey(app, keyDown(sdl.KeycodeJ, 0))
+	app.viewKey(view, keyDown(sdl.KeycodeJ, 0))
 	if view.selected != 1 {
 		t.Fatalf("a typing key moved the selection to %d", view.selected)
 	}
-	view.onKey(app, keyDown(sdl.KeycodeDown, 0))
-	view.onKey(app, keyDown(sdl.KeycodeReturn, 0))
+	app.viewKey(view, keyDown(sdl.KeycodeDown, 0))
+	app.viewKey(view, keyDown(sdl.KeycodeReturn, 0))
 	if app.message != "chose bell" {
 		t.Fatalf("Enter in a prompt without on_submit: %q", app.message)
 	}
@@ -773,7 +773,7 @@ onon.ui.create({
 	}
 	// Escape closes a prompt with text in it, as it would its list.
 	app.sequenceLookup["<Esc>"] = "close"
-	view.onKey(app, keyDown(sdl.KeycodeEscape, 0))
+	app.viewKey(view, keyDown(sdl.KeycodeEscape, 0))
 	if view.visible {
 		t.Fatal("Escape left a prompt with text open")
 	}
@@ -803,13 +803,13 @@ view:show()`)
 	if app.message != "input name=alice" {
 		t.Fatalf("typing into the first field: %q", app.message)
 	}
-	view.onKey(app, keyDown(sdl.KeycodeTab, 0))
+	app.viewKey(view, keyDown(sdl.KeycodeTab, 0))
 	app.typeUIText("pw")
-	view.onKey(app, keyDown(sdl.KeycodeReturn, 0))
+	app.viewKey(view, keyDown(sdl.KeycodeReturn, 0))
 	if app.message != "submit password=pw name=alice" {
 		t.Fatalf("Enter in the second field: %q", app.message)
 	}
-	view.onKey(app, keyDown(sdl.KeycodeTab, sdl.KeymodShift))
+	app.viewKey(view, keyDown(sdl.KeycodeTab, sdl.KeymodShift))
 	if view.focusField != "name" {
 		t.Fatalf("Shift-Tab focused %q", view.focusField)
 	}
@@ -818,7 +818,7 @@ view:show()`)
 	}
 	// A click on a field focuses it.
 	pass := view.fields["password"].rect
-	view.onMouseButton(app, &sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: uint8(sdl.ButtonLeft), X: pass.X + 2, Y: pass.Y + 2})
+	app.viewMouseButton(view, &sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: uint8(sdl.ButtonLeft), X: pass.X + 2, Y: pass.Y + 2})
 	if view.focusField != "password" {
 		t.Fatalf("clicking the password field focused %q", view.focusField)
 	}
@@ -845,7 +845,7 @@ panel:show()`)
 	if app.keyView() != view || !app.typeUIText("hi") || app.message != "hi" {
 		t.Fatalf("clicking the panel's field did not give it the keys: message %q", app.message)
 	}
-	view.onKey(app, keyDown(sdl.KeycodeEscape, 0))
+	app.viewKey(view, keyDown(sdl.KeycodeEscape, 0))
 	if app.keyView() != nil {
 		t.Fatal("Escape left the panel the keys")
 	}

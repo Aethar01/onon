@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"onon/internal/config"
+	"onon/internal/keys"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
 	lua "github.com/yuin/gopher-lua"
@@ -25,6 +26,7 @@ type uiRow struct {
 	disabled  bool
 	key       string        // a key binding, drawn in a column before the text
 	heading   bool          // a section title, drawn in the heading face; also disabled
+	button    bool          // drawn as a button, until selected
 	swatch    *config.Color // a colour sample drawn before the text
 	lua       lua.LValue    // the row a plugin gave, handed back to its callbacks
 }
@@ -50,67 +52,58 @@ func splitHeader(header string) (title, detail string) {
 	return title, detail
 }
 
+// uiView is a menu or panel: onon's own and plugins' alike. Its body is
+// its rows, or what its draw function draws, under a header with its
+// title or prompt; hooks give it behaviour of its own.
 type uiView struct {
-	id                string
-	owner             string
-	generation        int
-	title             string
-	rows              []uiRow
-	selected          int
-	scroll            int
-	searchable        bool
-	noFilter          bool // rows stay unfiltered, for a view that sets its own for each query
-	searching         bool
-	query             string
-	visible           bool
-	draggingScrollbar bool
+	id         string
+	owner      string
+	generation int
+	title      string
+	// header, if set, is the header's text for the rows shown, in place of
+	// the title and the query; empty is what an empty list says.
+	header   func(*App, *uiView, int) string
+	empty    func(*App, *uiView) string
+	headless bool           // no header: the rows or body start below the panel's padding
+	element  config.Element // the panel's
+	modal    bool
+	stack    bool // a modal view opened over the menu open, not in its place
+	place    viewPlacement
+	visible  bool
+
+	rows       []uiRow
+	selected   int
+	scroll     int
+	searchable bool
+	noFilter   bool // rows stay unfiltered, for a view that sets its own for each query
+	searching  bool
+	query      string
 	// offset is the row shown at the list's top, which may be fractional;
 	// it follows scroll, the offset last followed being offsetScroll,
 	// while settling. See listOffset.
-	offset               float64
-	offsetScroll         int
-	settling             bool
-	offsetAt             time.Time // when offset was last brought up to date
-	scrollbarDragOffsetY int
-	modal                bool
-	headless             bool // no header: the rows or body start below the panel's padding
-	stack                bool // a modal view opened over the menu open, not in its place
-	place                viewPlacement
-	widthPercent         int
-	heightPercent        int
-	geometry             func(*App) (sdl.FRect, int)
-	listGeometry         func(*App) (sdl.FRect, int)
-	header               func(*App, *uiView, int) string
-	empty                func(*App, *uiView) string
-	onSelect             func(*App, uiRow)
-	// onAction runs an action in the view's own way, reporting false for
-	// actions it leaves to the generic list.
-	onAction       func(*App, *uiView, string) bool
-	onClose        func(*App)
-	onQueryChanged func(*App, *uiView)
-	// onSelectionChanged runs after an event moves the selection, which
-	// was notifiedSelected when it last ran.
-	onSelectionChanged func(*App, *uiView)
-	notifiedSelected   int
-	onKey              func(*App, *sdl.KeyboardEvent) bool
-	onMouseButton      func(*App, *sdl.MouseButtonEvent) bool
-	onMouseMotion      func(*App, *sdl.MouseMotionEvent) bool
-	draw               func(*App, *sdl.Renderer) error
-	filtered           uiRowFilter // visibleRows' last result
-	keyWidth           uiKeyWidth  // keyColumnWidth's last result
+	offset       float64
+	offsetScroll int
+	settling     bool
+	offsetAt     time.Time   // when offset was last brought up to date
+	filtered     uiRowFilter // visibleRows' last result
+	keyWidth     uiKeyWidth  // keyColumnWidth's last result
 
-	// onWheel takes a wheel event before the list scrolls, reporting
-	// whether it took it.
-	onWheel func(*App, *sdl.MouseWheelEvent) bool
-	// drawBody draws the view below its header in place of its rows, which
-	// drawRows draws.
-	drawBody func(a *App, renderer *sdl.Renderer, body sdl.FRect, drawRows func() error) error
+	// drawBody draws the body in place of the rows, which the canvas's
+	// default draws, returning whether to draw it again on the next frame.
+	drawBody func(a *App, canvas *elementCanvas, state config.DrawState) (bool, error)
 	// regions are those drawBody last named, and extent how far below the
 	// body's top it drew, which scrollPx scrolls into it; all in output
 	// pixels.
 	regions  []uiRegion
 	extent   float64
 	scrollPx float64
+
+	draggingScrollbar    bool
+	scrollbarDragOffsetY int
+	// pointerDown is set from a press in the view to its release, and
+	// pointerOver while the pointer is over it, over hoveredRegion.
+	pointerDown, pointerOver bool
+	hoveredRegion            lua.LValue
 
 	// prompt labels the text field in the header whose text is the query.
 	prompt       string
@@ -121,11 +114,34 @@ type uiView struct {
 	fields     map[string]*uiField
 	fieldOrder []string
 	focusField string
-	// takesKeys is set for a panel a click gives the keys to.
-	takesKeys bool
+
+	// keyHook has each key pressed while the view has the keys, but for
+	// those typed into it, before the list; it reports whether it took
+	// the key.
+	keyHook func(a *App, key keys.Key, repeat bool) bool
+	// onAction runs an action in the view's own way, reporting false for
+	// actions it leaves to the list.
+	onAction func(*App, *uiView, string) bool
+	// mouseHook has the pointer events over the view before the list,
+	// reporting whether it took the event.
+	mouseHook func(a *App, ev config.UIMouseEvent) bool
+	onSelect  func(*App, uiRow)
+	onClose   func(*App)
+	// onQueryChanged runs as the user changes the query.
+	onQueryChanged func(*App, *uiView)
+	// onSelectionChanged runs after an event moves the selection, which
+	// was notifiedSelected when it last ran.
+	onSelectionChanged func(*App, *uiView)
+	notifiedSelected   int
 	// onInput runs as a field's text changes, and onSubmit on Enter in a
 	// field, or the prompt, whose id is empty.
 	onInput, onSubmit func(a *App, id, text string)
+}
+
+// takesKeys reports whether a click gives a panel the keys: it has keys
+// of its own, or text to type.
+func (v *uiView) takesKeys() bool {
+	return v.keyHook != nil || v.prompt != "" || len(v.fieldOrder) > 0
 }
 
 type uiRowFilter struct {
@@ -245,36 +261,32 @@ func (v *uiView) visibleRows() []uiRow {
 }
 
 func (v *uiView) frameGeometry(a *App) (sdl.FRect, int) {
-	if v.geometry != nil {
-		return v.geometry(a)
-	}
-	rect, rows := a.modalListGeometry(v.widthPercent, v.heightPercent)
-	if v.listGeometry != nil {
-		return rect, rows
-	}
-	// A short list gets a panel to fit, from the same top, so filtering it
-	// leaves the header in place.
-	if fit := max(1, len(v.visibleRows())); fit < rows {
-		rect.H -= float32((rows - fit) * a.modalListRowHeight())
-		rows = fit
-	}
-	return rect, rows
+	return a.viewGeometry(v)
 }
 
+// contentGeometry is the view's frame and how many rows it shows.
 func (v *uiView) contentGeometry(a *App) (sdl.FRect, int) {
-	if v.listGeometry != nil {
-		return v.listGeometry(a)
-	}
-	return v.frameGeometry(a)
+	return a.viewGeometry(v)
 }
 
-// headHeight is how far view's rows or body start below its top.
+// viewInsets is the padding of view's panel.
+func (a *App) viewInsets(view *uiView) (top, right, bottom, left float32) {
+	return a.insets(a.style(view.element).Padding.V)
+}
+
+// uiViewHeadHeight is how far view's rows or body start below its top.
 func (a *App) uiViewHeadHeight(view *uiView) int {
-	if view != nil && view.headless {
-		top, _, _, _ := a.insets(a.style(config.ElementPanel).Padding.V)
+	if view.headless {
+		top, _, _, _ := a.viewInsets(view)
 		return int(math.Round(float64(top)))
 	}
 	return a.modalListHeadHeight()
+}
+
+// viewBottomPadding is the space below view's last row.
+func (a *App) viewBottomPadding(view *uiView) int {
+	_, _, bottom, _ := a.viewInsets(view)
+	return int(math.Round(float64(bottom)))
 }
 
 // uiViewBody is the part of view below its header, where its rows are
@@ -283,6 +295,12 @@ func (a *App) uiViewBody(view *uiView) sdl.FRect {
 	rect, _ := view.contentGeometry(a)
 	head := float32(a.uiViewHeadHeight(view))
 	return sdl.FRect{X: rect.X, Y: rect.Y + head, W: rect.W, H: max(0, rect.H-head)}
+}
+
+// viewRowBox is the box of a row of view at y.
+func (a *App) viewRowBox(view *uiView, panel sdl.FRect, y, rowHeight int) sdl.FRect {
+	_, right, _, left := a.viewInsets(view)
+	return sdl.FRect{X: panel.X + left, Y: float32(y), W: panel.W - left - right, H: float32(rowHeight)}
 }
 
 func (a *App) activeUIView() *uiView {
@@ -490,12 +508,9 @@ func (a *App) drawUIView(renderer *sdl.Renderer, view *uiView) error {
 // drawUIViewFrame draws view whether or not it is open, as it is while
 // it fades out.
 func (a *App) drawUIViewFrame(renderer *sdl.Renderer, view *uiView) error {
-	if view.draw != nil {
-		return view.draw(a, renderer)
-	}
 	rect, _ := view.frameGeometry(a)
 	draw := func() error {
-		return a.drawPanel(renderer, config.ElementPanel, rect, func() error { return a.drawUIViewContent(renderer, view, rect) })
+		return a.drawPanel(renderer, view.element, rect, func() error { return a.drawUIViewContent(renderer, view, rect) })
 	}
 	if at := view.place.at; at != nil && at.Page > 0 {
 		// A view pinned to a page goes under the docked views and the
@@ -508,20 +523,20 @@ func (a *App) drawUIViewFrame(renderer *sdl.Renderer, view *uiView) error {
 func (a *App) drawUIViewContent(renderer *sdl.Renderer, view *uiView, rect sdl.FRect) error {
 	listRect, rows := view.contentGeometry(a)
 	items := view.visibleRows()
-	header := view.title
-	if view.header != nil {
-		header = view.header(a, view, len(items))
-	}
-	if header == "" {
-		header = "Menu"
-	}
-	if view.header == nil && (view.searching || view.query != "") {
-		header = fmt.Sprintf("%s /%s (%d/%d)", header, view.query, len(items), len(view.rows))
-	}
 	switch {
 	case view.prompt != "":
 		a.drawPromptHeader(renderer, view, rect, len(items), len(view.rows))
 	case !view.headless:
+		header := view.title
+		if view.header != nil {
+			header = view.header(a, view, len(items))
+		}
+		if header == "" {
+			header = "Menu"
+		}
+		if view.header == nil && (view.searching || view.query != "") {
+			header = fmt.Sprintf("%s /%s (%d/%d)", header, view.query, len(items), len(view.rows))
+		}
 		title, detail := splitHeader(header)
 		if err := a.drawModalListHeader(renderer, rect, title, detail); err != nil {
 			return err
@@ -529,20 +544,29 @@ func (a *App) drawUIViewContent(renderer *sdl.Renderer, view *uiView, rect sdl.F
 	}
 	drawRows := func() error {
 		if len(items) == 0 {
+			if view.drawBody != nil {
+				return nil // a view that draws its body has no rows to miss
+			}
 			empty := "No items"
 			if view.empty != nil {
 				empty = view.empty(a, view)
 			}
 			st := a.style(config.ElementRowDisabled)
+			_, _, _, left := a.viewInsets(view)
+			_, _, _, rowLeft := a.insets(a.style(config.ElementRow).Padding.V)
 			baselineOffset := a.modalListBaselineOffset(a.modalListRowHeight())
-			return a.drawText(renderer, empty, int(listRect.X)+a.modalListTextInset(), int(listRect.Y)+a.uiViewHeadHeight(view)+baselineOffset, a.textColor(&st, false))
+			return a.drawText(renderer, empty, int(math.Round(float64(listRect.X+left+rowLeft))), int(listRect.Y)+a.uiViewHeadHeight(view)+baselineOffset, a.textColor(&st, false))
 		}
 		return a.drawUIListItems(renderer, listRect, rows, view, items)
 	}
+	var err error
 	if view.drawBody != nil {
-		return view.drawBody(a, renderer, a.uiViewBody(view), drawRows)
+		err = a.drawViewBody(renderer, view, a.uiViewBody(view), drawRows)
+	} else {
+		err = drawRows()
 	}
-	return drawRows()
+	a.drawViewScrollbar(renderer, view)
+	return err
 }
 
 func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, view *uiView, items []uiRow) error {
@@ -570,7 +594,7 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 			if item := items[index]; item.index == view.selected && !item.heading {
 				at := a.animate(tweenKey{kind: "selection", view: view}, float64(index), a.config.Theme.Motion.Selection)
 				st := a.style(config.ElementRowSelected)
-				a.drawBox(renderer, &st, a.rowBox(rect, rowY(at), rowHeight))
+				a.drawBox(renderer, &st, a.viewRowBox(view, rect, rowY(at), rowHeight))
 			}
 		}
 		for index := first; index < last; index++ {
@@ -584,10 +608,16 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 				element = config.ElementRowSelected
 			case item.disabled:
 				element = config.ElementRowDisabled
+			case item.button:
+				element = config.ElementButton
 			}
 			st := a.style(element)
-			box := a.rowBox(rect, y, rowHeight)
-			if element != config.ElementRowSelected {
+			box := a.viewRowBox(view, rect, y, rowHeight)
+			if element == config.ElementButton {
+				// a framed box within the row
+				inset := a.px(3)
+				a.drawBox(renderer, &st, sdl.FRect{X: box.X + inset, Y: box.Y + inset, W: box.W - 2*inset, H: box.H - 2*inset})
+			} else if element != config.ElementRowSelected {
 				a.drawBox(renderer, &st, box)
 			}
 			_, padRight, _, padLeft := a.insets(st.Padding.V)
@@ -637,10 +667,7 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 		}
 		return nil
 	})
-	if err != nil {
-		return err
-	}
-	return a.drawModalListScrollbar(renderer, rect, head, rows, len(items), offset)
+	return err
 }
 
 // keyColumnWidth is the width of the key column: the widest key of items,
@@ -679,29 +706,6 @@ func (a *App) uiViewIndexAt(view *uiView, x, y int) (uiRow, bool) {
 	return items[itemIndex], true
 }
 
-func (a *App) uiViewStartScrollbarDrag(view *uiView, x, y int) bool {
-	if view == nil {
-		return false
-	}
-	rect, rows := view.contentGeometry(a)
-	offset := view.offset
-	if !modalListStartScrollbarDrag(rect, a.uiViewHeadHeight(view), rows, len(view.visibleRows()), x, y, &offset, &view.scrollbarDragOffsetY, &view.draggingScrollbar) {
-		return false
-	}
-	a.scrollListTo(view, offset)
-	return true
-}
-
-func (a *App) uiViewDragScrollbar(view *uiView, y int) {
-	if view == nil {
-		return
-	}
-	rect, rows := view.contentGeometry(a)
-	offset := view.offset
-	modalListDragScrollbar(rect, a.uiViewHeadHeight(view), rows, len(view.visibleRows()), y, &offset, view.scrollbarDragOffsetY)
-	a.scrollListTo(view, offset)
-}
-
 func (a *App) uiViewHover(view *uiView, x, y int) bool {
 	if view == nil {
 		return false
@@ -734,16 +738,7 @@ func uiRowsFromStrings(rows []string) []uiRow {
 	return result
 }
 
-func (a *App) createCoreListView(id, title string, rows []uiRow, widthPercent, heightPercent int) *uiView {
-	selected := -1
-	if len(rows) > 0 {
-		selected = 0
-	}
-	view := &uiView{id: id, owner: "core", title: title, rows: rows, selected: selected, searchable: true, modal: true, widthPercent: widthPercent, heightPercent: heightPercent}
-	a.views.add(view)
-	return view
-}
-
+// showCoreList shows a menu of strings, onSelect given the one chosen.
 func (a *App) showCoreList(id, title string, rows []string, onSelect func(string)) {
 	a.showRowList(id, title, uiRowsFromStrings(rows), 70, 70, func(view *uiView) {
 		if onSelect != nil {
@@ -752,15 +747,15 @@ func (a *App) showCoreList(id, title string, rows []string, onSelect func(string
 	})
 }
 
-// showRowList replaces any open UI with a modal list of rows that uses the
-// standard key and mouse handling. setup, which sets onSelect and may set
-// the selection, runs before the view is shown.
+// showRowList replaces any open menu with a searchable menu of rows,
+// widthPercent and heightPercent of the window. setup, which sets onSelect
+// and may set the selection and hooks, runs before the view is shown.
 func (a *App) showRowList(id, title string, rows []uiRow, widthPercent, heightPercent int, setup func(*uiView)) *uiView {
 	a.closeAllUI()
-	view := a.createCoreListView(id, title, rows, widthPercent, heightPercent)
-	view.onKey = func(a *App, e *sdl.KeyboardEvent) bool { return a.handleGenericUIViewKey(view, e) }
-	view.onMouseButton = func(a *App, e *sdl.MouseButtonEvent) bool { return a.handleGenericUIViewMouseButton(view, e) }
-	view.onMouseMotion = func(a *App, e *sdl.MouseMotionEvent) bool { return a.handleGenericUIViewMouseMotion(view, e) }
+	view := &uiView{
+		id: id, owner: "core", title: title, rows: rows, selected: min(0, len(rows)-1),
+		searchable: true, modal: true, element: config.ElementPanel, place: percentPlace(widthPercent, heightPercent),
+	}
 	setup(view)
 	a.showUIView(view)
 	return view

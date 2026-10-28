@@ -148,6 +148,8 @@ type UIOverlay struct {
 	// by id.
 	Prompt string
 	Fields map[string]string
+	// Empty is what an empty list says.
+	Empty string
 	// The callbacks, each the ID of a registered Lua function or empty.
 	OnSelect, OnClose, OnSelectionChanged, OnQueryChanged string
 	OnKey, OnAction, OnMouse, Draw, OnInput, OnSubmit     string
@@ -170,11 +172,16 @@ type UISize struct {
 
 // UIPoint is a point in the window in logical pixels or, with Page set,
 // a point on that page (1-based) in the page's points, which moves with
-// the page.
+// the page. Corner is the corner of a view pinned to it that sits there,
+// top_left when empty.
 type UIPoint struct {
-	Page int
-	X, Y float64
+	Page   int
+	X, Y   float64
+	Corner string
 }
+
+// UICorners are the corners a view may be pinned by.
+var UICorners = []string{"top_left", "top_right", "bottom_left", "bottom_right"}
 
 type UIListRow struct {
 	Text      string

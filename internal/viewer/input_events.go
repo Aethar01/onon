@@ -23,12 +23,8 @@ func (a *App) handleSDLKeyDown(e *sdl.KeyboardEvent) {
 	}
 	// A prompt is always opened after any menu still showing, so it takes
 	// the keys first.
-	if view := a.activeModalUIView(); view != nil && view.onKey != nil && a.mode == modeNormal {
-		view.onKey(a, e)
-		return
-	}
-	if view := a.views.focused; view != nil && view.visible && view.onKey != nil && a.mode == modeNormal {
-		view.onKey(a, e)
+	if view := a.keyView(); view != nil && a.mode == modeNormal {
+		a.viewKey(view, e)
 		return
 	}
 	if a.mode != modeNormal {
@@ -157,7 +153,7 @@ func (a *App) handleSDLMouseWheel(e *sdl.MouseWheelEvent) {
 	if view := a.activeModalUIView(); view != nil {
 		// Without smooth scrolling a list moves a whole row an event, as
 		// the page moves a step, however far the wheel says.
-		if view.onWheel == nil || !view.onWheel(a, e) {
+		if !a.viewWheel(view, e) {
 			a.scrollUIViewByWheel(view, e)
 		}
 		return
@@ -183,9 +179,7 @@ func (a *App) handleSDLMouseButton(e *sdl.MouseButtonEvent) {
 		if a.handleListScrollButton(e) {
 			return
 		}
-		if view.onMouseButton != nil {
-			view.onMouseButton(a, e)
-		}
+		a.viewMouseButton(view, e)
 		return
 	}
 	if a.handlePanelMouseButton(e) {
@@ -292,10 +286,7 @@ func (a *App) handleSDLMouseMotion(e *sdl.MouseMotionEvent) bool {
 			a.scrollListBy(view, -float64(e.Yrel)/float64(a.modalListRowHeight()))
 			return view.offset != old
 		}
-		if view.onMouseMotion != nil {
-			return view.onMouseMotion(a, e)
-		}
-		return a.uiViewHover(view, int(e.X), int(e.Y))
+		return a.viewMouseMotion(view, e)
 	}
 	if a.autoscroll != nil {
 		a.noteAutoscrollPointer() // the frame loop does the scrolling

@@ -302,9 +302,6 @@ func (a *App) handleSDLEvent(event *sdl.Event) error {
 		if a.handleAutoscrollKey(&e) {
 			break
 		}
-		if _, ok := a.repeatableMenuAction(&e); ok {
-			e.Repeat = false
-		}
 		a.handleSDLKeyDown(&e)
 	case sdl.EventTextInput:
 		e := event.Text()

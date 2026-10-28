@@ -12,6 +12,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"onon/internal/config"
@@ -499,4 +500,52 @@ func (a *App) viewUnderPointer() *uiView {
 		return nil
 	}
 	return a.panelAt(a.pointer.X, a.pointer.Y)
+}
+
+// drawViewBody draws view's body with its draw function, the canvas's
+// default drawing its rows. What it draws below the body scrolls into it.
+// If the function fails, the error is reported once, the rows are drawn in
+// its place, and it is not called again until the configuration changes.
+// A function that returns true is drawn again on the next frame.
+func (a *App) drawViewBody(renderer *sdl.Renderer, view *uiView, body sdl.FRect, drawRows func() error) error {
+	if a.themeErrors[view] {
+		return drawRows()
+	}
+	// The body is drawn at full strength, the panel's opacity being for
+	// the panel's own box.
+	st := a.style(view.element)
+	st.Opacity.V = 1
+	var rowsErr error
+	box := pixelRect(body)
+	box.Y -= int32(math.Round(view.scrollPx))
+	canvas := &elementCanvas{
+		app: a, renderer: renderer, style: &st, box: box, drawDefault: func() { rowsErr = drawRows() },
+		view: view, pointerOver: a.viewUnderPointer() == view,
+	}
+	view.regions = view.regions[:0]
+	view.fieldOrder = view.fieldOrder[:0]
+	scale := float64(a.px(1))
+	state := config.DrawState{
+		Element: view.element,
+		X:       float64(body.X) / scale, Y: float64(body.Y) / scale,
+		W: float64(body.W) / scale, H: float64(body.H) / scale,
+		Alt:    a.altColors,
+		Time:   time.Since(startTime).Seconds(),
+		Scroll: view.scrollPx / scale,
+	}
+	err := a.withClip(renderer, body, func() error {
+		again, err := view.drawBody(a, canvas, state)
+		canvas.Unclip()
+		if again {
+			a.pendingRedraw = true
+		}
+		return err
+	})
+	if err != nil {
+		a.reportThemeError(view, "ui draw", err)
+		canvas.Default()
+	}
+	view.extent = canvas.extent
+	view.scrollPx = clampFloat(view.scrollPx, 0, math.Max(0, view.extent-float64(body.H)))
+	return rowsErr
 }
