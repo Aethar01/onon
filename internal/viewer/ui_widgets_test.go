@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -199,7 +200,35 @@ func TestCanvasImagesReloadAndPagesTurn(t *testing.T) {
 	// A page turned a quarter fits by its turned size.
 	app.rotation = 90
 	canvas := &elementCanvas{app: app, style: &config.Style{}}
-	if w, h := canvas.Page(0, 0, 0, 50, 0); math.Abs(w-50) > 1e-6 || math.Abs(h-25) > 1e-6 {
+	if w, h := canvas.Page(0, 0, 0, 50, 0, nil); math.Abs(w-50) > 1e-6 || math.Abs(h-25) > 1e-6 {
 		t.Fatalf("a page 100 by 200 turned a quarter, 50 wide, is %vx%v", w, h)
+	}
+}
+
+func TestCanvasPageAreaAtAZoom(t *testing.T) {
+	app := luaUITestApp(t, "")
+	pages := testLayoutApp(2)
+	app.pageMetrics, app.pageCount = pages.pageMetrics, pages.pageCount
+	app.relayoutWithViewportAnchor(nil)
+	evalLua(t, app, `
+view = onon.ui.create({
+  draw = function(canvas) canvas:page(2, 0, 0, 100, 50, { x = 10, y = 20, zoom = 2 }) end,
+})
+view:show()`)
+	drawLuaView(t, app, app.activeUIView())
+	want := app.renderScaleFor(app.scale) * 2
+	if len(app.canvas.tiles) == 0 {
+		t.Fatal("drawing part of a page wanted no tiles")
+	}
+	for key := range app.canvas.tiles {
+		if key.page != 1 || key.scale != want {
+			t.Fatalf("wanted tile %+v, want page 2's at scale %v", key, want)
+		}
+	}
+	evalLua(t, app, `view:close()
+onon.ui.create({ draw = function(canvas) canvas:page(1, 0, 0, 100, nil, { x = 0, y = 0 }) end }):show()`)
+	drawLuaView(t, app, app.activeUIView())
+	if !strings.Contains(app.message, "needs a height") {
+		t.Fatalf("a page area without a height: %q", app.message)
 	}
 }

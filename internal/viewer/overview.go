@@ -98,7 +98,7 @@ func (a *App) prefetchOverviewThumbnails() {
 	for _, c := range nearby {
 		wanted[c.req.key] = true
 	}
-	a.addCanvasThumbnails(wanted, onScreen, protected)
+	a.addCanvasRenders(wanted, onScreen, protected)
 	a.cache.protected = protected
 	if a.renderWorker != nil {
 		a.renderWorker.SetWanted(wanted)

@@ -297,7 +297,7 @@ func (a *App) handleSDLEvent(event *sdl.Event) error {
 		a.handleSDLKeyUp(&e)
 		redraw = false
 	case sdl.EventKeyDown:
-		a.preview = nil
+		a.closeLinkPreview()
 		e := event.Key()
 		if a.handleAutoscrollKey(&e) {
 			break
@@ -311,7 +311,7 @@ func (a *App) handleSDLEvent(event *sdl.Event) error {
 		e := event.Edit()
 		a.handleSDLTextEditing(&e)
 	case sdl.EventMouseWheel:
-		a.preview = nil
+		a.closeLinkPreview()
 		if a.autoscroll != nil {
 			a.stopAutoscroll()
 			break
@@ -329,7 +329,7 @@ func (a *App) handleSDLEvent(event *sdl.Event) error {
 		a.endPinch()
 		redraw = false
 	case sdl.EventMouseButtonDown, sdl.EventMouseButtonUp:
-		a.preview = nil
+		a.closeLinkPreview()
 		e := event.Button()
 		a.handleMouseButtonEvent(&e)
 	case sdl.EventMouseMotion:
@@ -509,7 +509,6 @@ func (a *App) drawFrame() error {
 		// An on-screen loader animates, so it asks for the next frame.
 		a.pendingRedraw = a.loaderVisible
 		a.drawLinkHints(a.renderer)
-		a.drawLinkPreview(a.renderer)
 	})
 	if a.statusVisible() {
 		if err := a.drawStatusBar(a.renderer); err != nil {

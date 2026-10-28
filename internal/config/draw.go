@@ -139,8 +139,9 @@ type Canvas interface {
 	// of 0 keeping its proportions, returning the size it took.
 	Image(path string, x, y, w, h float64) (float64, float64, error)
 	// Page draws a page (0-based) fitted to a rect, a height of 0 keeping
-	// its proportions, returning the size it took.
-	Page(page int, x, y, w, h float64) (float64, float64)
+	// its proportions, returning the size it took. With area, it draws
+	// that part of the page in the rect instead.
+	Page(page int, x, y, w, h float64, area *PageArea) (float64, float64)
 	// Region names a rect for the pointer events over it, reporting
 	// whether the pointer is over it.
 	Region(id lua.LValue, x, y, w, h float64) bool
@@ -151,6 +152,13 @@ type Canvas interface {
 	// and Checkbox the check box id, returning its size.
 	Button(id string, x, y, w float64, label string) float64
 	Checkbox(id string, x, y float64, label string, checked bool) (float64, float64)
+}
+
+// PageArea is the part of a page a canvas draws: from the point X, Y, in
+// the page's points, at the rect's top left, at Zoom times the document's
+// zoom.
+type PageArea struct {
+	X, Y, Zoom float64
 }
 
 // InputOptions are how a text field is drawn: a placeholder shown while
@@ -417,7 +425,20 @@ func luaCanvasMetatable(L *lua.LState, cache *drawCache) *lua.LTable {
 			if page < 1 {
 				L.ArgError(2, "pages start at 1")
 			}
-			w, h := c.Page(page-1, float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), float64(L.CheckNumber(5)), float64(L.OptNumber(6, 0)))
+			var area *PageArea
+			if opts, ok := L.Get(7).(*lua.LTable); ok {
+				area = &PageArea{X: float64(lua.LVAsNumber(opts.RawGetString("x"))), Y: float64(lua.LVAsNumber(opts.RawGetString("y"))), Zoom: 1}
+				if zoom, ok := opts.RawGetString("zoom").(lua.LNumber); ok {
+					if zoom <= 0 {
+						L.ArgError(7, "zoom must be more than 0")
+					}
+					area.Zoom = float64(zoom)
+				}
+				if L.OptNumber(6, 0) <= 0 {
+					L.ArgError(6, "a part of a page needs a height to show it in")
+				}
+			}
+			w, h := c.Page(page-1, float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), float64(L.CheckNumber(5)), float64(L.OptNumber(6, 0)), area)
 			L.Push(lua.LNumber(w))
 			L.Push(lua.LNumber(h))
 			return 2

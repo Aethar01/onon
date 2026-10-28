@@ -33,8 +33,10 @@ type canvasCache struct {
 	lines  map[canvasLinesKey]canvasLines
 	images map[string]*canvasImage
 	// thumbs are the pages canvases drew this frame, which the renderer
-	// keeps thumbnails of; see prefetchVisiblePages.
+	// keeps thumbnails of, and tiles the tiles of parts of pages they drew;
+	// see prefetchVisiblePages.
 	thumbs map[int]bool
+	tiles  map[tileKey]bool
 }
 
 const (
@@ -429,10 +431,14 @@ func (c *elementCanvas) rect(x, y, w, h float64) sdl.FRect {
 	return r
 }
 
-func (c *elementCanvas) Page(page int, x, y, w, h float64) (float64, float64) {
+func (c *elementCanvas) Page(page int, x, y, w, h float64, area *config.PageArea) (float64, float64) {
 	a := c.app
 	if page < 0 || page >= len(a.pageMetrics) {
 		return 0, 0
+	}
+	if area != nil {
+		c.pageArea(page, c.rect(x, y, w, h), *area)
+		return w, h
 	}
 	// The page is drawn turned as the document's are, fitted by the box
 	// the turned page takes.
@@ -477,13 +483,80 @@ func (a *App) wantThumbnail(page int, scale float64) {
 	a.queueRender(renderRequest{key: thumbnailKey(page), scale: scale, rect: mupdf.DeviceRect(bounds, scale), version: version}, 0)
 }
 
-// addCanvasThumbnails adds the thumbnails canvases drew to those wanted,
-// on screen and kept from eviction.
-func (a *App) addCanvasThumbnails(wanted, onScreen, protected map[tileKey]bool) {
+// addCanvasRenders adds the thumbnails and tiles canvases drew to those
+// wanted, on screen and kept from eviction.
+func (a *App) addCanvasRenders(wanted, onScreen, protected map[tileKey]bool) {
 	for page := range a.canvas.thumbs {
 		key := thumbnailKey(page)
 		wanted[key], onScreen[key], protected[key] = true, true, true
 	}
+	for key := range a.canvas.tiles {
+		wanted[key], onScreen[key], protected[key] = true, true, true
+	}
+}
+
+// pageArea draws the part of page area names in box: from the tiles the
+// document is drawn from at its zoom, or sharper ones rendered for the
+// area's, asked for as they are first drawn. In a panel with round
+// corners, the page is cut to them, unless it is turned other than not at
+// all.
+func (c *elementCanvas) pageArea(page int, box sdl.FRect, area config.PageArea) {
+	a := c.app
+	scale := a.scale * area.Zoom
+	renderScale := a.renderScaleFor(a.scale)
+	if area.Zoom != 1 {
+		renderScale *= area.Zoom
+	}
+	t := newPageTransform(a.pageMetrics[page].bounds, scale, a.rotation)
+	dx, dy := t.toScreen(area.X, area.Y)
+	x, y := float64(box.X)-dx, float64(box.Y)-dy
+	version := a.tileVersion(page)
+	pageRect := mupdf.DeviceRect(a.pageMetrics[page].bounds, renderScale)
+	if a.canvas.tiles == nil {
+		a.canvas.tiles = map[tileKey]bool{}
+	}
+	for _, pt := range tilesCovering(pageRect, pageDeviceAreaAt(t, x, y, box, renderScale)) {
+		key := tileKey{page: page, scale: renderScale, x: pt.X, y: pt.Y, version: version}
+		a.canvas.tiles[key] = true
+		a.requestTile(key, tileRect(pageRect, pt.X, pt.Y), 0)
+	}
+	if c.renderer == nil {
+		return
+	}
+	var outline []point32
+	if c.view != nil && normalizeRotation(a.rotation) == 0 {
+		frame, _ := c.view.frameGeometry(a)
+		st := a.style(c.view.element)
+		if shape := a.boxShape(&st, pixelRect(frame)); shape.radius != [4]float32{} {
+			var radius config.Corners
+			for i, r := range shape.radius {
+				radius[i] = float64(r)
+			}
+			pr := pixelRect(frame)
+			outline = flattenPath(config.RoundedRectPath(float64(pr.X), float64(pr.Y), float64(pr.W), float64(pr.H), radius), pathPlacer(0, 0, 0, 0, 1))[0]
+		}
+	}
+	alpha := a.styleColor(config.Color{RGB: [3]uint8{0xff, 0xff, 0xff}, Alpha: 1}, c.style.Opacity.V).A
+	a.withClip(c.renderer, box, func() error {
+		for _, tile := range a.cache.pageTiles(page, version) {
+			dst, ok := tileRectAt(tile, t, scale, x, y, a.winW, a.winH)
+			if !ok {
+				continue
+			}
+			sdl.SetTextureAlphaMod(tile.texture, alpha)
+			switch {
+			case outline != nil:
+				drawClippedTexture(c.renderer, tile.texture, dst, outline)
+			case normalizeRotation(a.rotation) == 0:
+				sdl.RenderTexture(c.renderer, tile.texture, nil, &dst)
+			default:
+				sdl.RenderTextureRotated(c.renderer, tile.texture, nil, &dst, a.rotation, nil, sdl.FlipNone)
+			}
+			sdl.SetTextureAlphaMod(tile.texture, 0xff)
+		}
+		return nil
+	})
+	c.restoreClip()
 }
 
 // uiRegion is a rect a view's canvas named, in the window.
@@ -573,4 +646,65 @@ func (a *App) drawViewBody(renderer *sdl.Renderer, view *uiView, body sdl.FRect,
 	view.extent = canvas.extent
 	view.scrollPx = clampFloat(view.scrollPx, 0, math.Max(0, view.extent-float64(body.H)))
 	return rowsErr
+}
+
+// drawClippedTexture draws texture over dst, only where it falls inside
+// the convex polygon outline.
+func drawClippedTexture(renderer *sdl.Renderer, texture *sdl.Texture, dst sdl.FRect, outline []point32) {
+	polygon := clipConvex([]point32{{dst.X, dst.Y}, {dst.X + dst.W, dst.Y}, {dst.X + dst.W, dst.Y + dst.H}, {dst.X, dst.Y + dst.H}}, outline)
+	if len(polygon) < 3 {
+		return
+	}
+	white := sdl.FColor{R: 1, G: 1, B: 1, A: 1}
+	vertices := make([]sdl.Vertex, len(polygon))
+	for i, p := range polygon {
+		vertices[i] = sdl.Vertex{Position: sdl.FPoint{X: p.x, Y: p.y}, Color: white, TexCoord: sdl.FPoint{X: (p.x - dst.X) / dst.W, Y: (p.y - dst.Y) / dst.H}}
+	}
+	indices := make([]int32, 0, 3*(len(polygon)-2))
+	for i := 1; i+1 < len(polygon); i++ {
+		indices = append(indices, 0, int32(i), int32(i+1))
+	}
+	sdl.RenderGeometry(renderer, texture, vertices, indices)
+}
+
+// clipConvex is the part of the convex polygon subject inside the convex
+// polygon clip, by Sutherland and Hodgman's method.
+func clipConvex(subject, clip []point32) []point32 {
+	// Which side is inside depends on which way clip is wound.
+	var area float32
+	for i, p := range clip {
+		q := clip[(i+1)%len(clip)]
+		area += p.x*q.y - q.x*p.y
+	}
+	side := func(a, b, p point32) float32 {
+		d := (b.x-a.x)*(p.y-a.y) - (b.y-a.y)*(p.x-a.x)
+		if area < 0 {
+			return -d
+		}
+		return d
+	}
+	out := subject
+	for i, a := range clip {
+		b := clip[(i+1)%len(clip)]
+		if a == b {
+			continue
+		}
+		in := out
+		out = nil
+		for j, p := range in {
+			q := in[(j+1)%len(in)]
+			sp, sq := side(a, b, p), side(a, b, q)
+			if sp >= 0 {
+				out = append(out, p)
+			}
+			if (sp >= 0) != (sq >= 0) {
+				t := sp / (sp - sq)
+				out = append(out, point32{p.x + (q.x-p.x)*t, p.y + (q.y-p.y)*t})
+			}
+		}
+		if len(out) == 0 {
+			return nil
+		}
+	}
+	return out
 }

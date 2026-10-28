@@ -355,7 +355,7 @@ func (c *recordingCanvas) Image(path string, x, y, w, h float64) (float64, float
 	c.calls = append(c.calls, "image "+filepath.Base(path))
 	return w, h, nil
 }
-func (c *recordingCanvas) Page(page int, x, y, w, h float64) (float64, float64) {
+func (c *recordingCanvas) Page(page int, x, y, w, h float64, area *PageArea) (float64, float64) {
 	c.calls = append(c.calls, "page "+formatNumber(float64(page)))
 	return w, h
 }
