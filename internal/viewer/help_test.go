@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	commandmeta "onon/internal/commands"
 
+	"github.com/jupiterrider/purego-sdl3/sdl"
 	"golang.org/x/image/font/basicfont"
 )
 
@@ -124,4 +126,27 @@ func TestHelpLaysItsRowsOutInColumns(t *testing.T) {
 			t.Fatalf("row %+v has cells %q", row, row.cells)
 		}
 	}
+}
+
+func TestHelpUnderTheKeybindEditorShowsNewBindings(t *testing.T) {
+	app := testKeybindApp(t)
+	app.toggleKeybindMenu() // closed, to open from help
+	app.toggleHelp()
+	help := app.activeModalUIView()
+	app.activateHelpRow(uiRow{id: helpRowKeybinds})
+	keys := chooseAction(t, app, "overview")
+	keys.selected = 0 // add a key
+	app.activateUIView(keys)
+	start := time.Now()
+	app.viewKey(keys, keyDown(sdl.KeycodeZ, 0))
+	app.finishKeybindCapture(start.Add(time.Duration(app.config.SequenceTimeoutMS+1) * time.Millisecond))
+	for _, row := range help.rows {
+		if row.id == helpRowAction && row.text == "overview" {
+			if !strings.Contains(row.secondary, "z") || len(row.cells) != 2 || row.cells[1] != row.secondary {
+				t.Fatalf("help's overview row = %+v", row)
+			}
+			return
+		}
+	}
+	t.Fatal("help has no overview row")
 }

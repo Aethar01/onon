@@ -229,6 +229,7 @@ func (a *App) deleteSelectedKeybind() {
 	}
 	a.applyConfig(a.runtime.Config(), nil)
 	a.refreshKeybindRows()
+	a.refreshHelp()
 }
 
 func (a *App) rebindSelectedKey(key string) {
@@ -255,4 +256,5 @@ func (a *App) rebindSelectedKey(key string) {
 	}
 	a.applyConfig(a.runtime.Config(), nil)
 	a.refreshKeybindRows()
+	a.refreshHelp()
 }

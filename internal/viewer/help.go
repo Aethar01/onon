@@ -33,6 +33,17 @@ func (a *App) toggleHelp() {
 	})
 }
 
+// refreshHelp builds help's rows again while it is open, as under the
+// keybind editor, whose bindings it lists.
+func (a *App) refreshHelp() {
+	view := a.views.views[helpViewID]
+	if view == nil || !view.visible {
+		return
+	}
+	a.setUIViewRows(view, a.helpRows())
+	a.helpColumns(view)
+}
+
 // helpColumns lays help's rows out in two columns, each name and what it
 // does, its keys or its value beside it, the first as wide as the widest
 // name.
