@@ -81,7 +81,10 @@ type uiView struct {
 	geometry  viewGeometryCache // see viewGeometry
 	visible   bool
 
-	rows       []uiRow
+	rows []uiRow
+	// fitRows, if set, are the rows a fitted list's width is measured
+	// for in place of rows, for a list whose rows come and go.
+	fitRows    []uiRow
 	selected   int
 	scroll     int
 	searchable bool
@@ -947,17 +950,21 @@ func (a *App) keyColumnWidth(view *uiView, items []uiRow, limit int) int {
 // whole, in output pixels: its widest row, details set off from the text
 // by a gap, or its columns' widest cells, and its header, all within the
 // panel's and the rows' padding. It is 0 for a view not fitted. All the
-// rows are measured, not those the query leaves, so the panel keeps its
-// width while filtering.
+// rows are measured, or its fitRows, not those the query leaves, so the
+// panel keeps its width while filtering.
 func (a *App) listContentWidth(view *uiView) int {
 	if !view.place.fit || view.drawBody != nil || view.place.dock != "" || a.fontFace == nil || a.styles == nil {
 		return 0
 	}
+	rows := view.rows
+	if view.fitRows != nil {
+		rows = view.fitRows
+	}
 	c := &view.contentWidth
-	if c.face == a.fontFace && c.styles == a.styles && len(c.rows) == len(view.rows) && (len(c.rows) == 0 || &c.rows[0] == &view.rows[0]) {
+	if c.face == a.fontFace && c.styles == a.styles && len(c.rows) == len(rows) && (len(c.rows) == 0 || &c.rows[0] == &rows[0]) {
 		return c.width
 	}
-	*c = uiContentWidth{rows: view.rows, face: a.fontFace, styles: a.styles}
+	*c = uiContentWidth{rows: rows, face: a.fontFace, styles: a.styles}
 	_, panelRight, _, panelLeft := a.viewInsets(view)
 	rowStyle := a.style(config.ElementRow)
 	_, rowRight, _, rowLeft := a.insets(rowStyle.Padding.V)
@@ -967,7 +974,7 @@ func (a *App) listContentWidth(view *uiView) int {
 	detailGap := a.ipx(32)
 	widest := 0
 	cells := make([]int, len(view.columns))
-	for _, row := range view.rows {
+	for _, row := range rows {
 		switch {
 		case row.heading:
 			widest = max(widest, measureText(headingFace, row.text))
@@ -995,7 +1002,7 @@ func (a *App) listContentWidth(view *uiView) int {
 		}
 		widest = max(widest, w)
 	}
-	prefix := a.rowPrefix(view, view.rows, math.MaxInt32)
+	prefix := a.rowPrefix(view, rows, math.MaxInt32)
 	width := int(math.Ceil(float64(panelLeft+rowLeft+rowRight+panelRight))) + prefix.width() + prefix.marker + widest
 	if header := view.title; header != "" || view.header != nil {
 		if view.header != nil {

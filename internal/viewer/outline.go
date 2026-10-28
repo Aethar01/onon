@@ -155,25 +155,17 @@ func (a *App) refreshOutlineView() {
 	visible := a.visibleOutlineIndices()
 	rows := make([]uiRow, 0, len(visible))
 	for _, index := range visible {
-		item := a.outline[index]
-		marker := ""
-		if item.HasChildren {
-			marker = "▸"
-			if a.outlineMenu.expanded[index] {
-				marker = "▾"
-			}
-		}
-		text := strings.TrimSpace(item.Title)
-		if text == "" {
-			text = "untitled"
-		}
-		secondary := ""
-		if item.Page >= 0 {
-			secondary = fmt.Sprintf("%d", item.Page+1)
-		}
-		rows = append(rows, uiRow{index: index, text: text, value: item.Title, secondary: secondary, depth: item.Depth, marker: marker})
+		rows = append(rows, a.outlineRow(index))
 	}
 	view.rows = rows
+	if view.fitRows == nil {
+		// Its width is every entry's, so filtering and expanding leave
+		// it where it is.
+		view.fitRows = make([]uiRow, len(a.outline))
+		for i := range a.outline {
+			view.fitRows[i] = a.outlineRow(i)
+		}
+	}
 	view.selected = clampOutlineSelection(view.selected, visible)
 	a.ensureUIViewSelectionVisible(view)
 }
@@ -188,6 +180,27 @@ func clampOutlineSelection(selected int, visible []int) int {
 		return -1
 	}
 	return visible[0]
+}
+
+// outlineRow is the row of the outline's entry index.
+func (a *App) outlineRow(index int) uiRow {
+	item := a.outline[index]
+	marker := ""
+	if item.HasChildren {
+		marker = "▸"
+		if a.outlineMenu.expanded[index] {
+			marker = "▾"
+		}
+	}
+	text := strings.TrimSpace(item.Title)
+	if text == "" {
+		text = "untitled"
+	}
+	secondary := ""
+	if item.Page >= 0 {
+		secondary = fmt.Sprintf("%d", item.Page+1)
+	}
+	return uiRow{index: index, text: text, value: item.Title, secondary: secondary, depth: item.Depth, marker: marker}
 }
 
 func (a *App) activateSelectedOutline() {

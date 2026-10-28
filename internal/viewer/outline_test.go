@@ -170,3 +170,22 @@ func TestOutlinePreviewsTheEntrySelected(t *testing.T) {
 		t.Fatalf("choosing chapter 2: page %d, jumps %v", app.page+1, app.jumpBack)
 	}
 }
+
+func TestOutlineKeepsItsWidthWhileFilteringAndExpanding(t *testing.T) {
+	app := testStyleApp("bar")
+	app.winW, app.winH = 1000, 800
+	app.outline = []mupdf.OutlineItem{
+		{Title: "A", Page: 0, Parent: -1, HasChildren: true},
+		{Title: "A long and deeply set section title that is wider than the rest", Page: 1, Parent: 0, Depth: 1},
+		{Title: "B", Page: 2, Parent: -1},
+	}
+	app.toggleOutlineMenu()
+	view := app.outlineMenu.view
+	width := func() float32 { r, _ := view.frameGeometry(app); return r.W }
+	before := width()
+	app.collapseSelectedOutline()
+	app.setUIViewQuery(view, "B")
+	if after := width(); after != before {
+		t.Fatalf("the outline went from %v to %v wide", before, after)
+	}
+}
