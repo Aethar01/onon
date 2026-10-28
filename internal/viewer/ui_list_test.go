@@ -20,7 +20,7 @@ func TestBuiltinModalSelection(t *testing.T) {
 func TestKeybindViewHasItsHooks(t *testing.T) {
 	app := &App{}
 	view := app.newKeybindView()
-	if view.keyHook == nil || view.onSelect == nil || view.onAction == nil {
+	if view.onSelect == nil || view.onAction == nil {
 		t.Fatalf("expected keybind hooks, view=%+v", view)
 	}
 }

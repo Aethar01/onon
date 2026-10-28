@@ -2,6 +2,7 @@ package viewer
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -10,36 +11,33 @@ import (
 	"onon/internal/keys"
 )
 
-const newKeybindLabel = "+ New keybind..."
+const addKeyLabel = "Add a key…"
 
-// The keybind menu lists the bindings under a button for a new one.
-// Choosing a binding, or an action for a new one, captures the keys to
-// bind it to.
+// The keybind menu lists every action with the keys bound to it. Choosing
+// one opens its keys over the list, under a button for a new one:
+// choosing a key captures the keys to bind in its place, and the button
+// the keys of a new binding.
 type keybindMenuState struct {
-	view      *uiView
-	capturing bool
+	view     *uiView // the actions
+	keysView *uiView // the keys of action, over view
+	action   string
+	actions  []string // view's rows, in order
+	keys     []string // action's keys, keysView's rows after its button
 	// captured holds the keys pressed so far while capturing; they are
 	// bound as one chord once no key follows within sequence_timeout_ms.
-	captured        []string
-	capturedAt      time.Time
-	selectingAction bool
-	captureAction   string
-	// captureRow is the binding, or action, capture was started for, and
-	// captureNew whether it makes a new binding, whatever is chosen while
-	// the keys are pressed.
-	captureRow keybindRow
-	captureNew bool
-	rows       []keybindRow
-}
-
-type keybindRow struct {
-	key    string
-	action string
+	capturing  bool
+	captured   []string
+	capturedAt time.Time
+	// captureKey is the key capture began on, which the keys captured
+	// replace, or empty for a new binding, whatever is chosen while they
+	// are pressed.
+	captureKey string
 }
 
 func (a *App) toggleKeybindMenu() {
-	if a.keybindMenu.view != nil && a.keybindMenu.view.visible {
-		a.closeUIView(a.keybindMenu.view, false)
+	if m := &a.keybindMenu; m.view != nil && m.view.visible {
+		a.closeUIView(m.keysView, false)
+		a.closeUIView(m.view, false)
 		return
 	}
 	a.closeAllUI()
@@ -55,36 +53,32 @@ func (a *App) openKeybindMenu(over bool) {
 }
 
 func (a *App) newKeybindView() *uiView {
-	view := &uiView{
-		id: "core:keybinds", owner: "core", modal: true, element: config.ElementPanel, place: menuPlace(76, 80),
-		header:   func(a *App, _ *uiView, _ int) string { return a.keybindMenuHeader() },
+	return &uiView{
+		id: "core:keybinds", owner: "core", modal: true, searchable: true, element: config.ElementPanel, place: menuPlace(76, 80),
+		header:   func(a *App, _ *uiView, _ int) string { return fmt.Sprintf("Keybinds (%d)", len(a.keybindMenu.actions)) },
+		onAction: func(a *App, _ *uiView, action string) bool { return a.keybindMenuAction(action) },
+		onSelect: func(a *App, row uiRow) { a.openActionKeys(row.value) },
+	}
+}
+
+// openActionKeys opens the keys of action over the list of actions.
+func (a *App) openActionKeys(action string) {
+	m := &a.keybindMenu
+	m.action, m.capturing, m.captured = action, false, nil
+	m.keysView = &uiView{
+		id: "core:keybind-keys", owner: "core", modal: true, stack: true, element: config.ElementPanel, place: menuPlace(50, 50),
+		header:   func(a *App, _ *uiView, _ int) string { return "Keys for " + a.keybindMenu.action },
 		keyHook:  func(a *App, key keys.Key, repeat bool) bool { return a.keybindMenuKey(key, repeat) },
 		onAction: func(a *App, _ *uiView, action string) bool { return a.keybindMenuAction(action) },
 		onSelect: func(a *App, row uiRow) { a.chooseKeybindRow(row) },
+		onClose:  func(a *App) { a.keybindMenu.capturing, a.keybindMenu.captured = false, nil },
 	}
-	return view
-}
-
-func (a *App) keybindMenuHeader() string {
-	m := &a.keybindMenu
-	if m.capturing {
-		action := m.captureAction
-		if action == "" {
-			action = m.captureRow.action
-		}
-		if len(m.captured) > 0 {
-			return action + ": " + strings.Join(m.captured, " ") + " …"
-		}
-		return "Press keys for " + action + " (Esc cancels)"
-	}
-	if m.selectingAction {
-		return fmt.Sprintf("Select action (%d)", len(m.rows))
-	}
-	return fmt.Sprintf("Keybinds (%d)", len(m.rows))
+	a.refreshKeybindRows()
+	a.showUIView(m.keysView)
 }
 
 // keybindMenuKey captures keys while capturing, Escape cancelling, and
-// otherwise deletes the selected binding with Delete or Backspace.
+// otherwise deletes the selected key with Delete or Backspace.
 func (a *App) keybindMenuKey(key keys.Key, repeat bool) bool {
 	m := &a.keybindMenu
 	if m.capturing {
@@ -93,104 +87,115 @@ func (a *App) keybindMenuKey(key keys.Key, repeat bool) bool {
 		}
 		token := key.String()
 		if token == "<Esc>" {
-			m.capturing, m.captured, m.captureAction = false, nil, ""
+			m.capturing, m.captured = false, nil
+			a.refreshKeybindRows()
 			return true
 		}
 		m.captured = append(m.captured, token)
 		m.capturedAt = time.Now()
 		a.wakeAfter(time.Duration(a.config.SequenceTimeoutMS) * time.Millisecond)
+		a.refreshKeybindRows()
 		return true
 	}
-	if token := key.String(); !m.selectingAction && !repeat && (token == "<Del>" || token == "<BS>") {
+	if token := key.String(); !repeat && (token == "<Del>" || token == "<BS>") {
 		a.deleteSelectedKeybind()
 		return true
 	}
 	return false
 }
 
-// keybindMenuAction goes back from choosing an action to the bindings on
-// close, and closes the menu on its own toggle.
+// keybindMenuAction closes the editor, the action's keys and the list
+// both, on its own toggle.
 func (a *App) keybindMenuAction(action string) bool {
-	m := &a.keybindMenu
-	switch action {
-	case "close", "keybinds":
-		if m.selectingAction {
-			m.selectingAction = false
-			m.view.selected, m.view.scroll = 0, 0
-			a.refreshKeybindRows()
-			return true
-		}
-		if action == "keybinds" {
-			a.closeUIView(m.view, false)
-			return true
-		}
+	if action != "keybinds" {
+		return false
 	}
-	return false
+	a.closeUIView(a.keybindMenu.keysView, false)
+	a.closeUIView(a.keybindMenu.view, false)
+	return true
 }
 
+// chooseKeybindRow starts capturing the keys to bind: in place of the key
+// chosen, or, from the button, for a new binding.
 func (a *App) chooseKeybindRow(row uiRow) {
 	m := &a.keybindMenu
 	if m.capturing {
 		return // the keys being pressed are for the row already chosen
 	}
-	if row.button {
-		m.selectingAction = true
-		m.view.selected, m.view.scroll = 0, 0
-		a.refreshKeybindRows()
-		return
+	m.capturing, m.captured, m.captureKey = true, nil, ""
+	if !row.button {
+		m.captureKey = row.value
 	}
-	if r, ok := a.selectedKeybind(); ok {
-		if m.selectingAction {
-			m.captureAction = r.action
-		}
-		m.capturing, m.captureRow, m.captureNew = true, r, m.selectingAction || r.key == ""
-	}
+	a.refreshKeybindRows()
 }
 
-// selectedKeybind is the binding, or action, of the selected row.
-func (a *App) selectedKeybind() (keybindRow, bool) {
+// selectedKey is the key of the selected row of the action's keys, if it
+// is one and not the button.
+func (a *App) selectedKey() (string, bool) {
 	m := &a.keybindMenu
-	i := m.view.selected
-	if !m.selectingAction {
-		i-- // past the button
+	if m.keysView == nil {
+		return "", false
 	}
-	if i < 0 || i >= len(m.rows) {
-		return keybindRow{}, false
+	i := m.keysView.selected - 1 // past the button
+	if i < 0 || i >= len(m.keys) {
+		return "", false
 	}
-	return m.rows[i], true
+	return m.keys[i], true
+}
+
+// actionKeys is each action bound and its keys, sorted.
+func (a *App) actionKeys() map[string][]string {
+	bound := map[string][]string{}
+	for key, action := range a.config.KeyBindings {
+		bound[action] = append(bound[action], key)
+	}
+	for _, keys := range bound {
+		sort.Strings(keys)
+	}
+	return bound
 }
 
 func (a *App) refreshKeybindRows() {
 	m := &a.keybindMenu
-	var rows []uiRow
-	if m.selectingAction {
+	bound := a.actionKeys()
+	if m.view != nil {
 		actions := config.Actions()
 		if a.runtime != nil {
 			actions = a.runtime.ActionNames()
 		}
-		sort.Strings(actions)
-		m.rows = make([]keybindRow, 0, len(actions))
-		for i, action := range actions {
-			m.rows = append(m.rows, keybindRow{action: action})
-			rows = append(rows, uiRow{index: i, text: action, value: action})
-		}
-	} else {
-		m.rows = make([]keybindRow, 0, len(a.config.KeyBindings))
-		for key, action := range a.config.KeyBindings {
-			m.rows = append(m.rows, keybindRow{key: key, action: action})
-		}
-		sort.Slice(m.rows, func(i, j int) bool {
-			if m.rows[i].action == m.rows[j].action {
-				return m.rows[i].key < m.rows[j].key
+		actions = slices.Clone(actions)
+		for action := range bound {
+			if !slices.Contains(actions, action) {
+				actions = append(actions, action)
 			}
-			return m.rows[i].action < m.rows[j].action
-		})
-		rows = append(rows, uiRow{index: 0, text: newKeybindLabel, button: true})
-		for _, row := range m.rows {
-			rows = append(rows, uiRow{index: len(rows), key: row.key, text: row.action, value: row.action})
 		}
+		sort.Strings(actions)
+		m.actions = actions
+		rows := make([]uiRow, len(actions))
+		for i, action := range actions {
+			rows[i] = uiRow{index: i, text: action, value: action, secondary: strings.Join(bound[action], "  ")}
+		}
+		a.setUIViewRows(m.view, rows)
 	}
-	a.setUIViewRows(m.view, rows)
+	if m.keysView != nil {
+		m.keys = bound[m.action]
+		rows := []uiRow{{index: 0, text: addKeyLabel, button: true}}
+		for i, key := range m.keys {
+			rows = append(rows, uiRow{index: i + 1, text: key, value: key})
+		}
+		if m.capturing {
+			// The row being bound says so.
+			i := 0
+			if m.captureKey != "" {
+				i = slices.Index(m.keys, m.captureKey) + 1
+			}
+			rows[i].secondary = "press keys, Esc cancels"
+			if len(m.captured) > 0 {
+				rows[i].secondary = strings.Join(m.captured, " ") + " …"
+			}
+		}
+		a.setUIViewRows(m.keysView, rows)
+	}
 }
 
 // captureDeadline is when the keys captured so far are bound, or the zero
@@ -213,14 +218,14 @@ func (a *App) finishKeybindCapture(now time.Time) {
 }
 
 func (a *App) deleteSelectedKeybind() {
-	row, ok := a.selectedKeybind()
-	if a.runtime == nil || !ok || row.key == "" {
+	key, ok := a.selectedKey()
+	if a.runtime == nil || !ok {
 		return
 	}
-	if err := a.runtime.UnbindKey(row.key); err != nil {
+	if err := a.runtime.UnbindKey(key); err != nil {
 		a.message = err.Error()
 	} else {
-		a.message = fmt.Sprintf("unbound %s", row.key)
+		a.message = fmt.Sprintf("unbound %s", key)
 	}
 	a.applyConfig(a.runtime.Config(), nil)
 	a.refreshKeybindRows()
@@ -228,31 +233,26 @@ func (a *App) deleteSelectedKeybind() {
 
 func (a *App) rebindSelectedKey(key string) {
 	m := &a.keybindMenu
-	row := m.captureRow
-	if a.runtime == nil || m.view == nil || !m.capturing {
+	if a.runtime == nil || m.keysView == nil || !m.capturing {
 		return
 	}
-	action := row.action
-	if m.captureAction != "" {
-		action = m.captureAction
-	}
-	if strings.HasPrefix(action, "__lua_callback_") {
+	m.capturing = false
+	if strings.HasPrefix(m.action, "__lua_callback_") {
 		a.message = "cannot persist callback keybind"
-		m.capturing, m.captureAction = false, ""
+		a.refreshKeybindRows()
 		return
 	}
 	var err error
-	if m.captureNew {
-		err = a.runtime.SetKeyBinding(key, action)
+	if m.captureKey == "" {
+		err = a.runtime.SetKeyBinding(key, m.action)
 	} else {
-		err = a.runtime.RebindKey(row.key, key, action)
+		err = a.runtime.RebindKey(m.captureKey, key, m.action)
 	}
 	if err != nil {
 		a.message = err.Error()
 	} else {
-		a.message = fmt.Sprintf("bound %s to %s", key, action)
+		a.message = fmt.Sprintf("bound %s to %s", key, m.action)
 	}
 	a.applyConfig(a.runtime.Config(), nil)
-	m.capturing, m.captureAction, m.selectingAction = false, "", false
 	a.refreshKeybindRows()
 }

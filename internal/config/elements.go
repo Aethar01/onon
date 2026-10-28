@@ -69,7 +69,7 @@ var elementSpecs = [ElementCount]struct {
 	ElementRowSelected:       {"row_selected", ElementRow, slices.Concat(boxProps, textProps), "The selected row."},
 	ElementRowDisabled:       {"row_disabled", ElementRow, slices.Concat(boxProps, textProps), "A row that cannot be chosen."},
 	ElementHeading:           {"heading", ElementRow, slices.Concat(boxProps, textProps), "A section title among a menu's rows."},
-	ElementButton:            {"button", ElementRow, slices.Concat(boxProps, textProps), "A button in a menu, such as the keybind menu's new keybind."},
+	ElementButton:            {"button", ElementRow, slices.Concat(boxProps, textProps), "A button in a menu, such as the keybind menu's Add a key…."},
 	ElementScrollbar:         {"scrollbar", noElement, slices.Concat(boxProps, []string{"width", "margin"}), "The thumb of a menu's scrollbar; margin.right sets it off the panel's edge."},
 	ElementSwatch:            {"swatch", noElement, slices.Concat(boxProps, []string{"gap"}), "A colour sample before a row's text, gap before the text."},
 	ElementStatus:            {"status", noElement, slices.Concat(boxProps, []string{"margin", "gap", "floating"}), "The status bar as a whole: margin sets it off the window's edges, gap between its sides, and floating draws it over the page instead of below it."},

@@ -2,6 +2,8 @@ package viewer
 
 import (
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -83,7 +85,10 @@ func TestPluginUIViewSearchRepeatsBackspace(t *testing.T) {
 	}
 }
 
-func TestKeybindEditorCapturesChords(t *testing.T) {
+// testKeybindApp opens the keybind editor of an app with the default
+// bindings.
+func testKeybindApp(t *testing.T) *App {
+	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 	t.Setenv("XDG_CONFIG_HOME", dir)
@@ -91,35 +96,63 @@ func TestKeybindEditorCapturesChords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	t.Cleanup(rt.Close)
 	app, err := New("", rt, 0, nil, NewOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	app.toggleKeybindMenu()
+	return app
+}
+
+// chooseAction opens the keys of action in the keybind editor.
+func chooseAction(t *testing.T, app *App, action string) *uiView {
+	t.Helper()
 	view := app.keybindMenu.view
-	if !view.rows[0].button {
-		t.Fatalf("the first row is not the new keybind button: %+v", view.rows[0])
-	}
-	view.selected = 0
-	app.activateUIView(view)
-	if !app.keybindMenu.selectingAction {
-		t.Fatal("the button did not offer the actions")
-	}
-	for i, row := range view.rows {
-		if row.value == "overview" {
-			view.selected = i
-		}
+	view.selected = slices.Index(app.keybindMenu.actions, action)
+	if view.selected < 0 {
+		t.Fatalf("no row for %s", action)
 	}
 	app.activateUIView(view)
+	if keys := app.activeModalUIView(); keys != app.keybindMenu.keysView || keys == nil {
+		t.Fatalf("choosing %s did not open its keys", action)
+	}
+	return app.keybindMenu.keysView
+}
+
+func TestKeybindEditorListsActionsWithTheirKeys(t *testing.T) {
+	app := testKeybindApp(t)
+	view := app.keybindMenu.view
+	copy := view.rows[slices.Index(app.keybindMenu.actions, "copy")]
+	if want := strings.Join(app.actionKeys()["copy"], "  "); copy.secondary != want || want == "" {
+		t.Fatalf("copy row = %+v, want keys %q", copy, want)
+	}
+	keys := chooseAction(t, app, "copy")
+	if !keys.rows[0].button || len(keys.rows) != len(app.actionKeys()["copy"])+1 {
+		t.Fatalf("copy's keys = %+v", keys.rows)
+	}
+	app.runUIViewAction(keys, "close")
+	if app.activeModalUIView() != view {
+		t.Fatal("closing an action's keys did not return to the actions")
+	}
+}
+
+func TestKeybindEditorCapturesChords(t *testing.T) {
+	app := testKeybindApp(t)
+	keys := chooseAction(t, app, "overview")
+	keys.selected = 0 // add a key
+	app.activateUIView(keys)
+	if !strings.Contains(keys.rows[0].secondary, "press keys") {
+		t.Fatalf("the row capturing does not say so: %+v", keys.rows[0])
+	}
 
 	start := time.Now()
 	for _, key := range []sdl.Keycode{sdl.KeycodeZ, sdl.KeycodeX} {
-		app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: key})
+		app.viewKey(keys, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: key})
 	}
 	app.finishKeybindCapture(start) // still within the pause: nothing bound yet
-	if !app.keybindMenu.capturing {
-		t.Fatal("bound before the chord's pause elapsed")
+	if !app.keybindMenu.capturing || keys.rows[0].secondary != "z x …" {
+		t.Fatalf("bound before the chord's pause elapsed, row %+v", keys.rows[0])
 	}
 	app.finishKeybindCapture(start.Add(time.Duration(app.config.SequenceTimeoutMS+1) * time.Millisecond))
 	if app.keybindMenu.capturing {
@@ -128,87 +161,78 @@ func TestKeybindEditorCapturesChords(t *testing.T) {
 	if got := app.config.KeyBindings["zx"]; got != "overview" {
 		t.Fatalf("zx bound to %q, want overview; message %q", got, app.message)
 	}
+	if !slices.Contains(app.keybindMenu.keys, "zx") {
+		t.Fatalf("the keys shown are %q", app.keybindMenu.keys)
+	}
 }
 
-// The binding capture started on is the one bound, wherever the pointer
+// The key capture started on is the one rebound, wherever the pointer
 // moves the selection while the keys are pressed.
 func TestKeybindCaptureKeepsItsRow(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("HOME", dir)
-	t.Setenv("XDG_CONFIG_HOME", dir)
-	rt, err := config.Open(filepath.Join(dir, "config.lua"), "")
-	if err != nil {
-		t.Fatal(err)
+	app := testKeybindApp(t)
+	keys := chooseAction(t, app, "copy")
+	if len(app.keybindMenu.keys) < 2 {
+		t.Fatalf("copy has keys %q, want two", app.keybindMenu.keys)
 	}
-	defer rt.Close()
-	app, err := New("", rt, 0, nil, NewOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	app.toggleKeybindMenu()
-	view := app.keybindMenu.view
-	view.selected = 1
-	chosen, _ := app.selectedKeybind()
-	app.activateUIView(view)
-	view.selected = 2 // the pointer passes over another row
-	other, _ := app.selectedKeybind()
+	chosen, other := app.keybindMenu.keys[0], app.keybindMenu.keys[1]
+	keys.selected = 1
+	app.activateUIView(keys)
+	keys.selected = 2 // the pointer passes over another row
 	code, name := freshKey(chosen, other)
 	start := time.Now()
-	app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: code})
+	app.viewKey(keys, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: code})
 	app.finishKeybindCapture(start.Add(time.Duration(app.config.SequenceTimeoutMS+1) * time.Millisecond))
-	if got := app.config.KeyBindings[name]; got != chosen.action {
-		t.Fatalf("%s bound to %q, want the chosen %q", name, got, chosen.action)
+	if got := app.config.KeyBindings[name]; got != "copy" {
+		t.Fatalf("%s bound to %q, want copy", name, got)
 	}
-	if got := app.config.KeyBindings[other.key]; got != other.action {
-		t.Fatalf("the row passed over lost its binding: %s is %q", other.key, got)
+	if _, kept := app.config.KeyBindings[chosen]; kept {
+		t.Fatalf("%s kept its binding: the capture added one rather than rebinding", chosen)
+	}
+	if got := app.config.KeyBindings[other]; got != "copy" {
+		t.Fatalf("the row passed over lost its binding: %s is %q", other, got)
 	}
 }
 
-// Choosing another row while capturing, such as the new keybind button,
-// leaves the capture to the binding it began on.
+// Choosing another row while capturing, such as the button, leaves the
+// capture to the key it began on.
 func TestKeybindCaptureIgnoresChoosingWhileCapturing(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("HOME", dir)
-	t.Setenv("XDG_CONFIG_HOME", dir)
-	rt, err := config.Open(filepath.Join(dir, "config.lua"), "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Close()
-	app, err := New("", rt, 0, nil, NewOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	app.toggleKeybindMenu()
-	view := app.keybindMenu.view
-	view.selected = 1
-	chosen, _ := app.selectedKeybind()
-	app.activateUIView(view)
-	view.selected = 0 // the new keybind button
-	app.activateUIView(view)
+	app := testKeybindApp(t)
+	keys := chooseAction(t, app, "copy")
+	chosen := app.keybindMenu.keys[0]
+	keys.selected = 1
+	app.activateUIView(keys)
+	keys.selected = 0 // the button
+	app.activateUIView(keys)
 	code, name := freshKey(chosen)
 	start := time.Now()
-	app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: code})
+	app.viewKey(keys, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: code})
 	app.finishKeybindCapture(start.Add(time.Duration(app.config.SequenceTimeoutMS+1) * time.Millisecond))
-	if app.config.KeyBindings[name] != chosen.action {
-		t.Fatalf("%s bound to %q, want %q", name, app.config.KeyBindings[name], chosen.action)
+	if app.config.KeyBindings[name] != "copy" {
+		t.Fatalf("%s bound to %q, want copy", name, app.config.KeyBindings[name])
 	}
-	if _, kept := app.config.KeyBindings[chosen.key]; kept {
-		t.Fatalf("%s kept its binding: the capture added one rather than rebinding", chosen.key)
+	if _, kept := app.config.KeyBindings[chosen]; kept {
+		t.Fatalf("%s kept its binding: the capture added one rather than rebinding", chosen)
 	}
 }
 
-// freshKey is a key to capture that none of rows are bound to.
-func freshKey(rows ...keybindRow) (sdl.Keycode, string) {
+func TestKeybindEditorDeletesAKey(t *testing.T) {
+	app := testKeybindApp(t)
+	keys := chooseAction(t, app, "copy")
+	gone := app.keybindMenu.keys[0]
+	keys.selected = 1
+	app.viewKey(keys, keyDown(sdl.KeycodeDelete, 0))
+	if _, kept := app.config.KeyBindings[gone]; kept || slices.Contains(app.keybindMenu.keys, gone) {
+		t.Fatalf("%s is still bound after Delete", gone)
+	}
+}
+
+// freshKey is a key to capture that none of keys is.
+func freshKey(keys ...string) (sdl.Keycode, string) {
 	for _, k := range []struct {
 		code sdl.Keycode
 		name string
 	}{{sdl.KeycodeZ, "z"}, {sdl.KeycodeX, "x"}, {sdl.KeycodeC, "c"}} {
-		used := false
-		for _, row := range rows {
-			used = used || row.key == k.name
-		}
-		if !used {
+		if !slices.Contains(keys, k.name) {
 			return k.code, k.name
 		}
 	}
