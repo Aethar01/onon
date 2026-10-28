@@ -438,6 +438,7 @@ func (a *App) activeModalUIView() *uiView {
 }
 
 func (a *App) showUIView(view *uiView) {
+	a.placeMenu(view)
 	if view.place.dock != "" {
 		a.relayoutWithViewportAnchor(func() { a.views.show(view) })
 	} else {

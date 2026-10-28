@@ -41,6 +41,35 @@ func menuPlace(width, height int) viewPlacement {
 	return p
 }
 
+// menuNames names onon's own menus, by view id, as the menus option does.
+var menuNames = map[string]string{
+	"annotation-menu": "annotation", "form-choice": "choice", "color-picker": "colors", helpViewID: "help",
+	"core:keybind-keys": "keybind_keys", "core:keybinds": "keybinds", "matches": "matches", "options": "options",
+	"core:outline": "outline", "print": "print", "printers": "printers", "recent-files": "recent", "themes": "themes",
+}
+
+// placeMenu places one of onon's own menus where the menus option puts it,
+// over its own place.
+func (a *App) placeMenu(view *uiView) {
+	name, ok := menuNames[view.id]
+	if !ok || view.owner != "core" {
+		return
+	}
+	p, ok := a.config.Menus[name]
+	if !ok {
+		return
+	}
+	if p.Width.Value > 0 {
+		view.place.width = p.Width
+	}
+	if p.Height.Value > 0 {
+		view.place.height = p.Height
+	}
+	if p.Anchor != "" {
+		view.place.anchor = p.Anchor
+	}
+}
+
 // maxDockShare is the most of the document's part of the window a docked
 // view takes.
 const maxDockShare = 0.8

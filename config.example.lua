@@ -24,6 +24,7 @@ onon.options.link_preview_delay_ms = 400 -- Milliseconds to hover an internal li
 onon.options.link_schemes = {"http", "https", "mailto"} -- URI schemes that document links may open externally; other links only show their target.
 onon.options.loading_indicator = true -- Animate a loading indicator on pages still rendering for the first time.
 onon.options.max_zoom = 8 -- Maximum manual zoom scale.
+onon.options.menus = {} -- Where onon's own menus sit, by name, such as { outline = { anchor = "left", width = "40%" } }: each takes width and height, the most of the window it takes, in logical pixels or a percentage, and anchor, as views do. Menus: annotation, choice, colors, help, keybind_keys, keybinds, matches, options, outline, print, printers, recent, themes.
 onon.options.min_zoom = 0.5 -- Minimum manual zoom scale.
 onon.options.mouse_text_select = true -- Enable text selection with the left mouse button.
 onon.options.mupdf_store_mb = 256 -- MuPDF cache for fonts and decoded images in MiB; applies to newly opened documents.

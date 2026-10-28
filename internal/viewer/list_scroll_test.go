@@ -3,9 +3,12 @@ package viewer
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"onon/internal/config"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
 )
@@ -178,5 +181,30 @@ func TestMenusFitTheirRows(t *testing.T) {
 	app.setUIViewQuery(view, "short")
 	if after, _ := view.frameGeometry(app); after.W != before.W {
 		t.Fatalf("filtering changed its width from %v to %v", before.W, after.W)
+	}
+}
+
+func TestMenusOptionPlacesOnonsMenus(t *testing.T) {
+	app := testStyleApp("bar")
+	app.winW, app.winH = 1000, 800
+	app.config.Menus = map[string]config.MenuPlacement{"help": {Width: config.UISize{Value: 30, Percent: true}, Anchor: "top"}}
+	app.toggleHelp()
+	view := app.activeModalUIView()
+	rect, _ := view.frameGeometry(app)
+	if rect.W > 300 || view.place.anchor != "top" || rect.Y > 20 {
+		t.Fatalf("help placed at %+v, anchor %q", rect, view.place.anchor)
+	}
+	// Menus not named keep their own place.
+	app.showRowList("themes", "Themes", []uiRow{{text: "moss"}}, 50, 60, func(*uiView) {})
+	if view := app.activeModalUIView(); view.place.anchor != "center" {
+		t.Fatalf("themes anchored %q", view.place.anchor)
+	}
+	for id := range menuNames {
+		if !slices.Contains(config.MenuNames, menuNames[id]) {
+			t.Errorf("menu %s is named %q, which the menus option does not know", id, menuNames[id])
+		}
+	}
+	if len(menuNames) != len(config.MenuNames) {
+		t.Errorf("%d menus named, the option knows %d", len(menuNames), len(config.MenuNames))
 	}
 }

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -258,6 +259,123 @@ func headersOption(description string, get func(*Config) map[string]map[string]s
 	}
 }
 
+func menusOption(description string, get func(*Config) map[string]MenuPlacement, set func(*Config, map[string]MenuPlacement)) optionDesc {
+	desc := optionDesc{
+		kind:        "table",
+		description: description,
+		get: func(L *lua.LState, cfg *Config) lua.LValue {
+			tbl := L.NewTable()
+			for name, p := range get(cfg) {
+				inner := L.NewTable()
+				for field, size := range map[string]UISize{"width": p.Width, "height": p.Height} {
+					if size.Value > 0 {
+						inner.RawSetString(field, uiSizeValue(size))
+					}
+				}
+				if p.Anchor != "" {
+					inner.RawSetString("anchor", lua.LString(p.Anchor))
+				}
+				tbl.RawSetString(name, inner)
+			}
+			return tbl
+		},
+		format: func(cfg *Config) string {
+			menus := make([]string, 0, len(get(cfg)))
+			for name, p := range get(cfg) {
+				var fields []string
+				for _, f := range []struct {
+					name string
+					size UISize
+				}{{"width", p.Width}, {"height", p.Height}} {
+					switch {
+					case f.size.Percent:
+						fields = append(fields, fmt.Sprintf("%s = %q", f.name, uiSizeValue(f.size).String()))
+					case f.size.Value > 0:
+						fields = append(fields, f.name+" = "+uiSizeValue(f.size).String())
+					}
+				}
+				if p.Anchor != "" {
+					fields = append(fields, fmt.Sprintf("anchor = %q", p.Anchor))
+				}
+				menus = append(menus, name+" = {"+strings.Join(fields, ", ")+"}")
+			}
+			sort.Strings(menus)
+			return "{" + strings.Join(menus, ", ") + "}"
+		},
+	}
+	desc.apply = func(cfg *Config, value lua.LValue) error {
+		tbl, ok := value.(*lua.LTable)
+		if !ok {
+			return fmt.Errorf("expected a table of menus, by name")
+		}
+		result := map[string]MenuPlacement{}
+		var err error
+		tbl.ForEach(func(key, inner lua.LValue) {
+			if err != nil {
+				return
+			}
+			name := key.String()
+			fields, ok := inner.(*lua.LTable)
+			if key.Type() != lua.LTString || !slices.Contains(MenuNames, name) {
+				err = fmt.Errorf("unknown menu %q; use one of %s", name, strings.Join(MenuNames, ", "))
+				return
+			}
+			if !ok {
+				err = fmt.Errorf("%s: expected a table of width, height and anchor", name)
+				return
+			}
+			var p MenuPlacement
+			fields.ForEach(func(field, value lua.LValue) {
+				if err != nil {
+					return
+				}
+				switch field.String() {
+				case "width", "height":
+					size, e := luaUISize(value)
+					if e != nil {
+						err = fmt.Errorf("%s: %s %v", name, field.String(), e)
+					} else if field.String() == "width" {
+						p.Width = size
+					} else {
+						p.Height = size
+					}
+				case "anchor":
+					p.Anchor = value.String()
+					if !slices.Contains(UIAnchors, p.Anchor) {
+						err = fmt.Errorf("%s: unknown anchor %q; use one of %s", name, p.Anchor, strings.Join(UIAnchors, ", "))
+					}
+				default:
+					err = fmt.Errorf("%s: unknown field %q; menus take width, height and anchor", name, field.String())
+				}
+			})
+			result[name] = p
+		})
+		if err != nil {
+			return err
+		}
+		set(cfg, result)
+		return nil
+	}
+	desc.applyText = func(cfg *Config, raw string) error {
+		// The text is a Lua table, read by a Lua with nothing it could run.
+		L := lua.NewState(lua.Options{SkipOpenLibs: true})
+		defer L.Close()
+		if err := L.DoString("return " + raw); err != nil {
+			return fmt.Errorf("expected a Lua table such as { help = { anchor = \"top\" } }")
+		}
+		return desc.apply(cfg, L.Get(-1))
+	}
+	return desc
+}
+
+// uiSizeValue is size as Lua writes it: logical pixels, or a percentage.
+func uiSizeValue(size UISize) lua.LValue {
+	if size.Percent {
+		return lua.LString(strconv.FormatFloat(size.Value, 'f', -1, 64) + "%")
+	}
+	return lua.LNumber(size.Value)
+}
+
 func normalizeLinkSchemes(schemes []string) []string {
 	normalized := make([]string, 0, len(schemes))
 	for _, scheme := range schemes {
@@ -428,6 +546,7 @@ var configOptions = map[string]optionDesc{
 	"page_cache_size":        intOption("Deprecated and ignored; the cache is bounded by page_cache_memory_mb.", func(*Config) int { return 0 }, func(*Config, int) {}),
 	"outline_initial_depth":  intOption("Outline levels expanded when the outline opens.", func(c *Config) int { return c.OutlineInitialDepth }, func(c *Config, v int) { c.OutlineInitialDepth = v }),
 	"outline_width_percent":  intOption("Most of the window the outline overlay takes, as a percentage of its width; the outline is narrower when its entries are.", func(c *Config) int { return c.OutlineWidthPercent }, func(c *Config, v int) { c.OutlineWidthPercent = v }),
+	"menus":                  menusOption("Where onon's own menus sit, by name, such as { outline = { anchor = \"left\", width = \"40%\" } }: each takes width and height, the most of the window it takes, in logical pixels or a percentage, and anchor, as views do. Menus: "+strings.Join(MenuNames, ", ")+".", func(c *Config) map[string]MenuPlacement { return c.Menus }, func(c *Config, v map[string]MenuPlacement) { c.Menus = v }),
 	"outline_height_percent": intOption("Outline overlay height as a percentage of the window.", func(c *Config) int { return c.OutlineHeightPercent }, func(c *Config, v int) { c.OutlineHeightPercent = v }),
 	"completion_max_items":   intOption("Maximum command-completion rows.", func(c *Config) int { return c.CompletionMaxItems }, func(c *Config, v int) { c.CompletionMaxItems = max(1, v) }),
 	"auto_reload":            boolOption("Reload the document when its file changes on disk.", func(c *Config) bool { return c.AutoReload }, func(c *Config, v bool) { c.AutoReload = v }),

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -1391,5 +1392,33 @@ func TestUIViewCallbacksReportHandling(t *testing.T) {
 	}
 	if handled, err := rt.RunUIMouse(host.ui.OnMouse, UIMouseEvent{Type: "press", Button: "left"}); err != nil || handled {
 		t.Errorf("on_mouse press = %v, %v", handled, err)
+	}
+}
+
+func TestMenusOptionPlacesMenus(t *testing.T) {
+	cfg := Default()
+	desc, _ := lookupOption("menus")
+	if err := desc.applyText(&cfg, `{ outline = { anchor = "left", width = "40%" }, help = { height = 500 } }`); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]MenuPlacement{
+		"outline": {Width: UISize{Value: 40, Percent: true}, Anchor: "left"},
+		"help":    {Height: UISize{Value: 500}},
+	}
+	if !reflect.DeepEqual(cfg.Menus, want) {
+		t.Fatalf("menus = %+v", cfg.Menus)
+	}
+	if got := desc.format(&cfg); got != `{help = {height = 500}, outline = {width = "40%", anchor = "left"}}` {
+		t.Fatalf("formatted as %s", got)
+	}
+	// What :set shows, :set takes back.
+	again := Default()
+	if err := desc.applyText(&again, desc.format(&cfg)); err != nil || !reflect.DeepEqual(again.Menus, want) {
+		t.Fatalf("reading back %s: %+v, %v", desc.format(&cfg), again.Menus, err)
+	}
+	for _, bad := range []string{`{ sidebar = {} }`, `{ help = { anchor = "middle" } }`, `{ help = { dock = "left" } }`, `{ help = { width = 0 } }`, `os.exit()`} {
+		if err := desc.applyText(&cfg, bad); err == nil {
+			t.Errorf("accepted %s", bad)
+		}
 	}
 }

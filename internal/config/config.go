@@ -15,6 +15,7 @@ type Config struct {
 	PageCacheMemoryMB     int
 	LinkSchemes           []string
 	HTTPHeaders           map[string]map[string]string // by host, for remote documents
+	Menus                 map[string]MenuPlacement     // by MenuNames, where onon's own menus sit
 	RenderThreads         int
 	MuPDFStoreMB          int
 	HintChars             string
@@ -163,6 +164,17 @@ type UIOverlay struct {
 	OnKey, OnAction, OnMouse, Draw, OnInput, OnSubmit     string
 	OnClick                                               string
 	Generation                                            int
+}
+
+// MenuNames are onon's own menus that the menus option places.
+var MenuNames = []string{"annotation", "choice", "colors", "help", "keybind_keys", "keybinds", "matches", "options", "outline", "print", "printers", "recent", "themes"}
+
+// MenuPlacement is where one of onon's own menus sits, each field left
+// zero keeping the menu's own: the most of the window it takes, as a menu
+// narrows to its rows, and the part of the window it sits in.
+type MenuPlacement struct {
+	Width, Height UISize
+	Anchor        string
 }
 
 // UIAnchors are the places a view may be anchored, and UIDocks the sides
