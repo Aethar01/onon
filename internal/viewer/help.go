@@ -1,6 +1,7 @@
 package viewer
 
 import (
+	"math"
 	"slices"
 	"strings"
 
@@ -28,7 +29,29 @@ func (a *App) toggleHelp() {
 	a.showRowList(helpViewID, "Help", a.helpRows(), 70, 80, func(view *uiView) {
 		view.onSelect = func(a *App, row uiRow) { a.activateHelpRow(row) }
 		view.selected = firstEnabledRow(view.rows)
+		a.helpColumns(view)
 	})
+}
+
+// helpColumns lays help's rows out in two columns, each name and what it
+// does, its keys or its value beside it, the first as wide as the widest
+// name.
+func (a *App) helpColumns(view *uiView) {
+	if a.fontFace == nil {
+		return
+	}
+	widest := 0
+	for i, row := range view.rows {
+		if row.heading {
+			continue
+		}
+		widest = max(widest, measureText(a.fontFace, row.text))
+		view.rows[i].cells = []string{row.text, row.secondary}
+	}
+	view.columns = []uiColumn{
+		{width: config.UISize{Value: math.Ceil(float64(widest) / float64(a.px(1)))}},
+		{fill: true},
+	}
 }
 
 func (a *App) activateHelpRow(row uiRow) {

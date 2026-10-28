@@ -111,3 +111,17 @@ func TestPrinterPickerReturnsToTheDialog(t *testing.T) {
 		t.Fatal("closing the printer picker did not return to the print dialog")
 	}
 }
+
+func TestHelpLaysItsRowsOutInColumns(t *testing.T) {
+	app := testStyleApp("bar")
+	app.toggleHelp()
+	view := app.activeModalUIView()
+	if len(view.columns) != 2 || !view.columns[1].fill {
+		t.Fatalf("help columns = %+v", view.columns)
+	}
+	for _, row := range view.rows {
+		if !row.heading && (len(row.cells) != 2 || row.cells[0] != row.text || row.cells[1] != row.secondary) {
+			t.Fatalf("row %+v has cells %q", row, row.cells)
+		}
+	}
+}
