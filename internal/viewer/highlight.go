@@ -34,7 +34,7 @@ func (a *App) pickHighlightColor() {
 func (a *App) pickColor(title string, palette [][3]uint8, apply func(int)) {
 	rows := make([]uiRow, len(palette))
 	for i, c := range palette {
-		swatch := rgb(c)
+		swatch := config.Color{RGB: c, Alpha: 1}
 		rows[i] = uiRow{index: i, text: fmt.Sprintf("%d  #%02x%02x%02x", i+1, c[0], c[1], c[2]), value: strconv.Itoa(i), swatch: &swatch}
 	}
 	a.showRowList("color-picker", title, rows, 30, 40, func(view *uiView) {

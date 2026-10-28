@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -217,9 +218,14 @@ func uiOverlayFromLuaSpec(L *lua.LState, rt *Runtime, spec *lua.LTable) UIOverla
 	overlay := UIOverlay{
 		ID:         lua.LVAsString(spec.RawGetString("id")),
 		Title:      lua.LVAsString(spec.RawGetString("title")),
-		Rows:       luaTableUIRows(spec.RawGetString("rows")),
+		Rows:       luaTableUIRows(L, spec.RawGetString("rows")),
 		Selected:   1,
 		Searchable: true,
+		Filter:     true,
+		Modal:      true,
+		Width:      70,
+		Height:     70,
+		Anchor:     "center",
 		Generation: rt.pluginGeneration,
 	}
 	if selected := spec.RawGetString("selected"); selected.Type() == lua.LTNumber {
@@ -231,14 +237,45 @@ func uiOverlayFromLuaSpec(L *lua.LState, rt *Runtime, spec *lua.LTable) UIOverla
 	if query := spec.RawGetString("query"); query.Type() == lua.LTString {
 		overlay.Query = query.String()
 	}
-	if searchable := spec.RawGetString("searchable"); searchable.Type() == lua.LTBool {
-		overlay.Searchable = lua.LVAsBool(searchable)
+	for name, field := range map[string]*bool{"searchable": &overlay.Searchable, "filter": &overlay.Filter, "modal": &overlay.Modal} {
+		if value := spec.RawGetString(name); value.Type() == lua.LTBool {
+			*field = lua.LVAsBool(value)
+		}
 	}
-	if fn, ok := spec.RawGetString("on_select").(*lua.LFunction); ok {
-		overlay.OnSelect = rt.registerCallback(fn)
+	for name, field := range map[string]*int{"width": &overlay.Width, "height": &overlay.Height} {
+		value := spec.RawGetString(name)
+		if value == lua.LNil {
+			continue
+		}
+		n, ok := value.(lua.LNumber)
+		if !ok || n <= 0 || n > 100 {
+			L.RaiseError("ui.create: %s must be a percentage of the window, from 1 to 100", name)
+		}
+		*field = int(n)
 	}
-	if fn, ok := spec.RawGetString("on_close").(*lua.LFunction); ok {
-		overlay.OnClose = rt.registerCallback(fn)
+	if anchor := spec.RawGetString("anchor"); anchor != lua.LNil {
+		overlay.Anchor = lua.LVAsString(anchor)
+		if !slices.Contains(UIAnchors, overlay.Anchor) {
+			L.RaiseError("ui.create: unknown anchor %q; use one of %s", overlay.Anchor, strings.Join(UIAnchors, ", "))
+		}
+	}
+	for name, field := range map[string]*string{
+		"on_select":            &overlay.OnSelect,
+		"on_close":             &overlay.OnClose,
+		"on_selection_changed": &overlay.OnSelectionChanged,
+		"on_query_changed":     &overlay.OnQueryChanged,
+		"on_key":               &overlay.OnKey,
+		"on_action":            &overlay.OnAction,
+		"on_mouse":             &overlay.OnMouse,
+		"draw":                 &overlay.Draw,
+	} {
+		switch fn := spec.RawGetString(name).(type) {
+		case *lua.LFunction:
+			*field = rt.registerCallback(fn)
+		case *lua.LNilType:
+		default:
+			L.RaiseError("ui.create: %s must be a function", name)
+		}
 	}
 	return overlay
 }
@@ -263,7 +300,7 @@ func newLuaView(L *lua.LState, rt *Runtime, overlay UIOverlay) *lua.LTable {
 		return 0
 	}))
 	L.SetField(view, "set_rows", L.NewFunction(func(L *lua.LState) int {
-		overlay.Rows = luaTableUIRows(L.CheckAny(2))
+		overlay.Rows = luaTableUIRows(L, L.CheckAny(2))
 		if rt.host != nil && rt.host.UIVisible(overlay.ID) {
 			rt.host.SetUIRows(overlay.ID, overlay.Rows)
 		}
@@ -287,6 +324,12 @@ func newLuaView(L *lua.LState, rt *Runtime, overlay UIOverlay) *lua.LTable {
 		overlay.Query = L.CheckString(2)
 		if rt.host != nil && rt.host.UIVisible(overlay.ID) {
 			rt.host.SetUIQuery(overlay.ID, overlay.Query)
+		}
+		return 0
+	}))
+	L.SetField(view, "redraw", L.NewFunction(func(L *lua.LState) int {
+		if rt.host != nil && rt.host.UIVisible(overlay.ID) {
+			rt.host.RedrawUI(overlay.ID)
 		}
 		return 0
 	}))
@@ -358,7 +401,7 @@ func luaTableStrings(value lua.LValue) []string {
 	return values
 }
 
-func luaTableUIRows(value lua.LValue) []UIListRow {
+func luaTableUIRows(L *lua.LState, value lua.LValue) []UIListRow {
 	tbl, ok := value.(*lua.LTable)
 	if !ok {
 		return nil
@@ -367,7 +410,7 @@ func luaTableUIRows(value lua.LValue) []UIListRow {
 	for i := 1; i <= tbl.Len(); i++ {
 		item := tbl.RawGetInt(i)
 		if text, ok := item.(lua.LString); ok {
-			rows = append(rows, UIListRow{Text: string(text), Value: string(text)})
+			rows = append(rows, UIListRow{Text: string(text), Value: string(text), Lua: item})
 			continue
 		}
 		spec, ok := item.(*lua.LTable)
@@ -379,14 +422,26 @@ func luaTableUIRows(value lua.LValue) []UIListRow {
 		if value == "" {
 			value = text
 		}
-		rows = append(rows, UIListRow{
+		row := UIListRow{
 			Text:      text,
 			Value:     value,
 			ID:        lua.LVAsString(spec.RawGetString("id")),
 			Secondary: lua.LVAsString(spec.RawGetString("secondary")),
 			Depth:     int(lua.LVAsNumber(spec.RawGetString("depth"))),
 			Disabled:  lua.LVAsBool(spec.RawGetString("disabled")),
-		})
+			Key:       lua.LVAsString(spec.RawGetString("key")),
+			Marker:    lua.LVAsString(spec.RawGetString("marker")),
+			Heading:   lua.LVAsBool(spec.RawGetString("heading")),
+			Lua:       item,
+		}
+		if swatch := spec.RawGetString("swatch"); swatch != lua.LNil {
+			c, err := colorFromLua(swatch)
+			if err != nil {
+				L.RaiseError("ui rows: row %d swatch: %v", i, err)
+			}
+			row.Swatch = &c
+		}
+		rows = append(rows, row)
 	}
 	return rows
 }

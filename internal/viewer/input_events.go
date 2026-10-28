@@ -150,13 +150,12 @@ func (a *App) handleSDLMouseWheel(e *sdl.MouseWheelEvent) {
 	if view := a.activeModalUIView(); view != nil {
 		// Without smooth scrolling a list moves a whole row an event, as
 		// the page moves a step, however far the wheel says.
-		if _, wy := normalizedWheelDeltas(e); wy != 0 {
-			delta := 1
-			if wy > 0 {
-				delta = -1
-			}
-			a.scrollListTo(view, float64(view.scroll+delta))
+		if view.onWheel == nil || !view.onWheel(a, e) {
+			a.scrollUIViewByWheel(view, e)
 		}
+		return
+	}
+	if a.handlePanelMouseWheel(e) {
 		return
 	}
 	wx, wy := normalizedWheelDeltas(e)
@@ -180,6 +179,9 @@ func (a *App) handleSDLMouseButton(e *sdl.MouseButtonEvent) {
 		if view.onMouseButton != nil {
 			view.onMouseButton(a, e)
 		}
+		return
+	}
+	if a.handlePanelMouseButton(e) {
 		return
 	}
 	if a.presentation != nil {
@@ -296,6 +298,13 @@ func (a *App) handleSDLMouseMotion(e *sdl.MouseMotionEvent) bool {
 		oldX, oldY := a.scrollX, a.scrollY
 		a.scrollBy(-float64(e.Xrel), -float64(e.Yrel))
 		return a.scrollX != oldX || a.scrollY != oldY
+	}
+	if taken, redraw := a.handlePanelMouseMotion(e); taken {
+		// a link under the panel is no longer hovered
+		a.hoverLinkPreview(mupdf.Link{}, false, e.X, e.Y)
+		return a.setHoveredLink(mupdf.Link{}, false) || redraw
+	} else if redraw {
+		a.pendingRedraw = true
 	}
 	a.stopPan()
 	if a.overview != nil {

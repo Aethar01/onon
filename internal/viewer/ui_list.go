@@ -2,15 +2,15 @@ package viewer
 
 import (
 	"fmt"
-	"image/color"
 	"math"
-	"strconv"
+	"slices"
 	"strings"
 	"time"
 
 	"onon/internal/config"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
+	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/image/font"
 )
 
@@ -23,9 +23,10 @@ type uiRow struct {
 	depth     int
 	marker    string
 	disabled  bool
-	key       string      // a key binding, drawn in a column before the text
-	heading   bool        // a section title, drawn in the heading face; also disabled
-	swatch    *color.RGBA // a colour sample drawn before the text
+	key       string        // a key binding, drawn in a column before the text
+	heading   bool          // a section title, drawn in the heading face; also disabled
+	swatch    *config.Color // a colour sample drawn before the text
+	lua       lua.LValue    // the row a plugin gave, handed back to its callbacks
 }
 
 // splitHeader splits a panel header such as "Outline /query (3/10)" into
@@ -58,6 +59,7 @@ type uiView struct {
 	selected          int
 	scroll            int
 	searchable        bool
+	noFilter          bool // rows stay unfiltered, for a view that sets its own for each query
 	searching         bool
 	query             string
 	visible           bool
@@ -71,6 +73,7 @@ type uiView struct {
 	offsetAt             time.Time // when offset was last brought up to date
 	scrollbarDragOffsetY int
 	modal                bool
+	headless             bool // no header: the rows or body start below the panel's padding
 	widthPercent         int
 	heightPercent        int
 	geometry             func(*App) (sdl.FRect, int)
@@ -93,6 +96,13 @@ type uiView struct {
 	draw               func(*App, *sdl.Renderer) error
 	filtered           uiRowFilter // visibleRows' last result
 	keyWidth           uiKeyWidth  // keyColumnWidth's last result
+
+	// onWheel takes a wheel event before the list scrolls, reporting
+	// whether it took it.
+	onWheel func(*App, *sdl.MouseWheelEvent) bool
+	// drawBody draws the view below its header in place of its rows, which
+	// drawRows draws.
+	drawBody func(a *App, renderer *sdl.Renderer, body sdl.FRect, drawRows func() error) error
 }
 
 type uiRowFilter struct {
@@ -111,6 +121,12 @@ type uiKeyWidth struct {
 type uiManager struct {
 	views  map[string]*uiView
 	active *uiView
+	// panels are the open views that are not modal, in the order they
+	// opened. They stay open as menus come and go, drawn under them.
+	panels []*uiView
+	// hovered is the panel the pointer was last over, and pressed the one
+	// a button went down on, which has the pointer until it is let go.
+	hovered, pressed *uiView
 }
 
 func (m *uiManager) add(view *uiView) {
@@ -118,17 +134,21 @@ func (m *uiManager) add(view *uiView) {
 		m.views = make(map[string]*uiView)
 	}
 	if old := m.views[view.id]; old != nil && old != view {
-		old.visible = false
+		m.close(old)
 	}
 	m.views[view.id] = view
 }
 
 func (m *uiManager) show(view *uiView) {
 	m.add(view)
+	view.visible = true
+	if !view.modal {
+		m.panels = append(slices.DeleteFunc(m.panels, func(p *uiView) bool { return p == view }), view)
+		return
+	}
 	if m.active != nil && m.active != view {
 		m.active.visible = false
 	}
-	view.visible = true
 	m.active = view
 }
 
@@ -140,11 +160,21 @@ func (m *uiManager) close(view *uiView) {
 	if m.active == view {
 		m.active = nil
 	}
+	m.panels = slices.DeleteFunc(m.panels, func(p *uiView) bool { return p == view })
+	if m.hovered == view {
+		m.hovered = nil
+	}
+	if m.pressed == view {
+		m.pressed = nil
+	}
 }
 
+// closeAll closes the modal views, leaving the panels open.
 func (m *uiManager) closeAll() {
 	for _, view := range m.views {
-		view.visible = false
+		if view.modal {
+			view.visible = false
+		}
 	}
 	m.active = nil
 }
@@ -154,7 +184,7 @@ func (m *uiManager) closeAll() {
 // are kept until the query changes or rows is assigned a new slice.
 func (v *uiView) visibleRows() []uiRow {
 	query := strings.ToLower(strings.TrimSpace(v.query))
-	if query == "" {
+	if query == "" || v.noFilter {
 		return v.rows
 	}
 	if f := v.filtered; f.query == query && len(f.source) == len(v.rows) && (len(v.rows) == 0 || &f.source[0] == &v.rows[0]) {
@@ -192,6 +222,23 @@ func (v *uiView) contentGeometry(a *App) (sdl.FRect, int) {
 		return v.listGeometry(a)
 	}
 	return v.frameGeometry(a)
+}
+
+// headHeight is how far view's rows or body start below its top.
+func (a *App) uiViewHeadHeight(view *uiView) int {
+	if view != nil && view.headless {
+		top, _, _, _ := a.insets(a.style(config.ElementPanel).Padding.V)
+		return int(math.Round(float64(top)))
+	}
+	return a.modalListHeadHeight()
+}
+
+// uiViewBody is the part of view below its header, where its rows are
+// drawn, or a draw function draws.
+func (a *App) uiViewBody(view *uiView) sdl.FRect {
+	rect, _ := view.contentGeometry(a)
+	head := float32(a.uiViewHeadHeight(view))
+	return sdl.FRect{X: rect.X, Y: rect.Y + head, W: rect.W, H: max(0, rect.H-head)}
 }
 
 func (a *App) activeUIView() *uiView {
@@ -236,7 +283,7 @@ func (a *App) closeUIView(view *uiView, callCallback bool) {
 func (a *App) closeAllUIViews(callCallbacks bool) {
 	visible := make([]*uiView, 0, 1)
 	for _, view := range a.views.views {
-		if view.visible {
+		if view.visible && view.modal {
 			visible = append(visible, view)
 		}
 	}
@@ -258,10 +305,7 @@ func (a *App) removeStaleLuaViews(generation int) {
 			continue
 		}
 		delete(a.views.views, id)
-		view.visible = false
-		if a.views.active == view {
-			a.views.active = nil
-		}
+		a.views.close(view)
 		if state := a.smoothScrollState(); state != nil && state.modalView == view {
 			a.cancelSmoothScroll()
 		}
@@ -409,21 +453,28 @@ func (a *App) drawUIViewContent(renderer *sdl.Renderer, view *uiView, rect sdl.F
 	if view.header == nil && (view.searching || view.query != "") {
 		header = fmt.Sprintf("%s /%s (%d/%d)", header, view.query, len(items), len(view.rows))
 	}
-	rowHeight := a.modalListRowHeight()
-	baselineOffset := a.modalListBaselineOffset(rowHeight)
-	title, detail := splitHeader(header)
-	if err := a.drawModalListHeader(renderer, rect, title, detail); err != nil {
-		return err
-	}
-	if len(items) == 0 {
-		empty := "No items"
-		if view.empty != nil {
-			empty = view.empty(a, view)
+	if !view.headless {
+		title, detail := splitHeader(header)
+		if err := a.drawModalListHeader(renderer, rect, title, detail); err != nil {
+			return err
 		}
-		st := a.style(config.ElementRowDisabled)
-		return a.drawText(renderer, empty, int(listRect.X)+a.modalListTextInset(), int(listRect.Y)+a.modalListHeadHeight()+baselineOffset, a.textColor(&st, false))
 	}
-	return a.drawUIListItems(renderer, listRect, rows, view, items)
+	drawRows := func() error {
+		if len(items) == 0 {
+			empty := "No items"
+			if view.empty != nil {
+				empty = view.empty(a, view)
+			}
+			st := a.style(config.ElementRowDisabled)
+			baselineOffset := a.modalListBaselineOffset(a.modalListRowHeight())
+			return a.drawText(renderer, empty, int(listRect.X)+a.modalListTextInset(), int(listRect.Y)+a.uiViewHeadHeight(view)+baselineOffset, a.textColor(&st, false))
+		}
+		return a.drawUIListItems(renderer, listRect, rows, view, items)
+	}
+	if view.drawBody != nil {
+		return view.drawBody(a, renderer, a.uiViewBody(view), drawRows)
+	}
+	return drawRows()
 }
 
 func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, view *uiView, items []uiRow) error {
@@ -438,7 +489,7 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 	keyColumn := a.keyColumnWidth(view, items, int(rect.W*0.35))
 	// Rows sit where the offset puts them, those part-way out of the list
 	// cut off at its edges.
-	head := a.modalListHeadHeight()
+	head := a.uiViewHeadHeight(view)
 	top := float64(rect.Y) + float64(head)
 	rowY := func(index float64) int { return int(math.Round(top + (index-offset)*float64(rowHeight))) }
 	first, last := int(math.Floor(offset)), min(len(items), int(math.Ceil(offset))+rows)
@@ -491,7 +542,7 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 			}
 			if item.swatch != nil {
 				swatchStyle := a.style(config.ElementSwatch)
-				swatchStyle.Fill.V = config.Color{RGB: [3]uint8{item.swatch.R, item.swatch.G, item.swatch.B}, Alpha: float64(item.swatch.A) / 255}
+				swatchStyle.Fill.V = *item.swatch
 				size := float32(a.uiLineHeight())
 				a.drawBox(renderer, &swatchStyle, sdl.FRect{X: float32(textX), Y: float32(y) + (float32(rowHeight)-size)/2, W: size, H: size})
 				advance := int(size) + a.ipx(swatchStyle.Gap.V)
@@ -547,7 +598,7 @@ func (a *App) uiViewIndexAt(view *uiView, x, y int) (uiRow, bool) {
 		return uiRow{}, false
 	}
 	rect, rows := view.contentGeometry(a)
-	rowHeight, head := a.modalListRowHeight(), a.modalListHeadHeight()
+	rowHeight, head := a.modalListRowHeight(), a.uiViewHeadHeight(view)
 	if _, ok := a.modalListRowAt(rect, rows, head, rowHeight, x, y); !ok {
 		return uiRow{}, false
 	}
@@ -566,7 +617,7 @@ func (a *App) uiViewStartScrollbarDrag(view *uiView, x, y int) bool {
 	}
 	rect, rows := view.contentGeometry(a)
 	offset := view.offset
-	if !modalListStartScrollbarDrag(rect, a.modalListHeadHeight(), rows, len(view.visibleRows()), x, y, &offset, &view.scrollbarDragOffsetY, &view.draggingScrollbar) {
+	if !modalListStartScrollbarDrag(rect, a.uiViewHeadHeight(view), rows, len(view.visibleRows()), x, y, &offset, &view.scrollbarDragOffsetY, &view.draggingScrollbar) {
 		return false
 	}
 	a.scrollListTo(view, offset)
@@ -579,7 +630,7 @@ func (a *App) uiViewDragScrollbar(view *uiView, y int) {
 	}
 	rect, rows := view.contentGeometry(a)
 	offset := view.offset
-	modalListDragScrollbar(rect, a.modalListHeadHeight(), rows, len(view.visibleRows()), y, &offset, view.scrollbarDragOffsetY)
+	modalListDragScrollbar(rect, a.uiViewHeadHeight(view), rows, len(view.visibleRows()), y, &offset, view.scrollbarDragOffsetY)
 	a.scrollListTo(view, offset)
 }
 
@@ -599,7 +650,10 @@ func (a *App) uiViewHover(view *uiView, x, y int) bool {
 func uiRowsFromConfig(rows []config.UIListRow) []uiRow {
 	result := make([]uiRow, len(rows))
 	for i, row := range rows {
-		result[i] = uiRow{index: i, id: row.ID, text: row.Text, value: row.Value, secondary: row.Secondary, depth: row.Depth, disabled: row.Disabled}
+		result[i] = uiRow{
+			index: i, id: row.ID, text: row.Text, value: row.Value, secondary: row.Secondary, depth: row.Depth,
+			disabled: row.Disabled || row.Heading, key: row.Key, marker: row.Marker, heading: row.Heading, swatch: row.Swatch, lua: row.Lua,
+		}
 	}
 	return result
 }
@@ -641,48 +695,5 @@ func (a *App) showRowList(id, title string, rows []uiRow, widthPercent, heightPe
 	view.onMouseMotion = func(a *App, e *sdl.MouseMotionEvent) bool { return a.handleGenericUIViewMouseMotion(view, e) }
 	setup(view)
 	a.showUIView(view)
-	return view
-}
-
-func (a *App) createLuaListView(spec config.UIOverlay) *uiView {
-	selected := -1
-	if len(spec.Rows) > 0 {
-		selected = clampInt(spec.Selected-1, 0, len(spec.Rows)-1)
-	}
-	view := &uiView{
-		id:            spec.ID,
-		owner:         "lua",
-		generation:    spec.Generation,
-		title:         spec.Title,
-		rows:          uiRowsFromConfig(spec.Rows),
-		selected:      selected,
-		scroll:        max(0, spec.Scroll),
-		query:         spec.Query,
-		searchable:    spec.Searchable,
-		modal:         true,
-		widthPercent:  70,
-		heightPercent: 70,
-	}
-	if view.id == "" {
-		view.id = "lua" + strconv.Itoa(len(a.views.views)+1)
-	}
-	if spec.OnSelect != "" {
-		callback := spec.OnSelect
-		view.onSelect = func(a *App, row uiRow) {
-			if err := a.runtime.RunUISelect(callback, row.index+1, row.value, row.text, row.id); err != nil {
-				a.message = err.Error()
-			}
-			a.applyRuntimeChanges("ui_select")
-		}
-	}
-	if spec.OnClose != "" {
-		callback := spec.OnClose
-		view.onClose = func(a *App) {
-			if err := a.runtime.RunUIClose(callback); err != nil {
-				a.message = err.Error()
-			}
-			a.applyRuntimeChanges("ui_close")
-		}
-	}
 	return view
 }

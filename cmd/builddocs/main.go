@@ -95,8 +95,7 @@ func renderReference(luaRefs []config.LuaReferenceEntry, luaDocs map[string]stri
 		renderLuaFunction(&b, ref, luaDocs[luaDocumentationName(ref.Signature)])
 	}
 	b.WriteString("\n### UI views\n\n")
-	b.WriteString("Create views with `local view = onon.ui.create(spec)`, then call `view:show()`. The specification supports `id`, `title`, `rows`, `selected`, `scroll`, `query`, `searchable`, `on_select`, and `on_close`. A row may be a string or a table with `text`, `value`, `id`, `secondary`, `depth`, and `disabled`.\n\n")
-	b.WriteString("View methods are `show()`, `close()`, `visible()`, `set_rows(rows)`, `set_selected(index)`, `set_scroll(scroll)`, `set_query(query)`, `selected()`, `scroll()`, and `query()`. Selection indices are 1-based, with 0 meaning no selection. `on_select` receives `(index, value, text, id)`, preserving the original row index and ID when the list is filtered. `on_close` runs for user, programmatic, replacement, and document-close paths.\n")
+	b.WriteString(uiViewsReference)
 	renderPortablePluginReference(&b)
 	renderBindingNames(&b)
 	b.WriteString("\n## Bindable actions\n\n")
@@ -378,3 +377,45 @@ func fatal(err error) {
 	fmt.Fprintln(os.Stderr, err)
 	os.Exit(1)
 }
+
+const uiViewsReference = `Create views with ` + "`local view = onon.ui.create(spec)`" + `, then call ` + "`view:show()`" + `. A view is a list of rows by default, or a body its ` + "`draw`" + ` function draws.
+
+| Field | Meaning |
+|---|---|
+| ` + "`id`, `title`" + ` | The view's name and the title in its header. A view with a ` + "`draw`" + ` function and no title has no header. |
+| ` + "`rows`" + ` | The rows, each a string or a table; see below. |
+| ` + "`selected`, `scroll`, `query`" + ` | The selected row (1-based), the first row shown, and the search query to start with. |
+| ` + "`searchable`" + ` | Whether / searches the rows; true unless set false. |
+| ` + "`filter`" + ` | Whether the query filters the rows; true unless set false, as for a view that sets its own rows for each query in ` + "`on_query_changed`" + `. |
+| ` + "`modal`" + ` | True unless set false. A modal view is a menu: it takes the keys, closes on a click outside it, and replaces any other menu. A view that is not modal is a panel: it stays open over the document, under any menu, until closed, and takes only the pointer over it. |
+| ` + "`width`, `height`" + ` | Its size as a percentage of the window, 70 unless set. A list fits its height to its rows. |
+| ` + "`anchor`" + ` | Where it sits: ` + "`center`" + ` (the default), ` + "`top`, `bottom`, `left`, `right`, `top_left`, `top_right`, `bottom_left` or `bottom_right`" + `, a little in from the edges. |
+| ` + "`draw`" + ` | A function(canvas, box, state) that draws the view's body, below its header, in place of its rows; ` + "`canvas:default()`" + ` draws the rows. The canvas is the one element draw functions have (see [Drawing](#drawing)); ` + "`box`" + ` is the body and ` + "`state.element`" + ` is ` + "`panel`" + `. If it fails, the error is reported once and the rows are drawn instead. Call ` + "`view:redraw()`" + ` when what it draws changes outside the view's callbacks, as from a timer. |
+
+A row table has ` + "`text`" + `, ` + "`value`" + ` (the text unless set), ` + "`id`" + `, ` + "`secondary`" + ` (drawn on the right), ` + "`depth`" + ` (indenting it), ` + "`disabled`" + `, ` + "`key`" + ` (a key binding, drawn in a column before the text), ` + "`marker`" + ` (drawn just before the text), ` + "`heading`" + ` (a section title, which cannot be chosen) and ` + "`swatch`" + ` (a colour drawn before the text, written as in the elements table). Other fields are the plugin's own, and come back with the row.
+
+| Callback | Runs |
+|---|---|
+| ` + "`on_select(index, value, text, id, row)`" + ` | When a row is chosen. ` + "`index`" + ` and ` + "`id`" + ` are the row's in the rows as set, however filtered, and ` + "`row`" + ` is the row as given, string or table. |
+| ` + "`on_selection_changed(index, value, text, id, row)`" + ` | When a key, the pointer or the query moves the selection, not when the view opens or ` + "`set_selected`" + ` moves it, as for a live preview. |
+| ` + "`on_query_changed(query)`" + ` | When the user changes the search query, not when ` + "`set_query`" + ` does. |
+| ` + "`on_key(key)`" + ` | For each key pressed in a modal view, named as ` + "`bind`" + ` names it, before the view's own keys; returning true takes the key. Keys typed into the search query do not reach it. |
+| ` + "`on_action(action)`" + ` | For the action bound to a key pressed in a modal view, before the view runs it; returning true takes the action. |
+| ` + "`on_mouse(event)`" + ` | For the pointer over the view, and after a press on it until the release; returning true keeps the list from handling it. ` + "`event.type`" + ` is ` + "`press`, `release`, `move`, `leave` or `wheel`" + `; ` + "`event.x`" + ` and ` + "`event.y`" + ` are logical pixels from the top left of the body, as the canvas draws; a press or release has ` + "`button`" + ` (` + "`left`, `middle`, `right`, `x1` or `x2`" + `) and a press ` + "`clicks`" + `; a wheel has ` + "`dx`" + ` and ` + "`dy`" + `, positive to the right and down. |
+| ` + "`on_close()`" + ` | When the view closes: by ` + "`view:close()`" + ` or, for a menu, the user, another menu replacing it, or the document closing. |
+
+View methods are ` + "`show()`, `close()`, `visible()`, `redraw()`, `set_rows(rows)`, `set_selected(index)`, `set_scroll(scroll)`, `set_query(query)`, `selected()`, `scroll()`, and `query()`" + `. Selection indices are 1-based, with 0 meaning no selection.
+
+` + "```lua" + `
+-- A panel in the corner showing reading progress, drawn by the plugin.
+local progress = onon.ui.create({
+  modal = false, anchor = "bottom_right", width = 20, height = 8,
+  draw = function(canvas, box)
+    local done = onon.page() / math.max(1, onon.page_count())
+    canvas:rect(0, box.h / 2 - 3, box.w, 6, "border", 3)
+    canvas:rect(0, box.h / 2 - 3, box.w * done, 6, "accent", 3)
+  end,
+})
+progress:show()
+` + "```" + `
+`

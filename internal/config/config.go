@@ -125,10 +125,26 @@ type UIOverlay struct {
 	Scroll     int
 	Query      string
 	Searchable bool
-	OnSelect   string
-	OnClose    string
-	Generation int
+	// Filter is whether the query filters the rows; a view that sets its
+	// own rows for each query in OnQueryChanged turns it off.
+	Filter bool
+	// Modal views take the keys and close on a click outside them, as
+	// menus do. Other views are panels: they stay open over the document,
+	// and under any menu, taking only the pointer over them.
+	Modal bool
+	// Width and Height are percentages of the window, and Anchor where
+	// the view sits in it: center, or an edge or corner such as top or
+	// bottom_right.
+	Width, Height int
+	Anchor        string
+	// The callbacks, each the ID of a registered Lua function or empty.
+	OnSelect, OnClose, OnSelectionChanged, OnQueryChanged string
+	OnKey, OnAction, OnMouse, Draw                        string
+	Generation                                            int
 }
+
+// UIAnchors are the places a view may be anchored.
+var UIAnchors = []string{"center", "top", "bottom", "left", "right", "top_left", "top_right", "bottom_left", "bottom_right"}
 
 type UIListRow struct {
 	Text      string
@@ -137,6 +153,29 @@ type UIListRow struct {
 	Secondary string
 	Depth     int
 	Disabled  bool
+	Key       string // a key binding, drawn in a column before the text
+	Marker    string // drawn just before the text
+	Heading   bool   // a section title, which cannot be chosen
+	Swatch    *Color // a colour sample drawn before the text
+	// Lua is the row as the plugin gave it, handed back to callbacks.
+	Lua lua.LValue
+}
+
+// UIRowRef is a row as a view's callbacks are given it.
+type UIRowRef struct {
+	Index           int // 1-based, in the rows as set, however filtered
+	Value, Text, ID string
+	Lua             lua.LValue
+}
+
+// UIMouseEvent is a pointer event over a view. X and Y are logical
+// pixels from the top left of the view's body, as its canvas draws.
+type UIMouseEvent struct {
+	Type   string // press, release, move, leave or wheel
+	Button string // left, middle, right, x1 or x2, for press and release
+	X, Y   float64
+	Clicks int     // 2 for a double click, for press
+	DX, DY float64 // for wheel: positive is right and down
 }
 
 type documentMeta struct {
@@ -160,6 +199,9 @@ type Host interface {
 	UISelected(id string) int
 	UIScroll(id string) int
 	UIQuery(id string) string
+	// RedrawUI draws the view again, as a view with a draw function needs
+	// when what it draws changes.
+	RedrawUI(id string)
 	Page() int
 	PageCount() int
 	GotoPage(page int) error

@@ -433,6 +433,45 @@ onon.theme.elements.row.draw = function(canvas) kept = canvas end
 	}
 }
 
+// nestingCanvas runs inner when its default is drawn, as a view's canvas
+// draws its rows, each of which may have a draw function of its own.
+type nestingCanvas struct {
+	recordingCanvas
+	inner func()
+}
+
+func (c *nestingCanvas) Default() { c.inner() }
+
+func TestDrawFunctionsNest(t *testing.T) {
+	rt := mustLoadThemeTestConfig(t, `
+onon.theme.elements.row.draw = function(canvas, box) canvas:rect(0, 0, box.w, 1, "accent") end
+outer = function(canvas, box)
+  canvas:default()
+  assert(box.w == 300, "the inner draw changed the outer box: " .. box.w)
+  canvas:text(0, 0, "after", "foreground")
+end
+`)
+	theme := rt.Config().Theme
+	row := theme.Style(ElementRow).Draw.V
+	inner := &recordingCanvas{}
+	outer := &nestingCanvas{}
+	outer.inner = func() {
+		if err := rt.RunDraw(row, inner, DrawState{Element: ElementRow, W: 50, H: 20}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fn, ok := rt.state.GetGlobal("outer").(*lua.LFunction)
+	if !ok {
+		t.Fatal("no outer function")
+	}
+	if err := rt.RunDraw(fn, outer, DrawState{Element: ElementPanel, W: 300, H: 200}); err != nil {
+		t.Fatal(err)
+	}
+	if len(inner.calls) != 1 || len(outer.calls) != 1 || outer.calls[0] != "text after" {
+		t.Fatalf("inner drew %q, outer %q", inner.calls, outer.calls)
+	}
+}
+
 // A draw function runs for every element it styles on every frame.
 func BenchmarkRunDraw(b *testing.B) {
 	path := filepath.Join(b.TempDir(), "config.lua")

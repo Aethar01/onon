@@ -2,6 +2,7 @@ package viewer
 
 import (
 	"math"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -130,6 +131,14 @@ func (a *App) drawUIViews(renderer *sdl.Renderer) error {
 		m.shownView = view
 	}
 	tr := a.config.Theme.Motion.Panel
+	// Panels are drawn under the menu. A panel's draw function may close
+	// one, so they are drawn from a copy.
+	for _, panel := range slices.Clone(a.views.panels) {
+		p := a.animateFrom(tweenKey{kind: "panel in", view: panel}, 0, 1, tr)
+		if err := a.faded(p, func() error { return a.drawUIView(renderer, panel) }); err != nil {
+			return err
+		}
+	}
 	if closing := m.closingView; closing != nil {
 		p := a.animateFrom(tweenKey{kind: "panel out", view: closing}, 1, 0, tr)
 		if p <= 0 {

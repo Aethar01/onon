@@ -146,6 +146,7 @@ const luaCanvasType = "onon.canvas"
 type drawCache struct {
 	canvas     *lua.LUserData
 	box, state *lua.LTable
+	depth      int // the draw functions running
 	colors     map[string]Color
 	paths      map[string][]PathOp
 }
@@ -197,12 +198,21 @@ func (r *Runtime) RunDraw(fn *lua.LFunction, canvas Canvas, state DrawState) err
 		L.SetMetatable(ud, luaCanvasMetatable(L, &r.draw))
 		r.draw.canvas = ud
 	}
-	ud.Value = canvas
-	defer func() { ud.Value = nil }()
 	if r.draw.box == nil {
 		r.draw.box, r.draw.state = L.NewTable(), L.NewTable()
 	}
 	box, st := r.draw.box, r.draw.state
+	// A draw run from another, as a row's is from a view's canvas:default(),
+	// takes its own canvas and tables, leaving the outer function's as they
+	// were.
+	if r.draw.depth > 0 {
+		ud = L.NewUserData()
+		L.SetMetatable(ud, luaCanvasMetatable(L, &r.draw))
+		box, st = L.NewTable(), L.NewTable()
+	}
+	r.draw.depth++
+	ud.Value = canvas
+	defer func() { ud.Value = nil; r.draw.depth-- }()
 	box.RawSetString("x", lua.LNumber(state.X))
 	box.RawSetString("y", lua.LNumber(state.Y))
 	box.RawSetString("w", lua.LNumber(state.W))
