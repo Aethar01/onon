@@ -152,11 +152,12 @@ func TestKeybindCaptureKeepsItsRow(t *testing.T) {
 	app.activateUIView(view)
 	view.selected = 2 // the pointer passes over another row
 	other, _ := app.selectedKeybind()
+	code, name := freshKey(chosen, other)
 	start := time.Now()
-	app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: sdl.KeycodeZ})
+	app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: code})
 	app.finishKeybindCapture(start.Add(time.Duration(app.config.SequenceTimeoutMS+1) * time.Millisecond))
-	if got := app.config.KeyBindings["z"]; got != chosen.action {
-		t.Fatalf("z bound to %q, want the chosen %q", got, chosen.action)
+	if got := app.config.KeyBindings[name]; got != chosen.action {
+		t.Fatalf("%s bound to %q, want the chosen %q", name, got, chosen.action)
 	}
 	if got := app.config.KeyBindings[other.key]; got != other.action {
 		t.Fatalf("the row passed over lost its binding: %s is %q", other.key, got)
@@ -185,13 +186,31 @@ func TestKeybindCaptureIgnoresChoosingWhileCapturing(t *testing.T) {
 	app.activateUIView(view)
 	view.selected = 0 // the new keybind button
 	app.activateUIView(view)
+	code, name := freshKey(chosen)
 	start := time.Now()
-	app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: sdl.KeycodeZ})
+	app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: code})
 	app.finishKeybindCapture(start.Add(time.Duration(app.config.SequenceTimeoutMS+1) * time.Millisecond))
-	if app.config.KeyBindings["z"] != chosen.action {
-		t.Fatalf("z bound to %q, want %q", app.config.KeyBindings["z"], chosen.action)
+	if app.config.KeyBindings[name] != chosen.action {
+		t.Fatalf("%s bound to %q, want %q", name, app.config.KeyBindings[name], chosen.action)
 	}
 	if _, kept := app.config.KeyBindings[chosen.key]; kept {
 		t.Fatalf("%s kept its binding: the capture added one rather than rebinding", chosen.key)
 	}
+}
+
+// freshKey is a key to capture that none of rows are bound to.
+func freshKey(rows ...keybindRow) (sdl.Keycode, string) {
+	for _, k := range []struct {
+		code sdl.Keycode
+		name string
+	}{{sdl.KeycodeZ, "z"}, {sdl.KeycodeX, "x"}, {sdl.KeycodeC, "c"}} {
+		used := false
+		for _, row := range rows {
+			used = used || row.key == k.name
+		}
+		if !used {
+			return k.code, k.name
+		}
+	}
+	panic("no fresh key")
 }
