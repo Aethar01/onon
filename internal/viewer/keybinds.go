@@ -143,7 +143,8 @@ func (a *App) selectedKey() (string, bool) {
 	return m.keys[i], true
 }
 
-// actionKeys is each action bound and its keys, sorted.
+// actionKeys is each action bound to keys and its keys, sorted; help's
+// bindingsByAction adds the mouse's.
 func (a *App) actionKeys() map[string][]string {
 	bound := map[string][]string{}
 	for key, action := range a.config.KeyBindings {

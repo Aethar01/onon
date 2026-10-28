@@ -144,10 +144,7 @@ type actionBindings struct {
 // bindingsByAction lists each bound action with its keys and mouse
 // bindings, sorted by action name.
 func (a *App) bindingsByAction() []actionBindings {
-	keys := map[string][]string{}
-	for key, action := range a.config.KeyBindings {
-		keys[action] = append(keys[action], key)
-	}
+	keys := a.actionKeys()
 	for button, action := range a.mouseBindings {
 		keys[action] = append(keys[action], button)
 	}
