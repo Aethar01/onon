@@ -1,23 +1,48 @@
 package viewer
 
 import (
-	"onon/internal/config"
+	"math"
+	"strconv"
 
-	"github.com/jupiterrider/purego-sdl3/sdl"
+	"onon/internal/config"
+	"onon/internal/keys"
 )
 
 func (a *App) ShowUI(spec config.UIOverlay) error {
-	callCallbacks := true
-	if active := a.activeUIView(); active != nil && active.owner == "lua" && active.generation != spec.Generation {
-		callCallbacks = false
+	if spec.Modal && !spec.Stack {
+		a.closeAllUI() // a stale plugin view's callbacks are left unrun
+	} else if old := a.views.views[spec.ID]; old != nil {
+		a.closeUIView(old, true)
 	}
-	a.closeAllUIWithCallbacks(callCallbacks)
-	view := a.createLuaListView(spec)
-	view.onKey = func(a *App, e *sdl.KeyboardEvent) bool { return a.handleGenericUIViewKey(view, e) }
-	view.onMouseButton = func(a *App, e *sdl.MouseButtonEvent) bool { return a.handleGenericUIViewMouseButton(view, e) }
-	view.onMouseMotion = func(a *App, e *sdl.MouseMotionEvent) bool { return a.handleGenericUIViewMouseMotion(view, e) }
+	view := a.createLuaView(spec)
 	a.showUIView(view)
+	// Opening is not a change of selection, for on_selection_changed.
+	view.notifiedSelected = view.selected
 	return nil
+}
+
+func (a *App) SetUITitle(id, title string) {
+	if view := a.views.views[id]; view != nil {
+		view.title = title
+		view.headless = view.drawBody != nil && title == "" && view.prompt == ""
+		a.pendingRedraw = true
+	}
+}
+
+func (a *App) UIFields(id string) map[string]string {
+	fields := map[string]string{}
+	if view := a.views.views[id]; view != nil {
+		for name, f := range view.fields {
+			fields[name] = f.input.Value
+		}
+	}
+	return fields
+}
+
+func (a *App) RedrawUI(id string) {
+	if view := a.views.views[id]; view != nil && view.visible {
+		a.pendingRedraw = true
+	}
 }
 
 func (a *App) CloseUI(id string) {
@@ -49,6 +74,7 @@ func (a *App) SetUISelected(id string, selected int) {
 		view.selected = clampInt(selected-1, 0, len(view.rows)-1)
 	}
 	a.ensureUIViewSelectionVisible(view)
+	view.notifiedSelected = view.selected
 	a.pendingRedraw = true
 }
 
@@ -57,17 +83,29 @@ func (a *App) SetUIScroll(id string, scroll int) {
 	if view == nil {
 		return
 	}
-	_, rows := view.contentGeometry(a)
+	if view.drawBody != nil && len(view.rows) == 0 {
+		// what a view draws scrolls by logical pixels
+		a.setViewScroll(view, float64(scroll)*float64(a.px(1)))
+		return
+	}
+	_, rows := view.frameGeometry(a)
 	view.scroll = clampInt(scroll, 0, max(0, len(view.visibleRows())-rows))
 	a.pendingRedraw = true
 }
 
+// SetUIQuery sets a view's query without telling its on_query_changed,
+// which hears only of the user's typing.
 func (a *App) SetUIQuery(id string, query string) {
 	view := a.views.views[id]
 	if view == nil {
 		return
 	}
-	a.setUIViewQuery(view, query)
+	view.query = query
+	if view.prompt != "" {
+		view.promptInput.Set(query)
+	}
+	a.ensureUIViewSelectionVisible(view)
+	a.pendingRedraw = true
 }
 
 func (a *App) UISelected(id string) int {
@@ -83,6 +121,15 @@ func (a *App) UIScroll(id string) int {
 	if view == nil {
 		return 0
 	}
+	return a.UIScrollOf(view)
+}
+
+// UIScrollOf is how far view is scrolled: rows for a list, logical pixels
+// for what a draw function draws.
+func (a *App) UIScrollOf(view *uiView) int {
+	if view.drawBody != nil && len(view.rows) == 0 {
+		return int(math.Round(view.scrollPx / float64(a.px(1))))
+	}
 	return view.scroll
 }
 
@@ -94,164 +141,133 @@ func (a *App) UIQuery(id string) string {
 	return view.query
 }
 
-func (a *App) handleGenericUIViewKey(view *uiView, e *sdl.KeyboardEvent) bool {
-	if view == nil || e == nil {
-		return true
+// createLuaView makes a plugin's view from its spec, its callbacks as the
+// view's hooks.
+func (a *App) createLuaView(spec config.UIOverlay) *uiView {
+	selected := -1
+	if len(spec.Rows) > 0 {
+		selected = clampInt(spec.Selected-1, 0, len(spec.Rows)-1)
 	}
-	if view.searchable && a.handleUIViewSearchKey(view, e) {
-		return true
+	view := &uiView{
+		id:         spec.ID,
+		owner:      "lua",
+		generation: spec.Generation,
+		title:      spec.Title,
+		rows:       uiRowsFromConfig(spec.Rows),
+		selected:   selected,
+		scroll:     max(0, spec.Scroll),
+		query:      spec.Query,
+		searchable: spec.Searchable,
+		noFilter:   !spec.Filter,
+		modal:      spec.Modal,
+		stack:      spec.Modal && spec.Stack,
+		headless:   spec.Draw != "" && spec.Title == "" && spec.Prompt == "",
+		element:    config.ElementPanel,
+		place:      viewPlacement{width: spec.Width, height: spec.Height, anchor: spec.Anchor, at: spec.At, dock: spec.Dock},
+		resizable:  spec.Resizable && spec.Dock != "",
 	}
-	if e.Type != sdl.EventKeyDown || e.Repeat {
-		return true
+	if view.id == "" {
+		view.id = "lua" + strconv.Itoa(len(a.views.views)+1)
 	}
-	if e.Key == sdl.KeycodeDown {
-		a.moveUIViewSelection(view, 1)
-		return true
+	if spec.Empty != "" {
+		view.empty = func(*App, *uiView) string { return spec.Empty }
 	}
-	if e.Key == sdl.KeycodeUp {
-		a.moveUIViewSelection(view, -1)
-		return true
+	for id, text := range spec.Fields {
+		view.field(id).input.Set(text)
 	}
-	if key, ok := keyToken(e); ok {
-		if action, ok := a.sequenceLookup[key.String()]; ok {
-			// An action held down, as pan is, ends when this key is let go.
-			a.actionKeycode = e.Key
-			defer func() { a.actionKeycode = 0 }()
-			wasSearching := view.searching
-			a.runUIViewAction(view, action)
-			if !wasSearching && view.searching {
-				a.ignoreKeyText(key)
+	if spec.Prompt != "" {
+		view.prompt, view.focus = spec.Prompt, promptFocus
+		view.promptInput.Set(spec.Query)
+		view.searchable = false // typing goes to the prompt, without /
+	}
+	rt := a.runtime
+	if spec.Draw != "" {
+		view.drawBody = func(a *App, canvas *elementCanvas, state config.DrawState) (bool, error) {
+			if a.staleLuaView(view) {
+				canvas.Default() // its function is the old generation's
+				return false, nil
+			}
+			return rt.RunUIDraw(spec.Draw, canvas, state)
+		}
+	}
+	if spec.OnKey != "" {
+		view.keyHook = func(a *App, key keys.Key, repeat bool) bool {
+			handled, err := rt.RunUIKey(spec.OnKey, key.String())
+			a.afterLuaViewCallback("ui_key", err)
+			return handled
+		}
+	}
+	if spec.OnAction != "" {
+		view.onAction = func(a *App, _ *uiView, action string) bool {
+			handled, err := rt.RunUIAction(spec.OnAction, action)
+			a.afterLuaViewCallback("ui_action", err)
+			return handled
+		}
+	}
+	if spec.OnMouse != "" {
+		view.mouseHook = func(a *App, ev config.UIMouseEvent) bool {
+			handled, err := rt.RunUIMouse(spec.OnMouse, ev)
+			a.afterLuaViewCallback("ui_mouse", err)
+			return handled
+		}
+	}
+	if spec.OnInput != "" {
+		view.onInput = func(a *App, id, text string) {
+			a.afterLuaViewCallback("ui_input", rt.RunUIText(spec.OnInput, text, id))
+		}
+	}
+	if spec.OnSubmit != "" {
+		view.onSubmit = func(a *App, id, text string) {
+			a.afterLuaViewCallback("ui_submit", rt.RunUIText(spec.OnSubmit, text, id))
+		}
+	}
+	if spec.OnClick != "" {
+		view.onClick = func(a *App, id string) {
+			a.afterLuaViewCallback("ui_click", rt.RunUIClick(spec.OnClick, id))
+		}
+	}
+	for _, c := range spec.Columns {
+		view.columns = append(view.columns, uiColumn{title: c.Title, width: c.Width, fill: c.Fill, align: c.Align})
+	}
+	if spec.OnSelect != "" {
+		view.onSelect = func(a *App, row uiRow) {
+			a.afterLuaViewCallback("ui_select", rt.RunUIRow(spec.OnSelect, luaRowRef(row)))
+		}
+	}
+	if spec.OnSelectionChanged != "" {
+		view.onSelectionChanged = func(a *App, view *uiView) {
+			for _, row := range view.rows {
+				if row.index == view.selected {
+					a.afterLuaViewCallback("ui_selection_changed", rt.RunUIRow(spec.OnSelectionChanged, luaRowRef(row)))
+					return
+				}
 			}
 		}
 	}
-	return true
+	if spec.OnQueryChanged != "" {
+		view.onQueryChanged = func(a *App, view *uiView) {
+			a.afterLuaViewCallback("ui_query_changed", rt.RunUIQuery(spec.OnQueryChanged, view.query))
+		}
+	}
+	if spec.OnClose != "" {
+		view.onClose = func(a *App) {
+			a.afterLuaViewCallback("ui_close", rt.RunUIClose(spec.OnClose))
+		}
+	}
+	return view
 }
 
-func (a *App) handleUIViewSearchKey(view *uiView, e *sdl.KeyboardEvent) bool {
-	if e.Type != sdl.EventKeyDown {
-		return true
-	}
-	if view.searching && e.Key == sdl.KeycodeBackspace {
-		if view.query != "" {
-			runes := []rune(view.query)
-			a.setUIViewQuery(view, string(runes[:len(runes)-1]))
-		}
-		return true
-	}
-	if e.Repeat || !view.searching {
-		return false
-	}
-	switch e.Key {
-	case sdl.KeycodeEscape:
-		view.searching = false
-		a.setUIViewQuery(view, "")
-		return true
-	case sdl.KeycodeReturn, sdl.KeycodeKpEnter:
-		view.searching = false
-		return true
-	}
-	if key, ok := keyToken(e); ok {
-		if _, ok := key.Text(); ok {
-			return true
-		}
-	}
-	return false
+func luaRowRef(row uiRow) config.UIRowRef {
+	return config.UIRowRef{Index: row.index + 1, Value: row.value, Text: row.text, ID: row.id, Lua: row.lua}
 }
 
-func (a *App) runUIViewAction(view *uiView, action string) {
-	if view == nil || view.onAction != nil && view.onAction(a, view, action) {
-		return
+// afterLuaViewCallback shows a view callback's error, if it failed, and
+// applies what it changed. A view's callbacks often change what it
+// draws, so it is drawn again.
+func (a *App) afterLuaViewCallback(source string, err error) {
+	if err != nil {
+		a.message = err.Error()
 	}
-	if delta, ok := a.listPageDelta(view, action); ok {
-		a.moveUIViewSelection(view, delta)
-		return
-	}
-	switch action {
-	case "scroll_down":
-		a.moveUIViewSelection(view, 1)
-	case "scroll_up":
-		a.moveUIViewSelection(view, -1)
-	case "scroll_left":
-		a.scrollUIViewBy(view, -1)
-	case "scroll_right":
-		a.scrollUIViewBy(view, 1)
-	case "search_prompt", "search_prompt_backward":
-		if view.searchable {
-			view.searching = true
-			a.setUIViewQuery(view, "")
-		}
-	case "confirm":
-		a.activateUIView(view)
-	case "close":
-		if view.searching || view.query != "" {
-			view.searching = false
-			a.setUIViewQuery(view, "")
-			return
-		}
-		a.closeUIView(view, true)
-	default:
-		a.runAction(action)
-	}
-}
-
-func (a *App) scrollUIViewBy(view *uiView, delta int) {
-	if view == nil {
-		return
-	}
-	_, rows := view.contentGeometry(a)
-	scrollUIView(view, delta, rows)
+	a.applyRuntimeChanges(source)
 	a.pendingRedraw = true
-}
-
-func (a *App) activateUIView(view *uiView) {
-	if view == nil || view.onSelect == nil {
-		return
-	}
-	for _, row := range view.visibleRows() {
-		if row.index == view.selected && !row.disabled {
-			view.onSelect(a, row)
-			return
-		}
-	}
-}
-
-func (a *App) handleGenericUIViewMouseButton(view *uiView, e *sdl.MouseButtonEvent) bool {
-	if view == nil || e == nil {
-		return true
-	}
-	if e.Type == sdl.EventMouseButtonUp && e.Button == uint8(sdl.ButtonLeft) {
-		view.draggingScrollbar = false
-		return true
-	}
-	if e.Type != sdl.EventMouseButtonDown || e.Button != uint8(sdl.ButtonLeft) {
-		return true
-	}
-	if a.uiViewStartScrollbarDrag(view, int(e.X), int(e.Y)) {
-		return true
-	}
-	if item, ok := a.uiViewIndexAt(view, int(e.X), int(e.Y)); ok {
-		if item.disabled {
-			return true
-		}
-		view.selected = item.index
-		a.activateUIView(view)
-		return true
-	}
-	rect, _ := view.frameGeometry(a)
-	if !pointInRect(int(e.X), int(e.Y), rect) {
-		a.closeUIView(view, true)
-	}
-	return true
-}
-
-func (a *App) handleGenericUIViewMouseMotion(view *uiView, e *sdl.MouseMotionEvent) bool {
-	if view == nil || e == nil {
-		return true
-	}
-	if view.draggingScrollbar {
-		old := view.scroll
-		a.uiViewDragScrollbar(view, int(e.Y))
-		return old != view.scroll
-	}
-	return a.uiViewHover(view, int(e.X), int(e.Y))
 }

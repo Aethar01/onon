@@ -5,8 +5,7 @@ import (
 	"strconv"
 
 	"onon/internal/config"
-
-	"github.com/jupiterrider/purego-sdl3/sdl"
+	"onon/internal/keys"
 )
 
 // Highlighting turns the selection into highlight annotations in a colour
@@ -34,21 +33,21 @@ func (a *App) pickHighlightColor() {
 func (a *App) pickColor(title string, palette [][3]uint8, apply func(int)) {
 	rows := make([]uiRow, len(palette))
 	for i, c := range palette {
-		swatch := rgb(c)
-		rows[i] = uiRow{index: i, text: fmt.Sprintf("%d  #%02x%02x%02x", i+1, c[0], c[1], c[2]), value: strconv.Itoa(i), swatch: &swatch}
+		swatch := config.Color{RGB: c, Alpha: 1}
+		rows[i] = uiRow{index: i, key: strconv.Itoa(i + 1), text: fmt.Sprintf("#%02x%02x%02x", c[0], c[1], c[2]), value: strconv.Itoa(i), swatch: &swatch}
 	}
 	a.showRowList("color-picker", title, rows, 30, 40, func(view *uiView) {
 		view.searchable = false
 		view.selected = clampInt(a.highlightColor, 0, len(rows)-1)
-		view.onKey = func(a *App, e *sdl.KeyboardEvent) bool {
-			if key, ok := keyToken(e); ok && e.Type == sdl.EventKeyDown {
-				if n, err := strconv.Atoi(key.String()); err == nil && n >= 1 && n <= len(palette) {
-					a.closeUIView(view, false)
-					apply(n - 1)
-					return true
-				}
+		// A colour's digit picks it.
+		view.keyHook = func(a *App, key keys.Key, repeat bool) bool {
+			n, err := strconv.Atoi(key.String())
+			if err != nil || n < 1 || n > len(palette) || repeat {
+				return false
 			}
-			return a.handleGenericUIViewKey(view, e)
+			a.closeUIView(view, false)
+			apply(n - 1)
+			return true
 		}
 		view.onSelect = func(a *App, row uiRow) {
 			a.closeUIView(view, false)

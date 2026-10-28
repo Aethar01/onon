@@ -50,16 +50,13 @@ func (a *App) inputPositionAt(x, y float64, dragging bool) (int, bool) {
 	if !dragging && (y < float64(area.Y) || y > float64(area.Y+area.H)) {
 		return 0, false
 	}
-	startX := float64(a.promptOrigin() + measureText(a.fontFace, a.inputPrefix()))
-	display, _ := a.inputDisplay()
-	endX := startX + float64(measureText(a.fontFace, display))
+	layout := a.statusTextLayout(a.statusLayout())
+	startX := float64(layout.x)
+	endX := startX + float64(measureText(a.fontFace, layout.lines[0].text))
 	if !dragging && (x < startX-3 || x > inputMaxFloat64(endX+5, startX+8)) {
 		return 0, false
 	}
-	if x <= startX {
-		return 0, true
-	}
-	return runeIndexAt(a.fontFace, display, x-startX), true
+	return layout.runeAt(float32(x), layout.y), true
 }
 
 // runeIndexAt returns the index of the rune boundary in s nearest x pixels

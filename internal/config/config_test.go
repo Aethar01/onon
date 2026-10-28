@@ -98,6 +98,15 @@ func (h *stubHost) UIScroll(id string) int { return h.ui.Scroll }
 
 func (h *stubHost) UIQuery(id string) string { return h.ui.Query }
 
+func (h *stubHost) SetUITitle(id, title string)             { h.ui.Title = title }
+func (h *stubHost) UIFields(id string) map[string]string    { return h.ui.Fields }
+func (h *stubHost) RedrawUI(id string)                      {}
+func (h *stubHost) UIField(id, field string) string         { return h.ui.Fields[field] }
+func (h *stubHost) SetUIField(id, field, text string)       { h.ui.Fields[field] = text }
+func (h *stubHost) FocusUI(id string, focus bool)           {}
+func (h *stubHost) UIFocused(id string) bool                { return false }
+func (h *stubHost) UIViewSize(id string) (float64, float64) { return 0, 0 }
+
 func (h *stubHost) Page() int {
 	return h.page
 }
@@ -876,7 +885,7 @@ end)
 	if host.ui.OnSelect == "" || host.ui.OnClose == "" {
 		t.Fatalf("expected ui callbacks, got %+v", host.ui)
 	}
-	if err := rt.RunUISelect(host.ui.OnSelect, 2, "b.pdf"); err != nil {
+	if err := rt.RunUIRow(host.ui.OnSelect, UIRowRef{Index: 2, Value: "b.pdf"}); err != nil {
 		t.Fatal(err)
 	}
 	if host.message != "2:b.pdf" || host.opened != "b.pdf" {
@@ -923,7 +932,7 @@ end)
 	if handled, _, err := rt.RunAction(rt.Config().KeyBindings["u"]); !handled || err != nil {
 		t.Fatalf("expected ui callback to run, handled=%v err=%v", handled, err)
 	}
-	if err := rt.RunUISelect(host.ui.OnSelect, 1, second); err != nil {
+	if err := rt.RunUIRow(host.ui.OnSelect, UIRowRef{Index: 1, Value: second}); err != nil {
 		t.Fatal(err)
 	}
 	if host.opened != second {
@@ -1320,5 +1329,67 @@ func TestLinkSchemesOption(t *testing.T) {
 	}
 	if got := rt.Config().LinkSchemes; !slices.Equal(got, []string{"http", "https"}) {
 		t.Fatalf(":set link_schemes = %q", got)
+	}
+}
+
+func TestUIViewSpec(t *testing.T) {
+	rt := mustLoadThemeTestConfig(t, "")
+	host := &stubHost{}
+	rt.AttachHost(host)
+	if _, err := rt.Eval(`onon.ui.create({
+  modal = false, anchor = "top_left", width = 300, height = "40%", filter = false,
+  rows = { { text = "a", key = "x", heading = true, swatch = "#ff0000" } },
+  draw = function() end, on_key = function() end, on_mouse = function() end,
+}):show()`); err != nil {
+		t.Fatal(err)
+	}
+	ui := host.ui
+	if ui.Modal || ui.Filter || ui.Anchor != "top_left" || ui.Width != (UISize{Value: 300}) || ui.Height != (UISize{Value: 40, Percent: true}) {
+		t.Fatalf("view spec = %+v", ui)
+	}
+	if ui.Draw == "" || ui.OnKey == "" || ui.OnMouse == "" || ui.OnSelect != "" {
+		t.Fatalf("callbacks = %+v", ui)
+	}
+	row := ui.Rows[0]
+	if row.Key != "x" || !row.Heading || row.Swatch == nil || row.Swatch.RGB != [3]uint8{0xff, 0, 0} {
+		t.Fatalf("row = %+v", row)
+	}
+	for code, want := range map[string]string{
+		`onon.ui.create({ anchor = "middle" })`:              "unknown anchor",
+		`onon.ui.create({ width = 0 })`:                      "width must be logical pixels",
+		`onon.ui.create({ height = "101%" })`:                "height must be logical pixels",
+		`onon.ui.create({ anchor = { x = 1 } })`:             "anchor names a place",
+		`onon.ui.create({ at = { x = 1 } })`:                 "at is a point",
+		`onon.ui.create({ at = "top" })`:                     "at is a point",
+		`onon.ui.create({ dock = "middle" })`:                "unknown dock",
+		`onon.ui.create({ on_key = "x" })`:                   "on_key must be a function",
+		`onon.ui.create({ rows = { { swatch = "nope" } } })`: "swatch",
+	} {
+		if _, err := rt.Eval(code); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: error %v, want %q", code, err, want)
+		}
+	}
+}
+
+func TestUIViewCallbacksReportHandling(t *testing.T) {
+	rt := mustLoadThemeTestConfig(t, "")
+	host := &stubHost{}
+	rt.AttachHost(host)
+	if _, err := rt.Eval(`onon.ui.create({
+  on_key = function(key) return key == "x" end,
+  on_mouse = function(ev) return ev.type == "wheel" and ev.dy == 3 and ev.x == 1 end,
+}):show()`); err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]bool{"x": true, "y": false} {
+		if handled, err := rt.RunUIKey(host.ui.OnKey, key); err != nil || handled != want {
+			t.Errorf("on_key(%q) = %v, %v", key, handled, err)
+		}
+	}
+	if handled, err := rt.RunUIMouse(host.ui.OnMouse, UIMouseEvent{Type: "wheel", X: 1, DY: 3}); err != nil || !handled {
+		t.Errorf("on_mouse wheel = %v, %v", handled, err)
+	}
+	if handled, err := rt.RunUIMouse(host.ui.OnMouse, UIMouseEvent{Type: "press", Button: "left"}); err != nil || handled {
+		t.Errorf("on_mouse press = %v, %v", handled, err)
 	}
 }

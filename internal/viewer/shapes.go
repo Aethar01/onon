@@ -257,9 +257,12 @@ func (a *App) drawMask(renderer *sdl.Renderer, spec maskSpec, x, y int32, clr co
 			if col[1][1] <= 0 || row[1][1] <= 0 || m.hollow && i == 1 && j == 1 {
 				continue
 			}
-			src := sdl.FRect{X: float32(col[0][0]), Y: float32(row[0][0]), W: float32(col[0][1]), H: float32(row[0][1])}
-			dst := sdl.FRect{X: float32(full.X + col[1][0]), Y: float32(full.Y + row[1][0]), W: float32(col[1][1]), H: float32(row[1][1])}
-			sdl.RenderTexture(renderer, m.texture, &src, &dst)
+			// The rects are the app's own, which SDL is given without each
+			// taking an allocation.
+			src, dst := &a.drawRects[0], &a.drawRects[1]
+			*src = sdl.FRect{X: float32(col[0][0]), Y: float32(row[0][0]), W: float32(col[0][1]), H: float32(row[0][1])}
+			*dst = sdl.FRect{X: float32(full.X + col[1][0]), Y: float32(full.Y + row[1][0]), W: float32(col[1][1]), H: float32(row[1][1])}
+			sdl.RenderTexture(renderer, m.texture, src, dst)
 		}
 	}
 }

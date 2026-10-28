@@ -23,8 +23,8 @@ func (a *App) handleSDLKeyDown(e *sdl.KeyboardEvent) {
 	}
 	// A prompt is always opened after any menu still showing, so it takes
 	// the keys first.
-	if view := a.activeModalUIView(); view != nil && view.onKey != nil && a.mode == modeNormal {
-		view.onKey(a, e)
+	if view := a.keyView(); view != nil && a.mode == modeNormal {
+		a.viewKey(view, e)
 		return
 	}
 	if a.mode != modeNormal {
@@ -130,6 +130,9 @@ func (a *App) handleSDLTextInput(e *sdl.TextInputEvent) {
 			return
 		}
 	}
+	if a.typeUIText(text) {
+		return
+	}
 	if view := a.activeModalUIView(); view != nil {
 		if view.searching && view.searchable {
 			a.setUIViewQuery(view, view.query+text)
@@ -150,13 +153,12 @@ func (a *App) handleSDLMouseWheel(e *sdl.MouseWheelEvent) {
 	if view := a.activeModalUIView(); view != nil {
 		// Without smooth scrolling a list moves a whole row an event, as
 		// the page moves a step, however far the wheel says.
-		if _, wy := normalizedWheelDeltas(e); wy != 0 {
-			delta := 1
-			if wy > 0 {
-				delta = -1
-			}
-			a.scrollListTo(view, float64(view.scroll+delta))
+		if !a.viewWheel(view, e) {
+			a.scrollUIViewByWheel(view, e)
 		}
+		return
+	}
+	if a.handlePanelMouseWheel(e) {
 		return
 	}
 	wx, wy := normalizedWheelDeltas(e)
@@ -177,9 +179,10 @@ func (a *App) handleSDLMouseButton(e *sdl.MouseButtonEvent) {
 		if a.handleListScrollButton(e) {
 			return
 		}
-		if view.onMouseButton != nil {
-			view.onMouseButton(a, e)
-		}
+		a.viewMouseButton(view, e)
+		return
+	}
+	if a.handleDockResizeButton(e) || a.handlePanelMouseButton(e) {
 		return
 	}
 	if a.presentation != nil {
@@ -274,6 +277,7 @@ func (a *App) handleLinkButton(e *sdl.MouseButtonEvent) bool {
 func (a *App) handleSDLMouseMotion(e *sdl.MouseMotionEvent) bool {
 	a.pointer = sdl.FPoint{X: e.X, Y: e.Y}
 	if view := a.activeModalUIView(); view != nil {
+		defer a.updateCursor()
 		if a.autoscroll != nil {
 			a.noteAutoscrollPointer() // the frame loop does the scrolling
 			return false
@@ -283,10 +287,7 @@ func (a *App) handleSDLMouseMotion(e *sdl.MouseMotionEvent) bool {
 			a.scrollListBy(view, -float64(e.Yrel)/float64(a.modalListRowHeight()))
 			return view.offset != old
 		}
-		if view.onMouseMotion != nil {
-			return view.onMouseMotion(a, e)
-		}
-		return a.uiViewHover(view, int(e.X), int(e.Y))
+		return a.viewMouseMotion(view, e)
 	}
 	if a.autoscroll != nil {
 		a.noteAutoscrollPointer() // the frame loop does the scrolling
@@ -296,6 +297,17 @@ func (a *App) handleSDLMouseMotion(e *sdl.MouseMotionEvent) bool {
 		oldX, oldY := a.scrollX, a.scrollY
 		a.scrollBy(-float64(e.Xrel), -float64(e.Yrel))
 		return a.scrollX != oldX || a.scrollY != oldY
+	}
+	if a.dragDockEdge(e.X, e.Y) {
+		a.updateCursor()
+		return true
+	}
+	if taken, redraw := a.handlePanelMouseMotion(e); taken {
+		// a link under the panel is no longer hovered
+		a.hoverLinkPreview(mupdf.Link{}, false, 0, 0)
+		return a.setHoveredLink(mupdf.Link{}, false) || redraw
+	} else if redraw {
+		a.pendingRedraw = true
 	}
 	a.stopPan()
 	if a.overview != nil {
@@ -307,7 +319,9 @@ func (a *App) handleSDLMouseMotion(e *sdl.MouseMotionEvent) bool {
 		link, overLink = mupdf.Link{}, false // the button is over the link
 	}
 	hoverChanged := a.setHoveredLink(link, overLink)
-	a.hoverLinkPreview(link, overLink, e.X, e.Y)
+	// The preview is placed in the document's part of the window.
+	ox, oy := a.viewportOrigin()
+	a.hoverLinkPreview(link, overLink, e.X-float32(ox), e.Y-float32(oy))
 
 	if !a.selection.active || uint32(e.State)&uint32(sdl.ButtonLMask) == 0 {
 		return hoverChanged
@@ -442,6 +456,10 @@ func (a *App) commitInputMode() {
 }
 
 func (a *App) editInput(edit func(*textInput)) {
+	if target, ok := a.uiEditTarget(); ok {
+		a.editUIText(target, edit)
+		return
+	}
 	a.closeCompletion()
 	edit(&a.input)
 }

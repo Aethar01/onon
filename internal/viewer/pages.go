@@ -129,12 +129,17 @@ func (a *App) drawTile(renderer *sdl.Renderer, tile *renderedTile, x, y float64,
 // tileRect is where a tile of the page whose screen origin is (x, y) is
 // drawn before it is rotated, and false if it is off screen.
 func (a *App) tileRect(tile *renderedTile, x, y float64, viewportW, viewportH int) (sdl.FRect, bool) {
-	drawScale := a.scale / tile.scale
+	return tileRectAt(tile, a.pageTransform(tile.key.page), a.scale, x, y, viewportW, viewportH)
+}
+
+// tileRectAt is tileRect for a page drawn by t at scale.
+func tileRectAt(tile *renderedTile, t pageTransform, scale, x, y float64, viewportW, viewportH int) (sdl.FRect, bool) {
+	drawScale := scale / tile.scale
 	drawW := float64(tile.rect.Dx()) * drawScale
 	drawH := float64(tile.rect.Dy()) * drawScale
 	pageX := (float64(tile.rect.Min.X) + float64(tile.rect.Dx())/2) / tile.scale
 	pageY := (float64(tile.rect.Min.Y) + float64(tile.rect.Dy())/2) / tile.scale
-	dx, dy := a.pageTransform(tile.key.page).toScreen(pageX, pageY)
+	dx, dy := t.toScreen(pageX, pageY)
 	centerX, centerY := x+dx, y+dy
 	if radius := math.Max(drawW, drawH) / 2; centerX+radius < 0 || centerY+radius < 0 || centerX-radius > float64(viewportW) || centerY-radius > float64(viewportH) {
 		return sdl.FRect{}, false
@@ -218,7 +223,6 @@ func (a *App) prefetchVisiblePages() {
 		}
 	})
 
-	visible = append(visible, a.previewTiles(scale)...)
 	wanted := make(map[tileKey]bool, len(visible)+len(prefetch))
 	onScreen := make(map[tileKey]bool, len(visible))
 	protected := make(map[tileKey]bool, 2*len(visible))
@@ -229,6 +233,7 @@ func (a *App) prefetchVisiblePages() {
 	for _, c := range prefetch {
 		wanted[c.key] = true
 	}
+	a.addCanvasRenders(wanted, onScreen, protected)
 	a.cache.protected = protected
 	if a.renderWorker != nil {
 		a.renderWorker.SetWanted(wanted)
@@ -244,6 +249,7 @@ func (a *App) prefetchVisiblePages() {
 	for _, c := range visible {
 		a.requestTile(c.key, c.rect, 0)
 	}
+	a.requestCanvasRenders()
 	if a.hasPendingVisibleRender() {
 		a.preemptNonVisibleRender(onScreen)
 		return

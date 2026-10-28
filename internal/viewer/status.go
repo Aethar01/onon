@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"image/color"
 	"math"
+	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"onon/internal/config"
 
@@ -122,13 +122,21 @@ func (a *App) drawStatusBar(renderer *sdl.Renderer) error {
 	}
 	textBox := sdl.FRect{X: float32(l.textX), Y: l.bar.Y, W: end - float32(l.textX) + a.hairline(), H: l.bar.H}
 	err := a.withClip(renderer, textBox, func() error {
-		if err := a.drawInputSelection(renderer, l); err != nil {
+		// A prompt's text is laid out once for its selection, its
+		// composition and its cursor.
+		var layout textLayout
+		if a.mode != modeNormal {
+			layout = a.statusTextLayout(l)
+			a.drawTextSelection(renderer, &layout, &a.input)
+		}
+		if err := a.drawStatusLeft(renderer, l, &leftStyle, &layout); err != nil {
 			return err
 		}
-		if err := a.drawStatusLeft(renderer, l, &leftStyle); err != nil {
-			return err
+		if a.mode != modeNormal {
+			display, _ := a.inputDisplay()
+			a.drawTextCursor(renderer, &layout, &a.input, tweenKey{kind: "cursor", text: display})
 		}
-		return a.drawInputCursor(renderer, l)
+		return nil
 	})
 	if err != nil {
 		return err
@@ -150,7 +158,7 @@ func boxDrawn(st *config.Style) bool {
 
 // drawStatusLeft draws the left text; while a prompt is open, its prefix,
 // such as : or /, is drawn in the accent colour.
-func (a *App) drawStatusLeft(renderer *sdl.Renderer, l statusLayout, st *config.Style) error {
+func (a *App) drawStatusLeft(renderer *sdl.Renderer, l statusLayout, st *config.Style, layout *textLayout) error {
 	if a.mode == modeNormal {
 		return a.drawStatusMessage(renderer, l, st)
 	}
@@ -164,6 +172,7 @@ func (a *App) drawStatusLeft(renderer *sdl.Renderer, l statusLayout, st *config.
 	}
 	prefix := a.inputPrefix()
 	display, _ := a.inputDisplay()
+	display, composeStart, composeLen := a.compose(&a.input, display)
 	parts := []struct {
 		text string
 		clr  color.RGBA
@@ -182,7 +191,23 @@ func (a *App) drawStatusLeft(renderer *sdl.Renderer, l statusLayout, st *config.
 		}
 		x += measureText(a.fontFace, part.text)
 	}
+	a.drawComposition(renderer, layout, composeStart, composeLen, st.Text.V)
 	return nil
+}
+
+// statusTextLayout is the status bar prompt's text as drawn, after its
+// prefix, scrolled with it.
+func (a *App) statusTextLayout(l statusLayout) textLayout {
+	display, _ := a.inputDisplay()
+	display, _, _ = a.compose(&a.input, display)
+	top, bottom := a.statusTextSpan(l)
+	return textLayout{
+		face:       a.fontFace,
+		lines:      layoutLines(a.fontFace, display, 0, false),
+		x:          float32(a.promptOrigin() + measureText(a.fontFace, a.inputPrefix())),
+		y:          float32(top),
+		lineHeight: bottom - top,
+	}
 }
 
 // drawStatusMessage draws the left text outside a prompt: a new message
@@ -222,8 +247,7 @@ func (a *App) promptStart() int {
 func (a *App) inputDisplay() (display, left string) {
 	display, left = a.input.Value, a.input.Left()
 	if a.inputMasked() {
-		display = strings.Repeat("*", utf8.RuneCountInString(display))
-		left = strings.Repeat("*", utf8.RuneCountInString(left))
+		display, left = maskText(display), maskText(left)
 	}
 	return display, left
 }
@@ -249,43 +273,10 @@ func (a *App) promptOrigin() int {
 	return start - a.inputScroll
 }
 
-func (a *App) drawInputSelection(renderer *sdl.Renderer, l statusLayout) error {
-	if a.mode == modeNormal {
-		return nil
-	}
-	start, end, ok := a.input.SelectionRange()
-	if !ok {
-		return nil
-	}
-	display, _ := a.inputDisplay()
-	left, rest := splitAtRune(display, start)
-	selected, _ := splitAtRune(rest, end-start)
-	x := a.promptOrigin() + measureText(a.fontFace, a.inputPrefix()+left)
-	w := max(1, measureText(a.fontFace, selected))
-	top, bottom := a.statusTextSpan(l)
-	st := a.style(config.ElementInputSelection)
-	a.drawBox(renderer, &st, sdl.FRect{X: float32(x), Y: float32(top), W: float32(w), H: float32(max(1, bottom-top))})
-	return nil
-}
-
 // statusTextSpan is the top and bottom of the status text's glyphs.
 func (a *App) statusTextSpan(l statusLayout) (int, int) {
 	m := a.fontFace.Metrics()
 	return l.baseline - m.Ascent.Ceil(), l.baseline + m.Descent.Ceil()
-}
-
-func (a *App) drawInputCursor(renderer *sdl.Renderer, l statusLayout) error {
-	if a.mode == modeNormal {
-		return nil
-	}
-	display, left := a.inputDisplay()
-	// The cursor glides when moved through the text, and snaps to where
-	// typing or deleting puts it, which a glide would only lag behind.
-	x := a.animate(tweenKey{kind: "cursor", text: display}, float64(a.promptOrigin()+measureText(a.fontFace, a.inputPrefix()+left)), a.config.Theme.Motion.Cursor)
-	top, bottom := a.statusTextSpan(l)
-	st := a.style(config.ElementCursor)
-	a.drawBox(renderer, &st, sdl.FRect{X: float32(math.Round(x)), Y: float32(top), W: a.lineWidth(st.Width.V), H: float32(bottom - top)})
-	return nil
 }
 
 // fitStatusText keeps the two sides of the status bar from overlapping in
@@ -325,60 +316,114 @@ func (a *App) uiLineHeight() int {
 }
 
 func (a *App) formatStatusBar(template string) string {
-	message := a.message
-	var inputToken, promptToken string
+	// The template is read once, each token's value worked out only if
+	// it is there; the status bar is formatted several times a frame.
+	if !strings.ContainsAny(template, "{$") {
+		return template
+	}
+	var b strings.Builder
+	b.Grow(len(template) + 32)
+	for i := 0; i < len(template); {
+		switch c := template[i]; {
+		case c == '$' && strings.HasPrefix(template[i:], "$$"):
+			b.WriteByte('$')
+			i += 2
+			continue
+		case c == '{':
+			if end := strings.IndexByte(template[i:], '}'); end > 0 {
+				if value, ok := a.statusToken(template[i+1 : i+end]); ok {
+					b.WriteString(value)
+					i += end + 1
+					continue
+				}
+			}
+		}
+		b.WriteByte(template[i])
+		i++
+	}
+	return b.String()
+}
+
+// statusToken is the value of the status bar token {name}, and false for
+// a name that is none.
+func (a *App) statusToken(name string) (string, bool) {
+	switch name {
+	case "message", "input", "prompt":
+		message, input, prompt := a.statusMessage()
+		switch name {
+		case "input":
+			return input, true
+		case "prompt":
+			return prompt, true
+		}
+		return message, true
+	case "page", "label":
+		page, label := a.statusPage()
+		if name == "page" {
+			return page, true
+		}
+		return label, true
+	case "total":
+		return strconv.Itoa(a.pageCount), true
+	case "mode":
+		return a.renderMode.String(), true
+	case "fit":
+		return a.fitMode.String(), true
+	case "rot":
+		return strconv.FormatFloat(a.rotation, 'f', 0, 64), true
+	case "zoom":
+		return strconv.FormatFloat(a.zoom*100, 'f', 0, 64) + "%", true
+	case "dual":
+		return boolWord(a.dualPage, "dual", "single"), true
+	case "cover":
+		return boolWord(a.firstPageOffset, "cover", "flat"), true
+	case "search":
+		return a.searchStatusCounter(), true
+	case "document":
+		return a.docName, true
+	case "modified":
+		return boolWord(a.unsaved, "[+] ", ""), true
+	}
+	return "", false
+}
+
+// statusMessage is the status bar's message, a prompt's text in place of
+// it, with the text typed and the search prompt's token.
+func (a *App) statusMessage() (message, input, prompt string) {
+	message = a.message
 	switch a.mode {
 	case modeCommand:
-		message = ":" + a.input.Value
-		inputToken = a.input.Value
+		message, input = ":"+a.input.Value, a.input.Value
 	case modeGotoPage:
-		message = " GOTO " + a.input.Value
-		inputToken = a.input.Value
+		message, input = " GOTO "+a.input.Value, a.input.Value
 	case modeSearch:
-		promptToken = a.searchPromptToken()
-		message = promptToken + a.input.Value
-		inputToken = a.input.Value
+		prompt = a.searchPromptToken()
+		message, input = prompt+a.input.Value, a.input.Value
 	case modePassword:
-		message = a.inputPrefix() + strings.Repeat("*", len([]rune(a.input.Value)))
-		inputToken = message
+		message = a.inputPrefix() + maskText(a.input.Value)
+		input = message
 	case modePrompt:
-		message = a.inputPrefix() + a.input.Value
-		inputToken = a.input.Value
+		message, input = a.inputPrefix()+a.input.Value, a.input.Value
 		if a.promptState.masked {
-			message = a.inputPrefix() + strings.Repeat("*", len([]rune(a.input.Value)))
-			inputToken = message
+			message = a.inputPrefix() + maskText(a.input.Value)
+			input = message
 		}
 	}
+	return message, input, prompt
+}
 
-	page := fmt.Sprintf("%d", a.page+1)
-	label := a.pageLabel(a.page)
+// statusPage is the page shown, or the pages of a spread, as numbers and
+// as the document labels them.
+func (a *App) statusPage() (page, label string) {
+	page, label = strconv.Itoa(a.page+1), a.pageLabel(a.page)
 	if a.dualPage && len(a.rows) > 0 && a.page >= 0 && a.page < len(a.pageToRow) {
 		row := a.rows[a.pageToRow[a.page]]
 		if len(row.pages) >= 2 {
-			page = fmt.Sprintf("%d-%d", row.pages[0]+1, row.pages[len(row.pages)-1]+1)
+			page = strconv.Itoa(row.pages[0]+1) + "-" + strconv.Itoa(row.pages[len(row.pages)-1]+1)
 			label = a.pageLabel(row.pages[0]) + "-" + a.pageLabel(row.pages[len(row.pages)-1])
 		}
 	}
-
-	replacer := strings.NewReplacer(
-		"{message}", message,
-		"{page}", page,
-		"{label}", label,
-		"{total}", fmt.Sprintf("%d", a.pageCount),
-		"{mode}", a.renderMode.String(),
-		"{fit}", a.fitMode.String(),
-		"{rot}", fmt.Sprintf("%.0f", a.rotation),
-		"{zoom}", fmt.Sprintf("%.0f%%", a.zoom*100),
-		"{dual}", boolWord(a.dualPage, "dual", "single"),
-		"{cover}", boolWord(a.firstPageOffset, "cover", "flat"),
-		"{search}", a.searchStatusCounter(),
-		"{document}", a.docName,
-		"{modified}", boolWord(a.unsaved, "[+] ", ""),
-		"{input}", inputToken,
-		"{prompt}", promptToken,
-		"$$", "$",
-	)
-	return replacer.Replace(template)
+	return page, label
 }
 
 func (a *App) pageLabel(page int) string {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jupiterrider/purego-sdl3/sdl"
+	"onon/internal/config"
 )
 
 type outlineMenuState struct {
@@ -48,12 +48,12 @@ func (a *App) toggleOutlineMenu() {
 
 func (a *App) newOutlineView() *uiView {
 	view := &uiView{
-		id:            "core:outline",
-		owner:         "core",
-		modal:         true,
-		searchable:    true,
-		widthPercent:  a.config.OutlineWidthPercent,
-		heightPercent: a.config.OutlineHeightPercent,
+		id:         "core:outline",
+		owner:      "core",
+		modal:      true,
+		searchable: true,
+		element:    config.ElementPanel,
+		place:      percentPlace(a.config.OutlineWidthPercent, a.config.OutlineHeightPercent),
 	}
 	view.header = func(a *App, view *uiView, visible int) string {
 		if view.searching || view.query != "" {
@@ -67,10 +67,6 @@ func (a *App) newOutlineView() *uiView {
 		}
 		return "No PDF outline found"
 	}
-	view.geometry = func(a *App) (sdl.FRect, int) { return a.outlineMenuGeometry() }
-	view.onKey = func(a *App, e *sdl.KeyboardEvent) bool { return a.handleGenericUIViewKey(view, e) }
-	view.onMouseButton = func(a *App, e *sdl.MouseButtonEvent) bool { return a.handleGenericUIViewMouseButton(view, e) }
-	view.onMouseMotion = func(a *App, e *sdl.MouseMotionEvent) bool { return a.handleGenericUIViewMouseMotion(view, e) }
 	view.onSelect = func(a *App, _ uiRow) { a.activateSelectedOutline() }
 	view.onAction = func(a *App, view *uiView, action string) bool {
 		switch action {
@@ -162,16 +158,15 @@ func (a *App) refreshOutlineView() {
 				marker = "- "
 			}
 		}
-		indent := strings.Repeat("  ", item.Depth)
-		text := indent + marker + strings.TrimSpace(item.Title)
-		if strings.TrimSpace(text) == strings.TrimSpace(indent+marker) {
-			text += "untitled"
+		text := strings.TrimSpace(item.Title)
+		if text == "" {
+			text = "untitled"
 		}
 		secondary := ""
 		if item.Page >= 0 {
 			secondary = fmt.Sprintf("%d", item.Page+1)
 		}
-		rows = append(rows, uiRow{index: index, text: text, value: item.Title, secondary: secondary})
+		rows = append(rows, uiRow{index: index, text: text, value: item.Title, secondary: secondary, depth: item.Depth, marker: marker})
 	}
 	view.rows = rows
 	view.selected = clampOutlineSelection(view.selected, visible)
@@ -235,8 +230,4 @@ func (a *App) expandSelectedOutline() {
 	a.outlineMenu.expanded[view.selected] = true
 	a.invalidateVisibleOutlineIndices()
 	a.refreshOutlineView()
-}
-
-func (a *App) outlineMenuGeometry() (sdl.FRect, int) {
-	return a.modalListGeometry(a.config.OutlineWidthPercent, a.config.OutlineHeightPercent)
 }

@@ -70,7 +70,7 @@ func TestListsPageByScreen(t *testing.T) {
 		rows[i] = uiRow{index: i, text: fmt.Sprint(i)}
 	}
 	view := app.showRowList("test", "Test", rows, 50, 50, func(*uiView) {})
-	_, visible := view.contentGeometry(app)
+	_, visible := view.frameGeometry(app)
 	app.runUIViewAction(view, "next_page")
 	if view.selected != visible {
 		t.Fatalf("PgDn selected %d, want %d", view.selected, visible)

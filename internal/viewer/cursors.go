@@ -22,6 +22,9 @@ const (
 	cursorAutoscrollSW
 	cursorAutoscrollW
 	cursorAutoscrollNW
+	cursorResizeEW // a docked view's edge, dragged across
+	cursorResizeNS // and dragged up and down
+	cursorText     // over text to type in
 )
 
 // Cursors from the CSS set SDL 3.6 adds after SDL_SYSTEM_CURSOR_W_RESIZE,
@@ -47,8 +50,41 @@ func (a *App) updateCursor() {
 		kind = cursorGrabbing
 	case a.links.overLink:
 		kind = cursorPointer
+	default:
+		kind = a.viewCursor()
 	}
 	a.setCursor(kind)
+}
+
+// viewCursor is the cursor for the views under the pointer: across or up
+// and down at a docked view's edge, a hand over a button or check box, and
+// an I-beam over text to type in.
+func (a *App) viewCursor() cursorKind {
+	if a.views.active == nil && len(a.views.panels) == 0 {
+		return cursorDefault
+	}
+	x, y := a.pointer.X, a.pointer.Y
+	edge := a.views.resizing
+	if edge == nil {
+		edge = a.dockEdgeAt(x, y)
+	}
+	if edge != nil {
+		if edge.place.dock == "left" || edge.place.dock == "right" {
+			return cursorResizeEW
+		}
+		return cursorResizeNS
+	}
+	view := a.viewUnderPointer()
+	if view == nil {
+		return cursorDefault
+	}
+	switch target, _ := view.controlAt(x, y); target {
+	case targetControl:
+		return cursorPointer
+	case targetField, targetPrompt:
+		return cursorText
+	}
+	return cursorDefault
 }
 
 func (a *App) setCursor(kind cursorKind) {
@@ -86,8 +122,12 @@ func systemCursorFor(kind cursorKind, css bool) sdl.SystemCursor {
 		return sdl.SystemCursorMove
 	case cursorAutoscrollVertical:
 		return sdl.SystemCursorNSResize
-	case cursorAutoscrollHorizontal:
+	case cursorAutoscrollHorizontal, cursorResizeEW:
 		return sdl.SystemCursorEWResize
+	case cursorResizeNS:
+		return sdl.SystemCursorNSResize
+	case cursorText:
+		return sdl.SystemCursorText
 	}
 	if kind >= cursorAutoscrollN && kind <= cursorAutoscrollNW {
 		return []sdl.SystemCursor{

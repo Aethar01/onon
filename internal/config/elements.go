@@ -31,6 +31,10 @@ const (
 	ElementPrompt
 	ElementCursor
 	ElementInputSelection
+	ElementInput
+	ElementInputFocused
+	ElementButtonFocused
+	ElementCheck
 	ElementHint
 	ElementOverviewSelection
 	ElementLinkPreview
@@ -74,6 +78,10 @@ var elementSpecs = [ElementCount]struct {
 	ElementPrompt:            {"prompt", noElement, []string{"text"}, "A prompt's prefix, such as : or /."},
 	ElementCursor:            {"cursor", noElement, slices.Concat(boxProps, []string{"width"}), "The text cursor in a prompt."},
 	ElementInputSelection:    {"input_selection", noElement, boxProps, "Selected text in a prompt."},
+	ElementInput:             {"input", ElementRow, slices.Concat(boxProps, textProps), "A text field a plugin's view draws. Its secondary colour is for the placeholder."},
+	ElementInputFocused:      {"input_focused", ElementInput, slices.Concat(boxProps, textProps), "The text field typing goes to."},
+	ElementButtonFocused:     {"button_focused", ElementButton, slices.Concat(boxProps, textProps), "A button a plugin's view draws, under the pointer or with the keys, which Space or Enter clicks."},
+	ElementCheck:             {"check", noElement, boxProps, "The mark in a checked check box, drawn in the box; a check box's box is an input."},
 	ElementHint:              {"hint", noElement, slices.Concat(boxProps, textProps), "A link hint label. Its secondary colour is for the letters already typed."},
 	ElementOverviewSelection: {"overview_selection", noElement, slices.Concat(boxProps, []string{"padding"}), "The outline around the overview's selected page; padding is its distance from the page."},
 	ElementLinkPreview:       {"link_preview", noElement, []string{"radius", "fill", "border", "shadow", "opacity", "draw"}, "The popup previewing a link's target, a rect with corners rounded by its radius. Its fill shows while the page renders."},
@@ -309,6 +317,20 @@ func elementDefaults(t *Theme, e Element) Style {
 		s.Fill = some(paletteColor("accent", 1))
 	case ElementInputSelection:
 		s.Fill = some(paletteColor("accent", 0.3))
+	case ElementInput:
+		s.Radius = some(corners(radius / 2))
+		s.Fill = some(paletteColor("background", 1))
+		s.BorderWidth = some(1.0)
+		s.Secondary = some(paletteColor("muted", 1))
+		s.Padding = some(symmetric(line/2, 6))
+	case ElementInputFocused:
+		s.BorderColor = some(paletteColor("accent", 1))
+	case ElementButtonFocused:
+		s.Fill = some(paletteColor("accent", 0.1))
+		s.BorderColor = some(paletteColor("accent", 1))
+	case ElementCheck:
+		s.Radius = some(corners(radius / 4))
+		s.Fill = some(paletteColor("accent", 1))
 	case ElementHint:
 		// A solid tag pinned to the link.
 		s.Radius = some(corners(radius / 2))

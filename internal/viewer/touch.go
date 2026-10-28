@@ -89,7 +89,9 @@ func (a *App) touchDown(id sdl.FingerID, p sdl.FPoint) {
 		t.start, t.startAt, t.movedAt = p, now, now
 		t.tap, t.pinch, t.velocity = true, false, sdl.FPoint{}
 		a.cancelSmoothScroll()
-		t.asMouse = a.activeModalUIView() != nil
+		// Over a menu, a panel or a docked view's edge, a finger is the
+		// pointer.
+		t.asMouse = a.activeModalUIView() != nil || a.panelAt(p.X, p.Y) != nil || a.dockEdgeAt(p.X, p.Y) != nil
 		if t.asMouse {
 			a.touchPointer(p, sdl.EventMouseButtonDown)
 		}

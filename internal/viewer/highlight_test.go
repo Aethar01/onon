@@ -22,7 +22,7 @@ func TestHighlightPickerAnnotatesSelection(t *testing.T) {
 	if view == nil || len(view.rows) != 4 || view.rows[1].swatch == nil {
 		t.Fatalf("picker = %+v", view)
 	}
-	view.onKey(app, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: sdl.Keycode2})
+	app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: sdl.Keycode2})
 
 	if !app.unsaved || app.highlightColor != 1 || app.pageRevisions[0] != 1 {
 		t.Fatalf("after picking: unsaved=%v colour=%d revision=%d message=%q", app.unsaved, app.highlightColor, app.pageRevisions[0], app.message)

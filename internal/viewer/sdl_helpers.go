@@ -309,6 +309,7 @@ func newTTCFontReaderAt(file *os.File, fontOffset int64) (io.ReaderAt, error) {
 // closeUIFonts closes the UI faces, the heading face being the regular one
 // when the font has no heavier weight.
 func (s *sdlState) closeUIFonts() {
+	s.canvas.closeFaces()
 	if s.headingFace != s.fontFace {
 		closeFontFace(s.headingFace)
 	}
@@ -395,8 +396,8 @@ const maxTextTextureCacheEntries = 512
 // textTextureKey is a string as drawn: only its text and face, since
 // it is tinted to its colour and opacity as it is drawn.
 type textTextureKey struct {
-	text    string
-	heading bool
+	text string
+	face font.Face
 }
 
 type cachedTextTexture struct {
@@ -416,20 +417,31 @@ func (a *App) drawHeading(renderer *sdl.Renderer, s string, x, baselineY int, cl
 }
 
 func (a *App) drawTextFace(renderer *sdl.Renderer, s string, x, baselineY int, clr color.Color, heading bool) error {
-	entry, err := a.cachedTextTexture(renderer, s, heading)
+	face := a.fontFace
+	if heading {
+		face = a.headingFont()
+	}
+	// A font with no heavier weight, as a variable font is to x/image, is
+	// emboldened.
+	return a.drawTextWithFace(renderer, s, x, baselineY, clr, face, heading && a.headingFont() == a.fontFace)
+}
+
+// drawTextWithFace draws s in face with its baseline at baselineY, with
+// embolden drawing it again a pixel over.
+func (a *App) drawTextWithFace(renderer *sdl.Renderer, s string, x, baselineY int, clr color.Color, face font.Face, embolden bool) error {
+	entry, err := a.cachedTextTexture(renderer, s, face)
 	if err != nil {
 		return err
 	}
 	tintText(entry.texture, clr)
-	dst := sdl.FRect{X: float32(x), Y: float32(baselineY - entry.ascent), W: float32(entry.width), H: float32(entry.height)}
-	if err := renderBool(sdl.RenderTexture(renderer, entry.texture, nil, &dst), "render text"); err != nil {
+	dst := &a.drawRects[0] // the app's own, which SDL is given without an allocation
+	*dst = sdl.FRect{X: float32(x), Y: float32(baselineY - entry.ascent), W: float32(entry.width), H: float32(entry.height)}
+	if err := renderBool(sdl.RenderTexture(renderer, entry.texture, nil, dst), "render text"); err != nil {
 		return err
 	}
-	// A font with no heavier weight, as a variable font is to x/image, is
-	// emboldened by drawing it again a pixel over.
-	if heading && a.headingFont() == a.fontFace {
+	if embolden {
 		dst.X += float32(max(1, a.ipx(0.5)))
-		return renderBool(sdl.RenderTexture(renderer, entry.texture, nil, &dst), "render text")
+		return renderBool(sdl.RenderTexture(renderer, entry.texture, nil, dst), "render text")
 	}
 	return nil
 }
@@ -453,14 +465,10 @@ func tintText(tex *sdl.Texture, clr color.Color) {
 	sdl.SetTextureAlphaMod(tex, uint8(alpha))
 }
 
-func (a *App) cachedTextTexture(renderer *sdl.Renderer, s string, heading bool) (cachedTextTexture, error) {
-	key := textTextureKey{text: s, heading: heading}
+func (a *App) cachedTextTexture(renderer *sdl.Renderer, s string, face font.Face) (cachedTextTexture, error) {
+	key := textTextureKey{text: s, face: face}
 	if entry, ok := a.textCache.get(key); ok {
 		return entry, nil
-	}
-	face := a.fontFace
-	if heading {
-		face = a.headingFont()
 	}
 	tex, w, h, ascent, err := textTexture(renderer, face, s)
 	if err != nil {
@@ -519,6 +527,7 @@ func (s *sdlState) clearTextTextureCache() {
 
 func (s *sdlState) Close() {
 	s.clearTextTextureCache()
+	s.canvas.clearImages()
 	s.masks.clear()
 	s.closeUIFonts()
 	s.destroyCursors()

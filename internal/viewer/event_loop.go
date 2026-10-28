@@ -297,20 +297,21 @@ func (a *App) handleSDLEvent(event *sdl.Event) error {
 		a.handleSDLKeyUp(&e)
 		redraw = false
 	case sdl.EventKeyDown:
-		a.preview = nil
+		a.closeLinkPreview()
 		e := event.Key()
 		if a.handleAutoscrollKey(&e) {
 			break
 		}
-		if _, ok := a.repeatableMenuAction(&e); ok {
-			e.Repeat = false
-		}
 		a.handleSDLKeyDown(&e)
 	case sdl.EventTextInput:
 		e := event.Text()
+		a.composition = ""
 		a.handleSDLTextInput(&e)
+	case sdl.EventTextEditing:
+		e := event.Edit()
+		a.handleSDLTextEditing(&e)
 	case sdl.EventMouseWheel:
-		a.preview = nil
+		a.closeLinkPreview()
 		if a.autoscroll != nil {
 			a.stopAutoscroll()
 			break
@@ -328,7 +329,7 @@ func (a *App) handleSDLEvent(event *sdl.Event) error {
 		a.endPinch()
 		redraw = false
 	case sdl.EventMouseButtonDown, sdl.EventMouseButtonUp:
-		a.preview = nil
+		a.closeLinkPreview()
 		e := event.Button()
 		a.handleMouseButtonEvent(&e)
 	case sdl.EventMouseMotion:
@@ -415,6 +416,9 @@ func (a *App) pluginMouseEventPayload(e *sdl.MouseButtonEvent) map[string]any {
 }
 
 func (a *App) textInputNeeded() bool {
+	if _, ok := a.uiEditTarget(); ok {
+		return true
+	}
 	return a.mode != modeNormal ||
 		func() bool {
 			view := a.activeModalUIView()
@@ -427,6 +431,9 @@ func (a *App) syncTextInput() {
 		return
 	}
 	want := a.textInputNeeded()
+	if !want {
+		a.composition = ""
+	}
 	if want == sdl.TextInputActive(a.window) {
 		return
 	}
@@ -497,11 +504,12 @@ func (a *App) drawFrame() error {
 	a.drawing = true
 	defer func() { a.drawing, a.frameStatus = false, nil }()
 	message := a.message
-	a.drawPages(a.renderer)
-	// An on-screen loader animates, so it asks for the next frame.
-	a.pendingRedraw = a.loaderVisible
-	a.drawLinkHints(a.renderer)
-	a.drawLinkPreview(a.renderer)
+	a.withDocumentViewport(a.renderer, func() {
+		a.drawPages(a.renderer)
+		// An on-screen loader animates, so it asks for the next frame.
+		a.pendingRedraw = a.loaderVisible
+		a.drawLinkHints(a.renderer)
+	})
 	if a.statusVisible() {
 		if err := a.drawStatusBar(a.renderer); err != nil {
 			return err
@@ -509,6 +517,14 @@ func (a *App) drawFrame() error {
 	}
 	if err := a.drawUIViews(a.renderer); err != nil {
 		return err
+	}
+	// A view's text fields are known once drawn, and typing into them
+	// needs text input on before the first key.
+	a.syncTextInput()
+	// What canvases drew of pages is asked for at once, not left until
+	// the next event.
+	if a.canvasRendersUnasked() {
+		a.prefetchVisiblePages()
 	}
 	a.drawAutoscrollMarker(a.renderer) // over a menu it scrolls
 	if err := a.drawTitleBar(a.renderer); err != nil {

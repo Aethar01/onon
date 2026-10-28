@@ -17,11 +17,11 @@ func TestBuiltinModalSelection(t *testing.T) {
 	}
 }
 
-func TestKeybindViewConnectsInputHandlers(t *testing.T) {
+func TestKeybindViewHasItsHooks(t *testing.T) {
 	app := &App{}
 	view := app.newKeybindView()
-	if view.onKey == nil || view.onMouseButton == nil || view.onMouseMotion == nil {
-		t.Fatalf("expected keybind input handlers, view=%+v", view)
+	if view.keyHook == nil || view.onSelect == nil || view.onAction == nil {
+		t.Fatalf("expected keybind hooks, view=%+v", view)
 	}
 }
 
@@ -38,7 +38,6 @@ func TestUIViewSkipsDisabledRows(t *testing.T) {
 		},
 		onSelect: func(_ *App, row uiRow) { selected = row.value },
 	}
-	view.listGeometry = func(*App) (sdl.FRect, int) { return sdl.FRect{}, 2 }
 	app.ensureUIViewSelectionVisible(view)
 	if view.selected != 1 {
 		t.Fatalf("expected disabled row to be skipped, selected=%d", view.selected)
@@ -55,7 +54,7 @@ func TestUIViewSearchBindingIgnoresTriggerText(t *testing.T) {
 	view := &uiView{visible: true, modal: true, searchable: true}
 	app.setKeyBindings(map[string]string{"/": "search_prompt"})
 	e := sdl.KeyboardEvent{CommonEvent: sdl.CommonEvent{Type: sdl.EventKeyDown}, Key: sdl.KeycodeSlash}
-	app.handleGenericUIViewKey(view, &e)
+	app.viewKey(view, &e)
 	if !view.searching || app.ignoreText != "/" {
 		t.Fatalf("expected search mode to ignore trigger text, searching=%t ignore=%q", view.searching, app.ignoreText)
 	}

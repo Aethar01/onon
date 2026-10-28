@@ -10,9 +10,6 @@ import (
 	"onon/internal/commands"
 	"onon/internal/config"
 	"onon/internal/remote"
-
-	"github.com/jupiterrider/purego-sdl3/sdl"
-	"golang.org/x/image/font"
 )
 
 type completionState struct {
@@ -20,13 +17,6 @@ type completionState struct {
 	items []completionItem
 	start int
 	end   int
-	// rows are items under their section headings, and rowOf each item's
-	// row, built when first drawn; width is the widest row's text in
-	// widthFace. They stay as long as the items do.
-	rows      []completionRow
-	rowOf     []int
-	width     int
-	widthFace font.Face
 }
 
 type completionItem struct {
@@ -52,27 +42,74 @@ func (a *App) showCompletion() {
 		a.acceptCompletion()
 		return
 	}
-	rows := make([]uiRow, len(items))
-	for i, item := range items {
-		rows[i] = uiRow{index: i, text: item.display, value: item.value}
+	// The completions are a panel over the status bar, their text lined up
+	// with the word being completed; a click accepts one.
+	view := &uiView{
+		id: "completion", owner: "core", headless: true, element: config.ElementCompletion,
+		rows: completionRowsFor(items), selected: -1,
+		onSelect: func(a *App, _ uiRow) { a.acceptCompletion() },
 	}
-	view := &uiView{id: "completion", owner: "core", rows: rows, selected: 0, modal: false}
-	view.draw = func(a *App, renderer *sdl.Renderer) error { return a.drawCompletion(renderer) }
+	uiViewSelectedRow(view, view.rows)
 	a.completion.view = view
+	a.placeCompletion()
 	a.showUIView(view)
 }
 
+// placeCompletion sizes the completions to their widest, showing at most
+// completion_max_items rows, and pins them above the status bar, their
+// text under the word being completed.
+func (a *App) placeCompletion() {
+	view := a.completion.view
+	if a.fontFace == nil {
+		return // nothing is drawn without a font
+	}
+	panel, row := a.style(config.ElementCompletion), a.style(config.ElementRow)
+	padTop, padRight, padBottom, padLeft := a.insets(panel.Padding.V)
+	_, rowPadRight, _, rowPadLeft := a.insets(row.Padding.V)
+	widest := 0
+	for _, r := range view.rows {
+		widest = max(widest, measureText(a.fontFace, strings.Repeat("  ", r.depth)+r.text))
+	}
+	margin := a.ipx(8)
+	width := widest + int(math.Round(float64(padLeft+rowPadLeft+rowPadRight+padRight)))
+	width = clampInt(width, a.ipx(120), max(a.ipx(120), a.winW-2*margin))
+	shown := min(len(view.rows), max(1, a.config.CompletionMaxItems))
+	height := shown*a.modalListRowHeight() + int(math.Round(float64(padTop+padBottom)))
+	x := a.promptOrigin() + measureText(a.fontFace, a.inputPrefix()+a.input.Left()) - int(math.Round(float64(padLeft+rowPadLeft)))
+	x = clampInt(x, margin, max(margin, a.winW-width-margin))
+	y := a.statusTop() - a.ipx(6)
+	scale := float64(a.px(1))
+	// Half a pixel over, so the rows fit however the scale rounds.
+	view.place = viewPlacement{
+		width:  config.UISize{Value: float64(width) / scale},
+		height: config.UISize{Value: (float64(height) + 0.5) / scale},
+		at:     &config.UIPoint{X: float64(x) / scale, Y: float64(y) / scale},
+		anchor: "bottom_left", // its bottom left at the point
+	}
+}
+
+// moveCompletion moves the selection delta completions, round from one
+// end to the other, past the section headings.
 func (a *App) moveCompletion(delta int) {
-	if a.completion.view == nil || !a.completion.view.visible {
+	view := a.completion.view
+	if view == nil || !view.visible {
 		a.showCompletion()
 		return
 	}
-	n := len(a.completion.items)
+	n := len(view.rows)
 	if n == 0 {
 		a.closeCompletion()
 		return
 	}
-	a.completion.view.selected = (a.completion.view.selected + delta + n) % n
+	i := max(0, view.selected)
+	for range n {
+		i = ((i+delta)%n + n) % n
+		if !view.rows[i].disabled {
+			break
+		}
+	}
+	view.selected = i
+	a.ensureUIViewSelectionVisible(view)
 	a.pendingRedraw = true
 }
 
@@ -81,12 +118,11 @@ func (a *App) acceptCompletion() {
 		a.closeCompletion()
 		return
 	}
-	selected := 0
-	if a.completion.view != nil {
-		selected = a.completion.view.selected
+	value := a.completion.items[0].value
+	if view := a.completion.view; view != nil && view.selected >= 0 && view.selected < len(view.rows) {
+		value = view.rows[view.selected].value
 	}
-	item := a.completion.items[clampInt(selected, 0, len(a.completion.items)-1)]
-	a.input.ReplaceRange(a.completion.start, a.completion.end, item.value)
+	a.input.ReplaceRange(a.completion.start, a.completion.end, value)
 	a.closeCompletion()
 }
 
@@ -310,147 +346,32 @@ func hasHomePathPrefix(path string) bool {
 	return strings.HasPrefix(path, "~"+pathSeparator())
 }
 
-func (a *App) drawCompletion(renderer *sdl.Renderer) error {
-	rows, selectedRow := a.completionRows()
-	if len(rows) == 0 {
-		return nil
-	}
-	visible := a.scrollCompletion(len(rows), selectedRow)
-	panel, row := a.style(config.ElementCompletion), a.style(config.ElementRow)
-	padTop, padRight, padBottom, padLeft := a.insets(panel.Padding.V)
-	_, rowPadRight, _, rowPadLeft := a.insets(row.Padding.V)
-	rowHeight := a.modalListRowHeight()
-	inset := int(math.Round(float64(padLeft + rowPadLeft)))
-	margin := a.ipx(8)
-	// The popup fits every completion, so it keeps its width as it scrolls.
-	if a.completion.widthFace != a.fontFace {
-		a.completion.width = 0
-		for _, row := range rows {
-			a.completion.width = max(a.completion.width, measureText(a.fontFace, row.text))
-		}
-		a.completion.widthFace = a.fontFace
-	}
-	width := a.completion.width + int(math.Round(float64(padLeft+rowPadLeft+rowPadRight+padRight)))
-	width = clampInt(width, a.ipx(120), max(a.ipx(120), a.winW-2*margin))
-	// Line the completions' text up with the word being completed.
-	x := a.promptOrigin() + measureText(a.fontFace, a.inputPrefix()+a.input.Left()) - inset
-	x = clampInt(x, margin, max(margin, a.winW-width-margin))
-	height := visible*rowHeight + int(math.Round(float64(padTop+padBottom)))
-	y := max(margin, a.statusTop()-height-a.ipx(6))
-	rect := sdl.FRect{X: float32(x), Y: float32(y), W: float32(width), H: float32(height)}
-	return a.drawPanel(renderer, config.ElementCompletion, rect, func() error {
-		return a.drawCompletionRows(renderer, rows, selectedRow, visible, rect, &panel)
-	})
-}
-
-// scrollCompletion keeps the selected row in view, scroll_off rows from
-// the popup's edges, and returns how many of the total rows show.
-func (a *App) scrollCompletion(total, selectedRow int) int {
-	view := a.completion.view
-	visible := min(total, max(1, a.config.CompletionMaxItems))
-	if selectedRow >= 0 {
-		view.scroll = modalListScrollForSelection(view.scroll, selectedRow, visible, total, a.config.ScrollOff)
-	}
-	return visible
-}
-
-// drawCompletionRows draws visible of rows at a time, scrolled as the
-// completion view's offset says, the selected row's box gliding among
-// them.
-func (a *App) drawCompletionRows(renderer *sdl.Renderer, rows []completionRow, selectedRow, visible int, rect sdl.FRect, panel *config.Style) error {
-	view := a.completion.view
-	padTop, padRight, _, padLeft := a.insets(panel.Padding.V)
-	rowHeight := a.modalListRowHeight()
-	baseline := a.modalListBaselineOffset(rowHeight)
-	offset := a.listOffset(view, visible, len(rows))
-	top := float64(rect.Y + padTop)
-	rowY := func(index float64) int { return int(math.Round(top + (index-offset)*float64(rowHeight))) }
-	rowBox := func(y int) sdl.FRect {
-		return sdl.FRect{X: rect.X + padLeft, Y: float32(y), W: rect.W - padLeft - padRight, H: float32(rowHeight)}
-	}
-	list := sdl.FRect{X: rect.X, Y: float32(top), W: rect.W, H: float32(visible * rowHeight)}
-	first, last := int(math.Floor(offset)), min(len(rows), int(math.Ceil(offset))+visible)
-	err := a.withClip(renderer, list, func() error {
-		if selectedRow >= first && selectedRow < last {
-			st := a.style(config.ElementRowSelected)
-			at := a.animate(tweenKey{kind: "selection", view: view}, float64(selectedRow), a.config.Theme.Motion.Selection)
-			a.drawBox(renderer, &st, rowBox(rowY(at)))
-		}
-		for index := first; index < last; index++ {
-			row := rows[index]
-			y := rowY(float64(index))
-			element := config.ElementRow
-			switch {
-			case row.item < 0:
-				element = config.ElementHeading // as a menu's section titles are
-			case index == selectedRow:
-				element = config.ElementRowSelected
-			}
-			st := a.style(element)
-			box := rowBox(y)
-			if index != selectedRow {
-				a.drawBox(renderer, &st, box)
-			}
-			_, rowPadRight, _, rowPadLeft := a.insets(st.Padding.V)
-			textX := int(math.Round(float64(box.X + rowPadLeft)))
-			width := int(math.Round(float64(box.X+box.W-rowPadRight))) - textX
-			if err := a.drawTextFace(renderer, truncateText(a.styleFace(&st), row.text, width), textX, y+baseline, a.textColor(&st, false), st.Bold.V); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	if _, thumb, ok := listScrollbarRects(list, visible, len(rows), offset); ok {
-		a.drawScrollbarThumb(renderer, rect, thumb)
-	}
-	return nil
-}
-
-type completionRow struct {
-	text string
-	item int // the index of the row's completion, or -1 for a heading
-}
-
-// completionRows lists the completions under their section headings,
-// with the index of the selected row, or -1.
-func (a *App) completionRows() ([]completionRow, int) {
-	c := &a.completion
-	if len(c.items) == 0 || c.view == nil {
-		return nil, -1
-	}
-	if c.rows == nil {
-		c.rows, c.rowOf = completionRowsFor(c.items)
-	}
-	return c.rows, c.rowOf[clampInt(c.view.selected, 0, len(c.items)-1)]
-}
-
-// completionRowsFor lists items under their section headings, with the
-// row each item is on.
-func completionRowsFor(items []completionItem) ([]completionRow, []int) {
-	rows, rowOf := []completionRow{}, make([]int, len(items))
+// completionRowsFor lists items as rows, under section headings when
+// some are recent.
+func completionRowsFor(items []completionItem) []uiRow {
+	rows := []uiRow{}
 	categorized := hasRecentItems(items)
 	recentHeaderShown := false
 	suggestionHeaderShown := false
-	for i, item := range items {
+	heading := func(text string) {
+		rows = append(rows, uiRow{index: len(rows), text: text, heading: true, disabled: true})
+	}
+	for _, item := range items {
 		if item.recent && !recentHeaderShown {
-			rows = append(rows, completionRow{text: "Recents:", item: -1})
+			heading("Recents:")
 			recentHeaderShown = true
 		}
 		if !item.recent && categorized && !suggestionHeaderShown {
-			rows = append(rows, completionRow{text: "Suggestions:", item: -1})
+			heading("Suggestions:")
 			suggestionHeaderShown = true
 		}
-		text := item.display
+		row := uiRow{index: len(rows), text: item.display, value: item.value}
 		if categorized {
-			text = "  " + text
+			row.depth = 1
 		}
-		rowOf[i] = len(rows)
-		rows = append(rows, completionRow{text: text, item: i})
+		rows = append(rows, row)
 	}
-	return rows, rowOf
+	return rows
 }
 
 func hasRecentItems(items []completionItem) bool {

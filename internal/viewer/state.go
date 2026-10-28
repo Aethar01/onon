@@ -173,6 +173,8 @@ type sdlState struct {
 	masks       maskCache                          // the theme's shapes, rasterised
 	styles      *[config.ElementCount]config.Style // the theme's styles, resolved; nil until drawn
 	pathKeys    pathKeys                           // draw functions' paths, packed
+	canvas      canvasCache                        // what canvases draw beyond the UI font
+	drawRects   [2]sdl.FRect                       // rects handed to SDL while drawing, kept to save allocating them
 	frameStart  time.Time                          // when the current animation frame began
 	// displayFrame is the window's display's refresh interval, or 0 when
 	// unknown; see animationFrameDuration.
@@ -232,6 +234,11 @@ type inputState struct {
 	savedPos       int
 	pointer        sdl.FPoint // last pointer position, for actions on what is under it
 	inputScroll    int        // pixels the status-bar prompt is scrolled left
+	// composition is what the input method is composing, shown at the
+	// cursor of the text typed into until typed; textInputArea is where it
+	// was last told the cursor is.
+	composition    string
+	textInputArea  sdl.Rect
 	passwordPrompt pendingPasswordPrompt
 	mouseBindings  map[string]string
 	searchInput    searchMode

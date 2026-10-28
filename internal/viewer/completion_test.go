@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -181,18 +182,19 @@ func mustWrite(t *testing.T, path string) {
 	}
 }
 
-func TestCompletionAcceptCloseAndVisibleRows(t *testing.T) {
+func TestCompletionAcceptCloseAndRows(t *testing.T) {
+	items := []completionItem{
+		{display: "one", value: "one"},
+		{display: "paper.pdf", value: "paper.pdf"},
+	}
 	app := &App{
 		inputState: inputState{input: textInput{Value: "open par", Cursor: 8}},
 		config:     config.Config{CompletionMaxItems: 3},
 		uiState: uiState{completion: completionState{
-			view:  &uiView{visible: true, selected: 1},
+			view:  &uiView{visible: true, selected: 1, rows: completionRowsFor(items)},
 			start: 5,
 			end:   8,
-			items: []completionItem{
-				{display: "one", value: "one"},
-				{display: "paper.pdf", value: "paper.pdf"},
-			},
+			items: items,
 		}},
 	}
 	app.acceptCompletion()
@@ -207,30 +209,34 @@ func TestCompletionAcceptCloseAndVisibleRows(t *testing.T) {
 		t.Fatalf("expected closeCompletion to clear menu and request redraw, completion=%+v redraw=%v", app.completion, app.pendingRedraw)
 	}
 
-	// Every completion is a row; the popup scrolls through them.
-	app.completion = completionState{view: &uiView{selected: 3}, items: []completionItem{{display: "a"}, {display: "b"}, {display: "c"}, {display: "d"}, {display: "e"}}}
-	rows, selected := app.completionRows()
-	if got, want := completionRowTexts(rows), []string{"a", "b", "c", "d", "e"}; !reflect.DeepEqual(got, want) {
+	// Every completion is a row.
+	rows := completionRowsFor([]completionItem{{display: "a"}, {display: "b"}, {display: "c"}})
+	if got, want := completionRowTexts(rows), []string{"a", "b", "c"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("expected completion rows %v, got %v", want, got)
 	}
-	if selected != 3 || rows[3].item != 3 {
-		t.Fatalf("expected the selected completion row to be marked, selected=%d rows=%+v", selected, rows)
-	}
-
-	app.completion = completionState{view: &uiView{selected: 1}, items: []completionItem{{display: "old.pdf", recent: true}, {display: "paper.pdf", recent: true}, {display: "docs" + pathSeparator(), value: "docs" + pathSeparator()}}}
-	rows, selected = app.completionRows()
+	// Recent ones go under their own heading, which cannot be selected.
+	rows = completionRowsFor([]completionItem{{display: "old.pdf", recent: true}, {display: "paper.pdf", recent: true}, {display: "docs" + pathSeparator(), value: "docs" + pathSeparator()}})
 	if got, want := completionRowTexts(rows), []string{"Recents:", "  old.pdf", "  paper.pdf", "Suggestions:", "  docs" + pathSeparator()}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("expected recent completion section %v, got %v", want, got)
 	}
-	if selected != 2 || rows[2].item != 1 {
-		t.Fatalf("expected selected recent row to remain marked under header, selected=%d rows=%+v", selected, rows)
+	if !rows[0].heading || !rows[0].disabled || !rows[3].heading {
+		t.Fatalf("headings are not headings: %+v", rows)
+	}
+	app.completion = completionState{view: &uiView{visible: true, rows: rows, selected: 2}, items: []completionItem{{}, {}, {}}}
+	app.moveCompletion(1)
+	if app.completion.view.selected != 4 {
+		t.Fatalf("moving past a heading selected row %d, want 4", app.completion.view.selected)
+	}
+	app.moveCompletion(1)
+	if app.completion.view.selected != 1 {
+		t.Fatalf("moving past the last row selected row %d, want the first item, 1", app.completion.view.selected)
 	}
 }
 
-func completionRowTexts(rows []completionRow) []string {
+func completionRowTexts(rows []uiRow) []string {
 	texts := make([]string, len(rows))
 	for i, row := range rows {
-		texts[i] = row.text
+		texts[i] = strings.Repeat("  ", row.depth) + row.text
 	}
 	return texts
 }
@@ -245,25 +251,29 @@ func TestCompletionScrollsWithAFastSelection(t *testing.T) {
 	for i := range items {
 		items[i] = completionItem{display: fmt.Sprintf("item %d", i)}
 	}
-	app.completion = completionState{view: &uiView{visible: true}, items: items}
+	view := &uiView{visible: true, headless: true, element: config.ElementCompletion, rows: completionRowsFor(items)}
+	app.completion = completionState{view: view, items: items}
+	app.placeCompletion()
+	if _, visible := view.frameGeometry(app); visible != 5 {
+		t.Fatalf("completions show %d rows, want completion_max_items, 5", visible)
+	}
 	start := time.Now()
 	for step := range 40 {
 		app.motion.now = start.Add(time.Duration(step) * 30 * time.Millisecond) // key repeat
 		app.moveCompletion(1)
-		rows, selected := app.completionRows()
-		visible := app.scrollCompletion(len(rows), selected)
-		offset := app.listOffset(app.completion.view, visible, len(rows))
+		_, visible := view.frameGeometry(app)
+		offset := app.listOffset(view, visible, len(view.rows))
 		// The list glides behind the selection, which stays in view.
-		if float64(selected+1) <= offset || float64(selected) >= offset+float64(visible) {
+		if selected := view.selected; float64(selected+1) <= offset || float64(selected) >= offset+float64(visible) {
 			t.Fatalf("step %d: row %d out of view at offset %v", step, selected, offset)
 		}
 	}
 	// Settled, the selection keeps a row of context.
 	app.motion.now = app.motion.now.Add(time.Second)
-	rows, selected := app.completionRows()
-	visible := app.scrollCompletion(len(rows), selected)
-	offset := app.listOffset(app.completion.view, visible, len(rows))
-	if offset != math.Round(offset) || float64(selected) < offset+1 && offset > 0 || float64(selected) > offset+float64(visible)-2 && offset+float64(visible) < float64(len(rows)) {
+	_, visible := view.frameGeometry(app)
+	offset := app.listOffset(view, visible, len(view.rows))
+	selected := view.selected
+	if offset != math.Round(offset) || float64(selected) < offset+1 && offset > 0 || float64(selected) > offset+float64(visible)-2 && offset+float64(visible) < float64(len(view.rows)) {
 		t.Fatalf("settled at offset %v with row %d selected", offset, selected)
 	}
 }

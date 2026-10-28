@@ -931,15 +931,21 @@ func luaCacheClear(rt *Runtime) lua.LGFunction {
 	}
 }
 
-// luaUiCreate creates a searchable list view.
+// luaUiCreate creates a view: a menu or panel of rows, or a body a plugin
+// draws, with text fields, buttons and check boxes, placed in the window,
+// pinned to a point or page, or docked.
 //
 // The spec may contain id, title, rows, selected, scroll, query, searchable,
-// on_select, and on_close. Rows may be strings or row tables with text, value,
-// id, secondary, depth, and disabled fields.
+// filter, empty, columns, prompt, modal, stack, width, height, anchor, at,
+// dock, resizable, draw, and the callbacks on_select, on_selection_changed,
+// on_query_changed, on_input, on_submit, on_click, on_key, on_action,
+// on_mouse, and on_close. Rows may be strings or row tables with text,
+// value, id, secondary, depth, disabled, key, marker, heading, swatch,
+// checked, button, and cells fields. See UI views below.
 //
 // # Returns
 //
-// A view object with show, close, visible, row/query setters, and state accessors.
+// A view object with show, close, visible, redraw, size, focus, row, query and field setters, and state accessors.
 //
 // # Example
 //

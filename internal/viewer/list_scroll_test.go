@@ -22,7 +22,7 @@ func testListApp(n int) (*App, *uiView) {
 
 func TestListOffsetFollowsScroll(t *testing.T) {
 	app, view := testListApp(100)
-	_, rows := view.contentGeometry(app)
+	_, rows := view.frameGeometry(app)
 	start := time.Now()
 	app.motion.now = start
 	if got := app.listOffset(view, rows, 100); got != 0 {
@@ -52,7 +52,7 @@ func TestListOffsetFollowsScroll(t *testing.T) {
 
 func TestListRestsWhereScrolledTo(t *testing.T) {
 	app, view := testListApp(100)
-	_, rows := view.contentGeometry(app)
+	_, rows := view.frameGeometry(app)
 	app.listOffset(view, rows, 100)
 	app.scrollListBy(view, 2.4)
 	if view.offset != 2.4 || view.scroll != 2 {
@@ -63,7 +63,7 @@ func TestListRestsWhereScrolledTo(t *testing.T) {
 		t.Fatalf("a swipe's resting place moved to %v", got)
 	}
 	// The row under the pointer is the one drawn there.
-	rect, _ := view.contentGeometry(app)
+	rect, _ := view.frameGeometry(app)
 	rowHeight := app.modalListRowHeight()
 	top := int(rect.Y) + rowHeight
 	if row, ok := app.uiViewIndexAt(view, int(rect.X)+20, top+1); !ok || row.index != 2 {
@@ -87,7 +87,7 @@ func TestListRestsWhereScrolledTo(t *testing.T) {
 
 func TestWheelGlidesAList(t *testing.T) {
 	app, view := testListApp(100)
-	_, rows := view.contentGeometry(app)
+	_, rows := view.frameGeometry(app)
 	app.listOffset(view, rows, 100)
 	app.queueModalSmoothScroll(view, 3)
 	if !app.advanceSmoothScrollBy(16 * time.Millisecond) {
@@ -136,7 +136,7 @@ func TestLeftButtonStaysTheListsWhenBoundToPan(t *testing.T) {
 
 func TestWheelWithoutSmoothScrollingMovesAWholeRow(t *testing.T) {
 	app, view := testListApp(100)
-	_, rows := view.contentGeometry(app)
+	_, rows := view.frameGeometry(app)
 	app.listOffset(view, rows, 100)
 	app.scrollListTo(view, 5)
 	for _, step := range []struct {

@@ -94,8 +94,15 @@ func TestSplitHeader(t *testing.T) {
 
 func TestShortListPanelFitsItsRows(t *testing.T) {
 	app := testStyleApp("bar")
-	view := app.createCoreListView("test", "Test", uiRowsFromStrings([]string{"a", "b"}), 70, 70)
-	full, fullRows := app.modalListGeometry(70, 70)
+	list := func(n int) *uiView {
+		rows := make([]string, n)
+		for i := range rows {
+			rows[i] = "row"
+		}
+		return &uiView{id: "test", title: "Test", rows: uiRowsFromStrings(rows), modal: true, place: percentPlace(70, 70)}
+	}
+	full, fullRows := list(1000).frameGeometry(app)
+	view := list(2)
 	rect, rows := view.frameGeometry(app)
 	if rows != 2 || rect.Y != full.Y || rect.H != full.H-float32((fullRows-2)*app.modalListRowHeight()) {
 		t.Fatalf("two-row panel %+v (%d rows), full %+v (%d rows)", rect, rows, full, fullRows)
@@ -281,9 +288,9 @@ func TestMenuHeadFollowsPaddingAndHeader(t *testing.T) {
 	if head := app.modalListHeadHeight(); head != want {
 		t.Fatalf("head = %d, want %d", head, want)
 	}
-	view := app.createCoreListView("test", "Test", uiRowsFromStrings([]string{"a", "b", "c"}), 70, 70)
+	view := &uiView{id: "test", title: "Test", rows: uiRowsFromStrings([]string{"a", "b", "c"}), modal: true, place: percentPlace(70, 70)}
 	app.showUIView(view)
-	rect, _ := view.contentGeometry(app)
+	rect, _ := view.frameGeometry(app)
 	if row, ok := app.uiViewIndexAt(view, int(rect.X)+20, int(rect.Y)+want+1); !ok || row.index != 0 {
 		t.Fatalf("just below the head = row %d, %v; want the first", row.index, ok)
 	}

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -344,11 +345,38 @@ func (c *recordingCanvas) Fill(path []PathOp, clr Color) {
 func (c *recordingCanvas) Stroke(path []PathOp, clr Color, width float64) {
 	c.calls = append(c.calls, "stroke "+FormatPath(path)+" "+formatStyleColor(clr)+" "+formatNumber(width))
 }
-func (c *recordingCanvas) Text(x, y float64, text string, clr Color, bold bool) float64 {
+func (c *recordingCanvas) Text(x, y float64, text string, clr Color, o TextOptions) (float64, float64) {
 	c.calls = append(c.calls, "text "+text)
-	return 42
+	return 42, 16
 }
-func (c *recordingCanvas) Measure(text string, bold bool) (float64, float64) { return 10, 16 }
+func (c *recordingCanvas) Measure(text string, o TextOptions) (float64, float64) { return 10, 16 }
+func (c *recordingCanvas) Clip(x, y, w, h float64)                               { c.calls = append(c.calls, "clip") }
+func (c *recordingCanvas) Unclip()                                               { c.calls = append(c.calls, "unclip") }
+func (c *recordingCanvas) Image(path string, x, y, w, h float64) (float64, float64, error) {
+	c.calls = append(c.calls, "image "+filepath.Base(path))
+	return w, h, nil
+}
+func (c *recordingCanvas) Page(page int, x, y, w, h float64, area *PageArea) (float64, float64) {
+	c.calls = append(c.calls, "page "+formatNumber(float64(page)))
+	return w, h
+}
+func (c *recordingCanvas) Input(id string, x, y, w float64, o InputOptions) (float64, float64) {
+	c.calls = append(c.calls, "input "+id)
+	return w, 20
+}
+func (c *recordingCanvas) Size() (float64, float64) { return 300, 200 }
+func (c *recordingCanvas) Button(id string, x, y, w float64, label string) (float64, float64) {
+	c.calls = append(c.calls, "button "+id)
+	return w, 20
+}
+func (c *recordingCanvas) Checkbox(id string, x, y float64, label string, checked bool) (float64, float64) {
+	c.calls = append(c.calls, "checkbox "+id)
+	return 20, 20
+}
+func (c *recordingCanvas) Region(id lua.LValue, x, y, w, h float64) bool {
+	c.calls = append(c.calls, "region "+id.String())
+	return false
+}
 
 func TestDrawFunctionDrawsOnTheCanvas(t *testing.T) {
 	rt := mustLoadThemeTestConfig(t, `
@@ -433,6 +461,45 @@ onon.theme.elements.row.draw = function(canvas) kept = canvas end
 	}
 }
 
+// nestingCanvas runs inner when its default is drawn, as a view's canvas
+// draws its rows, each of which may have a draw function of its own.
+type nestingCanvas struct {
+	recordingCanvas
+	inner func()
+}
+
+func (c *nestingCanvas) Default() { c.inner() }
+
+func TestDrawFunctionsNest(t *testing.T) {
+	rt := mustLoadThemeTestConfig(t, `
+onon.theme.elements.row.draw = function(canvas, box) canvas:rect(0, 0, box.w, 1, "accent") end
+outer = function(canvas, box)
+  canvas:default()
+  assert(box.w == 300, "the inner draw changed the outer box: " .. box.w)
+  canvas:text(0, 0, "after", "foreground")
+end
+`)
+	theme := rt.Config().Theme
+	row := theme.Style(ElementRow).Draw.V
+	inner := &recordingCanvas{}
+	outer := &nestingCanvas{}
+	outer.inner = func() {
+		if err := rt.RunDraw(row, inner, DrawState{Element: ElementRow, W: 50, H: 20}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fn, ok := rt.state.GetGlobal("outer").(*lua.LFunction)
+	if !ok {
+		t.Fatal("no outer function")
+	}
+	if err := rt.RunDraw(fn, outer, DrawState{Element: ElementPanel, W: 300, H: 200}); err != nil {
+		t.Fatal(err)
+	}
+	if len(inner.calls) != 1 || len(outer.calls) != 1 || outer.calls[0] != "text after" {
+		t.Fatalf("inner drew %q, outer %q", inner.calls, outer.calls)
+	}
+}
+
 // A draw function runs for every element it styles on every frame.
 func BenchmarkRunDraw(b *testing.B) {
 	path := filepath.Join(b.TempDir(), "config.lua")
@@ -458,5 +525,36 @@ end
 		if err := rt.RunDraw(fn, &recordingCanvas{}, DrawState{Element: ElementRow, W: 300, H: 24}); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+// colourCanvas notes the colour and boldness text is drawn in.
+type colourCanvas struct {
+	recordingCanvas
+}
+
+func (c *colourCanvas) Text(x, y float64, text string, clr Color, o TextOptions) (float64, float64) {
+	c.calls = append(c.calls, text+" "+formatStyleColor(clr)+" "+strconv.FormatBool(o.Bold))
+	return 42, 16
+}
+
+func TestCanvasTextColourIsOptional(t *testing.T) {
+	rt := mustLoadThemeTestConfig(t, `
+onon.theme.elements.row.draw = function(canvas)
+  canvas:text(0, 0, "plain")
+  canvas:text(0, 0, "coloured", "accent")
+  canvas:text(0, 0, "options", { color = "muted", bold = true })
+  canvas:text(0, 0, "both", "accent", { bold = true })
+  canvas:text(0, 0, "bold", "accent", true)
+end
+`)
+	theme := rt.Config().Theme
+	canvas := &colourCanvas{}
+	if err := rt.RunDraw(theme.Style(ElementRow).Draw.V, canvas, DrawState{}); err != nil {
+		t.Fatal(err)
+	}
+	want := "plain foreground false|coloured accent false|options muted true|both accent true|bold accent true"
+	if got := strings.Join(canvas.calls, "|"); got != want {
+		t.Fatalf("text drawn as %q, want %q", got, want)
 	}
 }

@@ -133,16 +133,20 @@ func (a *App) rowPageScreenOrigin(row rowLayout, pageIndex int) (float64, float6
 	return row.pageX[pageIndex] - a.scrollX + offsetX, row.pageY[pageIndex] - a.scrollY + offsetY
 }
 
+// viewportSize is the size of the document's part of the window: above
+// the status bar, and beside any docked views.
 func (a *App) viewportSize() (int, int) {
+	if len(a.views.panels) > 0 && a.hasDock() {
+		r := a.documentRect()
+		return max(1, int(r.W)), max(1, int(r.H))
+	}
+	// Asked for many times a frame, as each row of pages is placed, the
+	// window less the status bar is worked out directly.
 	h := a.winH
 	if a.statusVisible() {
 		h -= a.statusReservedHeight()
 	}
-	if h < 1 {
-		h = 1
-	}
-	w := max(a.winW, 1)
-	return w, h
+	return max(1, a.winW), max(1, h)
 }
 
 func (a *App) contentViewportOffset() (float64, float64) {
@@ -172,6 +176,10 @@ func (a *App) pageGeometryAtScreen(sx, sy float64) (int, float64, float64, bool)
 	if len(a.rows) == 0 {
 		return 0, 0, 0, false
 	}
+	// Pages are laid out from the document's corner, which docked views
+	// move from the window's.
+	ox, oy := a.viewportOrigin()
+	sx, sy = sx-ox, sy-oy
 	if a.renderMode == renderSingle {
 		if a.page < 0 || a.page >= len(a.pageToRow) {
 			return 0, 0, 0, false
@@ -185,7 +193,12 @@ func (a *App) pageGeometryAtScreen(sx, sy float64) (int, float64, float64, bool)
 		}
 		return 0, 0, 0, false
 	}
-	for _, row := range a.rows {
+	// Only the rows at the point's height can hold it; rows run down the
+	// document in order.
+	_, offsetY := a.contentViewportOffset()
+	contentY := sy + a.scrollY - offsetY
+	start, end := a.rowRangeForContentY(contentY, contentY)
+	for _, row := range a.rows[start:end] {
 		for i, page := range row.pages {
 			x, y := a.rowPageScreenOrigin(row, i)
 			if sx >= x && sy >= y && sx <= x+row.pageW[i] && sy <= y+row.pageH[i] {

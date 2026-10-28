@@ -210,7 +210,11 @@ func tilesCovering(page, area image.Rectangle) []image.Point {
 // pageDeviceArea maps a screen rect onto page, whose screen origin is
 // (x, y), and returns it in device pixels at scale.
 func (a *App) pageDeviceArea(page int, x, y float64, screen sdl.FRect, scale float64) image.Rectangle {
-	t := a.pageTransform(page)
+	return pageDeviceAreaAt(a.pageTransform(page), x, y, screen, scale)
+}
+
+// pageDeviceAreaAt is pageDeviceArea for a page drawn by t.
+func pageDeviceAreaAt(t pageTransform, x, y float64, screen sdl.FRect, scale float64) image.Rectangle {
 	minX, minY := math.Inf(1), math.Inf(1)
 	maxX, maxY := math.Inf(-1), math.Inf(-1)
 	for _, corner := range [][2]float64{

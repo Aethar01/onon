@@ -95,8 +95,7 @@ func renderReference(luaRefs []config.LuaReferenceEntry, luaDocs map[string]stri
 		renderLuaFunction(&b, ref, luaDocs[luaDocumentationName(ref.Signature)])
 	}
 	b.WriteString("\n### UI views\n\n")
-	b.WriteString("Create views with `local view = onon.ui.create(spec)`, then call `view:show()`. The specification supports `id`, `title`, `rows`, `selected`, `scroll`, `query`, `searchable`, `on_select`, and `on_close`. A row may be a string or a table with `text`, `value`, `id`, `secondary`, `depth`, and `disabled`.\n\n")
-	b.WriteString("View methods are `show()`, `close()`, `visible()`, `set_rows(rows)`, `set_selected(index)`, `set_scroll(scroll)`, `set_query(query)`, `selected()`, `scroll()`, and `query()`. Selection indices are 1-based, with 0 meaning no selection. `on_select` receives `(index, value, text, id)`, preserving the original row index and ID when the list is filtered. `on_close` runs for user, programmatic, replacement, and document-close paths.\n")
+	b.WriteString(config.UIViewsReference)
 	renderPortablePluginReference(&b)
 	renderBindingNames(&b)
 	b.WriteString("\n## Bindable actions\n\n")

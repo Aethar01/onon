@@ -159,6 +159,7 @@ func (r *Runtime) Reload() error {
 	r.luaGeneration = luaGeneration{
 		cfg:              Default(),
 		callbacks:        map[string]*lua.LFunction{},
+		openViews:        map[string]func(UIViewState){},
 		schemes:          map[string]*lua.LFunction{},
 		pluginCatalog:    discoverPluginCatalog(r.pluginPaths, r.disabledPlugins),
 		operations:       map[int]*pluginOperation{},
@@ -333,12 +334,82 @@ func (r *Runtime) Eval(code string) (bool, error) {
 	return r.dirty, nil
 }
 
-func (r *Runtime) RunUISelect(callback string, index int, value string, text ...string) error {
-	args := []lua.LValue{lua.LNumber(index), lua.LString(value)}
-	for _, detail := range text {
-		args = append(args, lua.LString(detail))
+// RunUIRow runs a view's row callback, on_select or on_selection_changed,
+// as fn(index, value, text, id, row), row being the row the plugin gave.
+func (r *Runtime) RunUIRow(callback string, row UIRowRef) error {
+	lv := row.Lua
+	if lv == nil {
+		lv = lua.LNil
 	}
-	return r.runCallback(callback, args...)
+	return r.runCallback(callback, lua.LNumber(row.Index), lua.LString(row.Value), lua.LString(row.Text), lua.LString(row.ID), lv)
+}
+
+// RunUIText runs on_input or on_submit with a text field's text and id,
+// nil for the prompt.
+func (r *Runtime) RunUIText(callback, text, id string) error {
+	field := lua.LValue(lua.LNil)
+	if id != "" {
+		field = lua.LString(id)
+	}
+	return r.runCallback(callback, lua.LString(text), field)
+}
+
+// RunUIClick runs on_click with the id of the button or check box clicked.
+func (r *Runtime) RunUIClick(callback, id string) error {
+	return r.runCallback(callback, lua.LString(id))
+}
+
+func (r *Runtime) RunUIQuery(callback, query string) error {
+	return r.runCallback(callback, lua.LString(query))
+}
+
+// RunUIKey runs a view's on_key with a key's name, as bind takes it,
+// reporting whether the callback took the key.
+func (r *Runtime) RunUIKey(callback, key string) (bool, error) {
+	return r.runCallbackHandled(callback, lua.LString(key))
+}
+
+// RunUIAction runs a view's on_action with the action bound to a key,
+// reporting whether the callback took the action.
+func (r *Runtime) RunUIAction(callback, action string) (bool, error) {
+	return r.runCallbackHandled(callback, lua.LString(action))
+}
+
+// RunUIMouse runs a view's on_mouse, reporting whether the callback took
+// the event.
+func (r *Runtime) RunUIMouse(callback string, e UIMouseEvent) (bool, error) {
+	if r == nil || r.state == nil {
+		return false, nil
+	}
+	tbl := r.state.NewTable()
+	tbl.RawSetString("type", lua.LString(e.Type))
+	if e.Button != "" {
+		tbl.RawSetString("button", lua.LString(e.Button))
+	}
+	tbl.RawSetString("x", lua.LNumber(e.X))
+	tbl.RawSetString("y", lua.LNumber(e.Y))
+	if e.Clicks > 0 {
+		tbl.RawSetString("clicks", lua.LNumber(e.Clicks))
+	}
+	if e.Region != nil && e.Region != lua.LNil {
+		tbl.RawSetString("region", e.Region)
+	}
+	if e.Type == "wheel" {
+		tbl.RawSetString("dx", lua.LNumber(e.DX))
+		tbl.RawSetString("dy", lua.LNumber(e.DY))
+	}
+	return r.runCallbackHandled(callback, tbl)
+}
+
+// RunUIDraw runs a view's draw function as draw(canvas, box, state),
+// reporting whether it asked to be run again on the next frame.
+func (r *Runtime) RunUIDraw(callback string, canvas Canvas, state DrawState) (bool, error) {
+	fn, ok := r.callbacks[callback]
+	if !ok {
+		return false, fmt.Errorf("unknown lua callback: %s", callback)
+	}
+	again, err := r.runDraw(fn, canvas, state, 1)
+	return lua.LVAsBool(again), err
 }
 
 func (r *Runtime) RunUIClose(callback string) error {
@@ -355,6 +426,28 @@ func (r *Runtime) runCallback(callback string, args ...lua.LValue) error {
 	}
 	params := lua.P{Fn: fn, NRet: 0, Protect: true}
 	return r.callLua(params, args...)
+}
+
+// runCallbackHandled runs a callback that reports, by returning true,
+// whether it handled what it was given.
+func (r *Runtime) runCallbackHandled(callback string, args ...lua.LValue) (bool, error) {
+	if r == nil || callback == "" {
+		return false, nil
+	}
+	fn, ok := r.callbacks[callback]
+	if !ok {
+		return false, fmt.Errorf("unknown lua callback: %s", callback)
+	}
+	handled := false
+	err := r.doLua(func() error {
+		if err := r.state.CallByParam(lua.P{Fn: fn, NRet: 1, Protect: true}, args...); err != nil {
+			return err
+		}
+		handled = lua.LVAsBool(r.state.Get(-1))
+		r.state.Pop(1)
+		return nil
+	})
+	return handled, err
 }
 
 func (r *Runtime) callLua(params lua.P, args ...lua.LValue) (err error) {

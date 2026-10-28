@@ -82,13 +82,14 @@ func (a *App) applyThemePreview() {
 	}
 }
 
-// notifySelectionChange tells the open view its selection moved, once
-// whatever moved it, a key, the pointer or the query, is done.
+// notifySelectionChange tells the open view and panels their selection
+// moved, once whatever moved it, a key, the pointer or the query, is done.
 func (a *App) notifySelectionChange() {
-	view := a.activeModalUIView()
-	if view == nil || view.onSelectionChanged == nil || view.notifiedSelected == view.selected {
-		return
+	for _, view := range append([]*uiView{a.activeModalUIView()}, a.views.panels...) {
+		if view == nil || !view.visible || view.onSelectionChanged == nil || view.notifiedSelected == view.selected {
+			continue
+		}
+		view.notifiedSelected = view.selected
+		view.onSelectionChanged(a, view)
 	}
-	view.notifiedSelected = view.selected
-	view.onSelectionChanged(a, view)
 }
