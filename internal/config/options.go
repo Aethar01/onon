@@ -427,7 +427,7 @@ var configOptions = map[string]optionDesc{
 	"page_cache_memory_mb":   intOption("Maximum memory in MiB for cached page renders; 0 disables the limit.", func(c *Config) int { return c.PageCacheMemoryMB }, func(c *Config, v int) { c.PageCacheMemoryMB = max(0, v) }),
 	"page_cache_size":        intOption("Deprecated and ignored; the cache is bounded by page_cache_memory_mb.", func(*Config) int { return 0 }, func(*Config, int) {}),
 	"outline_initial_depth":  intOption("Outline levels expanded when the outline opens.", func(c *Config) int { return c.OutlineInitialDepth }, func(c *Config, v int) { c.OutlineInitialDepth = v }),
-	"outline_width_percent":  intOption("Outline overlay width as a percentage of the window.", func(c *Config) int { return c.OutlineWidthPercent }, func(c *Config, v int) { c.OutlineWidthPercent = v }),
+	"outline_width_percent":  intOption("Most of the window the outline overlay takes, as a percentage of its width; the outline is narrower when its entries are.", func(c *Config) int { return c.OutlineWidthPercent }, func(c *Config, v int) { c.OutlineWidthPercent = v }),
 	"outline_height_percent": intOption("Outline overlay height as a percentage of the window.", func(c *Config) int { return c.OutlineHeightPercent }, func(c *Config, v int) { c.OutlineHeightPercent = v }),
 	"completion_max_items":   intOption("Maximum command-completion rows.", func(c *Config) int { return c.CompletionMaxItems }, func(c *Config, v int) { c.CompletionMaxItems = max(1, v) }),
 	"auto_reload":            boolOption("Reload the document when its file changes on disk.", func(c *Config) bool { return c.AutoReload }, func(c *Config, v bool) { c.AutoReload = v }),

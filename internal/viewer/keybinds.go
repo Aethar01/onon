@@ -50,7 +50,7 @@ func (a *App) toggleKeybindMenu() {
 
 func (a *App) newKeybindView() *uiView {
 	view := &uiView{
-		id: "core:keybinds", owner: "core", modal: true, element: config.ElementPanel, place: percentPlace(76, 80),
+		id: "core:keybinds", owner: "core", modal: true, element: config.ElementPanel, place: menuPlace(76, 80),
 		header:   func(a *App, _ *uiView, _ int) string { return a.keybindMenuHeader() },
 		keyHook:  func(a *App, key keys.Key, repeat bool) bool { return a.keybindMenuKey(key, repeat) },
 		onAction: func(a *App, _ *uiView, action string) bool { return a.keybindMenuAction(action) },

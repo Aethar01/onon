@@ -17,6 +17,8 @@ type viewPlacement struct {
 	anchor        string
 	at            *config.UIPoint
 	dock          string
+	// fit narrows a list to what its rows take, its width being the most.
+	fit bool
 }
 
 // percentPlace is a view of the given percentages of the window, centred,
@@ -27,6 +29,14 @@ func percentPlace(width, height int) viewPlacement {
 		height: config.UISize{Value: float64(height), Percent: true},
 		anchor: "center",
 	}
+}
+
+// menuPlace is a menu's place: centred, at most the given percentages of
+// the window, and as narrow as its rows let it be.
+func menuPlace(width, height int) viewPlacement {
+	p := percentPlace(width, height)
+	p.fit = true
+	return p
 }
 
 // maxDockShare is the most of the document's part of the window a docked
@@ -167,6 +177,7 @@ func (a *App) viewGeometry(view *uiView) (sdl.FRect, int) {
 		winW: a.winW, winH: a.winH, status: a.statusVisible(), styles: a.styles, font: a.fontFace, scale: a.uiScale,
 		panels: a.views.layoutGen, rows: len(view.visibleRows()), place: view.place,
 		headless: view.headless, titles: view.hasColumnTitles(), body: view.drawBody != nil,
+		content: a.listContentWidth(view),
 	}
 	if g := &view.geometry; g.ok && g.key == key {
 		return g.rect, g.rows
@@ -189,6 +200,7 @@ type viewGeometryKey struct {
 	rows                   int
 	place                  viewPlacement
 	headless, titles, body bool
+	content                int
 }
 
 type viewGeometryCache struct {
@@ -215,9 +227,14 @@ func (a *App) placeView(view *uiView) (sdl.FRect, int) {
 	areaW, areaH := int(area.W)-2*gap, int(area.H)-2*gap
 	w := clampInt(int(math.Round(a.uiLength(p.width, float64(a.winW)))), 1, max(1, areaW))
 	h := clampInt(int(math.Round(a.uiLength(p.height, float64(a.winH)))), 1, max(1, areaH))
+	least := 260
+	if content := a.listContentWidth(view); content > 0 {
+		w = min(w, content)
+		least = a.ipx(320) // a fitted menu of short rows still reads as a menu
+	}
 	if fit && p.at == nil {
 		// a menu keeps a least size
-		w = max(w, min(260, areaW))
+		w = max(w, min(least, areaW))
 		h = max(h, min(160, areaH))
 	}
 	rows := max(1, (h-head-bottom)/rowHeight)

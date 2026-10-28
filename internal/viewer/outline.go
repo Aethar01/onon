@@ -53,7 +53,7 @@ func (a *App) newOutlineView() *uiView {
 		modal:      true,
 		searchable: true,
 		element:    config.ElementPanel,
-		place:      percentPlace(a.config.OutlineWidthPercent, a.config.OutlineHeightPercent),
+		place:      menuPlace(a.config.OutlineWidthPercent, a.config.OutlineHeightPercent),
 	}
 	view.header = func(a *App, view *uiView, visible int) string {
 		if view.searching || view.query != "" {
