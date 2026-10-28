@@ -9,6 +9,7 @@ import (
 
 type outlineMenuState struct {
 	view                 *uiView
+	preview              *documentPreview
 	expanded             map[int]bool
 	visibleIndices       []int
 	visibleQuery         string
@@ -17,7 +18,7 @@ type outlineMenuState struct {
 
 func (a *App) toggleOutlineMenu() {
 	if a.outlineMenu.view != nil && a.outlineMenu.view.visible {
-		a.closeUIView(a.outlineMenu.view, false)
+		a.closeUIView(a.outlineMenu.view, true)
 		return
 	}
 	a.closeAllUI()
@@ -29,6 +30,7 @@ func (a *App) toggleOutlineMenu() {
 	}
 	a.outlineMenu = outlineMenuState{expanded: map[int]bool{}}
 	a.outlineMenu.view = a.newOutlineView()
+	a.outlineMenu.preview = a.previewDocument(a.outlineMenu.view, func(a *App, row uiRow) { a.previewOutlineEntry(row.index) })
 	if len(a.outline) > 0 {
 		a.outlineMenu.view.selected = a.outlineIndexForPage(a.page)
 		for i, item := range a.outline {
@@ -44,6 +46,7 @@ func (a *App) toggleOutlineMenu() {
 	}
 	a.refreshOutlineView()
 	a.showUIView(a.outlineMenu.view)
+	a.outlineMenu.view.notifiedSelected = a.outlineMenu.view.selected // the page shown is already where it opened
 }
 
 func (a *App) newOutlineView() *uiView {
@@ -193,6 +196,7 @@ func (a *App) activateSelectedOutline() {
 	item := a.outline[view.selected]
 	if item.External {
 		if a.openDocumentURI(item.URI) {
+			a.outlineMenu.preview.restore(a)
 			a.closeUIView(view, false)
 		}
 		return
@@ -200,8 +204,20 @@ func (a *App) activateSelectedOutline() {
 	if item.Page < 0 {
 		return
 	}
+	a.outlineMenu.preview.restore(a)
 	a.closeUIView(view, false)
 	a.jumpToDestination(item.Page, item.X, item.Y, item.HasX, item.HasY)
+}
+
+// previewOutlineEntry shows the place the outline's entry index names
+// behind the outline.
+func (a *App) previewOutlineEntry(index int) {
+	if index < 0 || index >= len(a.outline) {
+		return
+	}
+	if item := a.outline[index]; !item.External && item.Page >= 0 {
+		a.jumpToDestination(item.Page, item.X, item.Y, item.HasX, item.HasY)
+	}
 }
 
 func (a *App) collapseSelectedOutline() {

@@ -129,3 +129,44 @@ func TestOutlineRunsItsOwnActionsThroughTheGenericList(t *testing.T) {
 		t.Fatal("the outline toggle did not close the outline")
 	}
 }
+
+func TestOutlinePreviewsTheEntrySelected(t *testing.T) {
+	app := testLayoutApp(6)
+	app.winW, app.winH = 1000, 300
+	app.recomputeLayout(app.viewportSize())
+	app.outline = []mupdf.OutlineItem{
+		{Title: "Chapter 1", Page: 0, Parent: -1},
+		{Title: "Chapter 2", Page: 4, Parent: -1},
+	}
+	open := func() *uiView {
+		app.toggleOutlineMenu()
+		return app.outlineMenu.view
+	}
+
+	// Moving the selection shows the entry, and closing goes back.
+	view := open()
+	app.moveUIViewSelection(view, 1)
+	app.notifySelectionChange()
+	if app.page != 4 || len(app.jumpBack) != 0 {
+		t.Fatalf("previewing chapter 2: page %d, jumps %v", app.page+1, app.jumpBack)
+	}
+	app.runUIViewAction(view, "close")
+	if app.page != 0 || app.scrollY != 0 {
+		t.Fatalf("closing left page %d at %v", app.page+1, app.scrollY)
+	}
+
+	// The pointer passing over a row does not move the document.
+	view = open()
+	view.selected, view.pointerSelected = 1, true
+	app.notifySelectionChange()
+	if app.page != 0 {
+		t.Fatalf("hovering moved the document to page %d", app.page+1)
+	}
+
+	// Choosing an entry keeps it, one jump from where the outline opened.
+	view.pointerSelected = false
+	app.activateUIView(view)
+	if app.page != 4 || len(app.jumpBack) != 1 || app.jumpBack[0].page != 0 {
+		t.Fatalf("choosing chapter 2: page %d, jumps %v", app.page+1, app.jumpBack)
+	}
+}

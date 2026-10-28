@@ -321,3 +321,39 @@ func TestSearchWorkerReportsOnlyPagesWithHits(t *testing.T) {
 		}
 	}
 }
+
+func TestSearchMatchesPreviewTheMatchSelected(t *testing.T) {
+	doc, err := mupdf.Open(testpdf.WritePages(t, []string{"first needle here"}, []string{"nothing"}, []string{"a second needle"}), mupdf.OpenOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+	app := testLayoutApp(3)
+	app.doc = doc
+	app.winW, app.winH = 1000, 300
+	app.recomputeLayout(app.viewportSize())
+	app.search = searchState{query: "needle", current: 0, matches: map[int][]mupdf.SearchHit{}}
+	for page := range 3 {
+		hits, err := searchDocumentPage(doc, page, "needle", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		app.search.matches[page] = hits
+		for i := range hits {
+			app.search.order = append(app.search.order, searchHitRef{page: page, hit: i})
+		}
+	}
+
+	start := app.currentJumpPosition()
+	app.showSearchMatches()
+	view := app.activeUIView()
+	app.moveUIViewSelection(view, 1)
+	app.notifySelectionChange()
+	if app.page != 2 || app.search.current != 1 || len(app.jumpBack) != 0 {
+		t.Fatalf("previewing the second match: page %d, current %d, jumps %v", app.page+1, app.search.current, app.jumpBack)
+	}
+	app.runUIViewAction(view, "close")
+	if app.currentJumpPosition() != start || app.search.current != 0 {
+		t.Fatalf("closing left %+v, current %d, from %+v", app.currentJumpPosition(), app.search.current, start)
+	}
+}

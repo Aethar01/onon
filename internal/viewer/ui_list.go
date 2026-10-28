@@ -91,7 +91,7 @@ type uiView struct {
 	offset       float64
 	offsetScroll int
 	settling     bool
-	offsetAt     time.Time   // when offset was last brought up to date
+	offsetAt     time.Time      // when offset was last brought up to date
 	filtered     uiRowFilter    // visibleRows' last result
 	keyWidth     uiKeyWidth     // keyColumnWidth's last result
 	contentWidth uiContentWidth // listContentWidth's last result
@@ -151,6 +151,9 @@ type uiView struct {
 	// was notifiedSelected when it last ran.
 	onSelectionChanged func(*App, *uiView)
 	notifiedSelected   int
+	// pointerSelected is set while the selection is where the pointer
+	// passing over the rows put it, not the keys or the query.
+	pointerSelected bool
 	// onInput runs as a field's text changes, and onSubmit on Enter in a
 	// field, or the prompt, whose id is empty.
 	onInput, onSubmit func(a *App, id, text string)
@@ -556,6 +559,7 @@ func (a *App) setUIViewQuery(view *uiView, query string) {
 		return
 	}
 	view.query = query
+	view.pointerSelected = false
 	if view.onQueryChanged != nil {
 		view.onQueryChanged(a, view)
 	}
@@ -571,6 +575,7 @@ func (a *App) moveUIViewSelection(view *uiView, delta int) {
 	if len(items) == 0 {
 		return
 	}
+	view.pointerSelected = false
 	row := uiViewSelectedRow(view, items)
 	for next := clampInt(row+delta, 0, len(items)-1); next != row; next = clampInt(next+delta, 0, len(items)-1) {
 		row = next
@@ -989,7 +994,11 @@ func (a *App) uiViewHover(view *uiView, x, y int) bool {
 			view.selected = item.index
 		}
 	}
-	return old != view.selected
+	if old != view.selected {
+		view.pointerSelected = true
+		return true
+	}
+	return false
 }
 
 func uiRowsFromConfig(rows []config.UIListRow) []uiRow {
