@@ -187,6 +187,7 @@ type uiKeyWidth struct {
 	rows               []uiRow
 	face               font.Face
 	width              int
+	marker             int // the widest marker
 	swatches, checkbox bool
 }
 
@@ -798,9 +799,6 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 				continue
 			}
 			text := item.text
-			if item.depth > 0 || item.marker != "" {
-				text = strings.Repeat("  ", max(0, item.depth)) + item.marker + item.text
-			}
 			if !item.button {
 				// Every row leaves the room any row's swatch, check box or
 				// key takes, so their text lines up.
@@ -820,7 +818,15 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 						return err
 					}
 				}
-				textX += prefix.width()
+				textX += prefix.width() + a.depthIndent(item.depth)
+				// Markers take a column of their own, so the text of rows
+				// with and without one lines up.
+				if item.marker != "" {
+					if err := a.drawText(renderer, item.marker, textX, baseline, a.textColor(&st, true)); err != nil {
+						return err
+					}
+				}
+				textX += prefix.marker
 			}
 			// The detail on the right takes what the text leaves it, and
 			// at least 45% of a row too narrow for both.
@@ -853,8 +859,9 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 }
 
 // listPrefix is the room the rows of a list leave before their text: for
-// a swatch, a check box and the key column, each where any row has one.
-type listPrefix struct{ swatch, checkbox, key, keyGap int }
+// a swatch, a check box and the key column, each where any row has one,
+// and, after a row's indent, for the widest marker.
+type listPrefix struct{ swatch, checkbox, key, keyGap, marker int }
 
 func (p listPrefix) width() int { return p.swatch + p.checkbox + p.key + p.keyGap }
 
@@ -872,7 +879,15 @@ func (a *App) rowPrefix(view *uiView, items []uiRow, keyLimit int) listPrefix {
 	if view.keyWidth.checkbox {
 		p.checkbox = size + a.ipx(8)
 	}
+	if m := view.keyWidth.marker; m > 0 {
+		p.marker = m + a.ipx(6)
+	}
 	return p
+}
+
+// depthIndent is how far a row at depth is set in.
+func (a *App) depthIndent(depth int) int {
+	return a.ipx(16) * max(0, depth)
 }
 
 // keyColumnWidth is the width of the key column: the widest key of items,
@@ -887,6 +902,9 @@ func (a *App) keyColumnWidth(view *uiView, items []uiRow, limit int) int {
 			k.checkbox = k.checkbox || item.checkbox
 			if item.key != "" && !item.button {
 				k.width = max(k.width, measureText(a.fontFace, item.key))
+			}
+			if item.marker != "" {
+				k.marker = max(k.marker, measureText(a.fontFace, item.marker))
 			}
 		}
 	}
@@ -928,7 +946,7 @@ func (a *App) listContentWidth(view *uiView) int {
 			}
 			continue
 		}
-		w := measureText(rowFace, strings.Repeat("  ", max(0, row.depth))+row.marker+row.text)
+		w := a.depthIndent(row.depth) + measureText(rowFace, row.text)
 		if row.secondary != "" {
 			w += detailGap + measureText(a.fontFace, row.secondary)
 		}
@@ -946,7 +964,7 @@ func (a *App) listContentWidth(view *uiView) int {
 		widest = max(widest, w)
 	}
 	prefix := a.rowPrefix(view, view.rows, math.MaxInt32)
-	width := int(math.Ceil(float64(panelLeft+rowLeft+rowRight+panelRight))) + prefix.width() + widest
+	width := int(math.Ceil(float64(panelLeft+rowLeft+rowRight+panelRight))) + prefix.width() + prefix.marker + widest
 	if header := view.title; header != "" || view.header != nil {
 		if view.header != nil {
 			header = view.header(a, view, len(view.rows))

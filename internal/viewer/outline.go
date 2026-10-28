@@ -58,6 +58,8 @@ func (a *App) newOutlineView() *uiView {
 		element:    config.ElementPanel,
 		place:      menuPlace(a.config.OutlineWidthPercent, a.config.OutlineHeightPercent),
 	}
+	// Wide enough for its levels to stand apart, however short its titles.
+	view.place.least = config.UISize{Value: 40, Percent: true}
 	view.header = func(a *App, view *uiView, visible int) string {
 		if view.searching || view.query != "" {
 			return fmt.Sprintf("Outline /%s (%d/%d)", view.query, visible, len(a.outline))
@@ -154,11 +156,11 @@ func (a *App) refreshOutlineView() {
 	rows := make([]uiRow, 0, len(visible))
 	for _, index := range visible {
 		item := a.outline[index]
-		marker := "  "
+		marker := ""
 		if item.HasChildren {
-			marker = "+ "
+			marker = "▸"
 			if a.outlineMenu.expanded[index] {
-				marker = "- "
+				marker = "▾"
 			}
 		}
 		text := strings.TrimSpace(item.Title)

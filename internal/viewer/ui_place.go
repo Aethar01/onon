@@ -17,8 +17,10 @@ type viewPlacement struct {
 	anchor        string
 	at            *config.UIPoint
 	dock          string
-	// fit narrows a list to what its rows take, its width being the most.
-	fit bool
+	// fit narrows a list to what its rows take, its width being the most
+	// and least, if set, the least.
+	fit   bool
+	least config.UISize
 }
 
 // percentPlace is a view of the given percentages of the window, centred,
@@ -229,8 +231,13 @@ func (a *App) placeView(view *uiView) (sdl.FRect, int) {
 	h := clampInt(int(math.Round(a.uiLength(p.height, float64(a.winH)))), 1, max(1, areaH))
 	least := 260
 	if content := a.listContentWidth(view); content > 0 {
+		most := w
 		w = min(w, content)
 		least = a.ipx(320) // a fitted menu of short rows still reads as a menu
+		if p.least.Value > 0 {
+			least = max(least, int(math.Round(a.uiLength(p.least, float64(a.winW)))))
+		}
+		least = min(least, most)
 	}
 	if fit && p.at == nil {
 		// a menu keeps a least size
