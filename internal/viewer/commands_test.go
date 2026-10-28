@@ -305,3 +305,19 @@ func TestOptionsListSwitchesAndSetsOptions(t *testing.T) {
 		t.Fatalf("Enter on fit_mode: mode %v, input %q", app.mode, app.input.Value)
 	}
 }
+
+func TestRecentFilePartsNameTheFileFirst(t *testing.T) {
+	home := string(filepath.Separator) + "h"
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	for _, tc := range []struct{ path, name, folder string }{
+		{filepath.Join(home, "papers", "a.pdf"), "a.pdf", filepath.Join("~", "papers")},
+		{filepath.Join(home+"x", "b.pdf"), "b.pdf", home + "x"},
+		{"https://example.com/docs/c.pdf", "c.pdf", "https://example.com/docs"},
+		{filepath.Join(home, "a", "b", "c", "d", "e.pdf"), "e.pdf", filepath.Join("…", "c", "d")},
+	} {
+		if name, folder := recentFileParts(tc.path); name != tc.name || folder != tc.folder {
+			t.Errorf("recentFileParts(%q) = %q, %q; want %q, %q", tc.path, name, folder, tc.name, tc.folder)
+		}
+	}
+}
