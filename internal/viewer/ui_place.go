@@ -41,22 +41,21 @@ func menuPlace(width, height int) viewPlacement {
 	return p
 }
 
-// menuNames names onon's own menus, by view id, as the menus option does.
-var menuNames = map[string]string{
-	"annotation-menu": "annotation", "form-choice": "choice", "color-picker": "colors", helpViewID: "help",
-	"core:keybind-keys": "keybind_keys", "core:keybinds": "keybinds", "matches": "matches", "options": "options",
-	"core:outline": "outline", "print": "print", "printers": "printers", "recent-files": "recent", "themes": "themes",
-}
-
 // placeMenu places one of onon's own menus where the menus option puts it,
 // over its own place.
 func (a *App) placeMenu(view *uiView) {
-	name, ok := menuNames[view.id]
-	if !ok || view.owner != "core" {
+	if view.owner != "core" || len(a.config.Menus) == 0 {
 		return
 	}
-	p, ok := a.config.Menus[name]
-	if !ok {
+	var p config.MenuPlacement
+	found := false
+	for name, id := range config.MenuViews {
+		if id == view.id {
+			p, found = a.config.Menus[name]
+			break
+		}
+	}
+	if !found {
 		return
 	}
 	if p.Width.Value > 0 {

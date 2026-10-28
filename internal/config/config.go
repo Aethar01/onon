@@ -1,6 +1,11 @@
 package config
 
-import lua "github.com/yuin/gopher-lua"
+import (
+	"maps"
+	"slices"
+
+	lua "github.com/yuin/gopher-lua"
+)
 
 type Config struct {
 	ConfigPath            string
@@ -166,8 +171,16 @@ type UIOverlay struct {
 	Generation                                            int
 }
 
-// MenuNames are onon's own menus that the menus option places.
-var MenuNames = []string{"annotation", "choice", "colors", "help", "keybind_keys", "keybinds", "matches", "options", "outline", "print", "printers", "recent", "themes"}
+// MenuViews are onon's own menus that the menus option places, by name,
+// each with the id of its view, and MenuNames their names, sorted.
+var (
+	MenuViews = map[string]string{
+		"annotation": "annotation-menu", "choice": "form-choice", "colors": "color-picker", "help": "help",
+		"keybind_keys": "core:keybind-keys", "keybinds": "core:keybinds", "matches": "matches", "options": "options",
+		"outline": "core:outline", "print": "print", "printers": "printers", "recent": "recent-files", "themes": "themes",
+	}
+	MenuNames = slices.Sorted(maps.Keys(MenuViews))
+)
 
 // MenuPlacement is where one of onon's own menus sits, each field left
 // zero keeping the menu's own: the most of the window it takes, as a menu

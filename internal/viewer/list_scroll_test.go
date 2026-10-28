@@ -3,7 +3,6 @@ package viewer
 import (
 	"fmt"
 	"math"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -199,12 +198,7 @@ func TestMenusOptionPlacesOnonsMenus(t *testing.T) {
 	if view := app.activeModalUIView(); view.place.anchor != "center" {
 		t.Fatalf("themes anchored %q", view.place.anchor)
 	}
-	for id := range menuNames {
-		if !slices.Contains(config.MenuNames, menuNames[id]) {
-			t.Errorf("menu %s is named %q, which the menus option does not know", id, menuNames[id])
-		}
-	}
-	if len(menuNames) != len(config.MenuNames) {
-		t.Errorf("%d menus named, the option knows %d", len(menuNames), len(config.MenuNames))
+	if config.MenuViews["help"] != helpViewID {
+		t.Errorf("the menus option's help is view %q, help is %q", config.MenuViews["help"], helpViewID)
 	}
 }
