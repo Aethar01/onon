@@ -282,18 +282,28 @@ func (a *App) placeView(view *uiView) (sdl.FRect, int) {
 	if p.at != nil {
 		return a.pinnedRect(*p.at, p.anchor, w, h), rows
 	}
-	x, y := int(area.X)+(int(area.W)-w)/2, int(area.Y)+(int(area.H)-full)/2
-	if strings.HasSuffix(p.anchor, "left") {
-		x = int(area.X) + gap
-	} else if strings.HasSuffix(p.anchor, "right") {
-		x = int(area.X+area.W) - w - gap
-	}
-	if strings.HasPrefix(p.anchor, "top") {
-		y = int(area.Y) + gap
-	} else if strings.HasPrefix(p.anchor, "bottom") {
-		y = int(area.Y+area.H) - h - gap
+	x, y := anchorIn(area, p.anchor, w, full, gap)
+	if strings.HasPrefix(p.anchor, "bottom") {
+		y += full - h // its bottom kept at the edge
 	}
 	return sdl.FRect{X: float32(x), Y: float32(y), W: float32(w), H: float32(h)}, rows
+}
+
+// anchorIn is where a box w by h anchored at anchor sits in area, gap
+// from the edges it is anchored to.
+func anchorIn(area sdl.FRect, anchor string, w, h, gap int) (int, int) {
+	x, y := int(area.X)+(int(area.W)-w)/2, int(area.Y)+(int(area.H)-h)/2
+	if strings.HasSuffix(anchor, "left") {
+		x = int(area.X) + gap
+	} else if strings.HasSuffix(anchor, "right") {
+		x = int(area.X+area.W) - w - gap
+	}
+	if strings.HasPrefix(anchor, "top") {
+		y = int(area.Y) + gap
+	} else if strings.HasPrefix(anchor, "bottom") {
+		y = int(area.Y+area.H) - h - gap
+	}
+	return x, y
 }
 
 // pinnedRect is the frame of a view w by h whose part anchor names, such

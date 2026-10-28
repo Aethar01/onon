@@ -7,7 +7,7 @@ import (
 )
 
 func (a *App) handleInputMouseButton(e *sdl.MouseButtonEvent) bool {
-	if a.mode == modeNormal || !a.statusVisible() || e.Button != uint8(sdl.ButtonLeft) {
+	if a.mode == modeNormal || e.Button != uint8(sdl.ButtonLeft) {
 		return false
 	}
 	if e.Type == sdl.EventMouseButtonDown {
@@ -46,11 +46,11 @@ func (a *App) handleInputMouseMotion(e *sdl.MouseMotionEvent) bool {
 }
 
 func (a *App) inputPositionAt(x, y float64, dragging bool) (int, bool) {
-	area := a.statusLayout().leftArea
-	if !dragging && (y < float64(area.Y) || y > float64(area.Y+area.H)) {
+	p := a.promptLayout()
+	if !dragging && (y < float64(p.box.Y) || y > float64(p.box.Y+p.box.H)) {
 		return 0, false
 	}
-	layout := a.statusTextLayout(a.statusLayout())
+	layout := a.promptTextLayout(p)
 	startX := float64(layout.x)
 	endX := startX + float64(measureText(a.fontFace, layout.lines[0].text))
 	if !dragging && (x < startX-3 || x > inputMaxFloat64(endX+5, startX+8)) {

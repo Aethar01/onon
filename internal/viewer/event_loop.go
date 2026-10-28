@@ -515,6 +515,11 @@ func (a *App) drawFrame() error {
 			return err
 		}
 	}
+	if _, floating := a.floatingPrompt(); floating {
+		if err := a.drawPromptBox(a.renderer); err != nil {
+			return err
+		}
+	}
 	if err := a.drawUIViews(a.renderer); err != nil {
 		return err
 	}

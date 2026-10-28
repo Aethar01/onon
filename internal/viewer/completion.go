@@ -42,8 +42,9 @@ func (a *App) showCompletion() {
 		a.acceptCompletion()
 		return
 	}
-	// The completions are a panel over the status bar, their text lined up
-	// with the word being completed; a click accepts one.
+	// The completions are a panel over the status bar, or by the prompt's
+	// box, their text lined up with the word being completed; a click
+	// accepts one.
 	view := &uiView{
 		id: "completion", owner: "core", headless: true, element: config.ElementCompletion,
 		rows: completionRowsFor(items), selected: -1,
@@ -56,8 +57,9 @@ func (a *App) showCompletion() {
 }
 
 // placeCompletion sizes the completions to their widest, showing at most
-// completion_max_items rows, and pins them above the status bar, their
-// text under the word being completed.
+// completion_max_items rows, and pins them above the status bar, or below
+// a prompt in a box of its own where there is room, their text under the
+// word being completed.
 func (a *App) placeCompletion() {
 	view := a.completion.view
 	if a.fontFace == nil {
@@ -79,14 +81,21 @@ func (a *App) placeCompletion() {
 	height := shown*a.modalListRowHeight() + int(math.Round(float64(padTop+padBottom)))
 	x := a.promptOrigin() + measureText(a.fontFace, a.inputPrefix()+a.input.Left()) - int(math.Round(float64(padLeft+rowPadLeft)))
 	x = clampInt(x, margin, max(margin, a.winW-width-margin))
-	y := a.statusTop() - a.ipx(6)
+	y, anchor := a.statusTop()-a.ipx(6), "bottom_left" // its bottom left at the point
+	if _, floating := a.floatingPrompt(); floating {
+		box := a.promptLayout().box
+		y = int(box.Y) - a.ipx(6)
+		if below := int(box.Y+box.H) + a.ipx(6); below+height <= a.winH-margin {
+			y, anchor = below, "top_left"
+		}
+	}
 	scale := float64(a.px(1))
 	// Half a pixel over, so the rows fit however the scale rounds.
 	view.place = viewPlacement{
 		width:  config.UISize{Value: float64(width) / scale},
 		height: config.UISize{Value: (float64(height) + 0.5) / scale},
 		at:     &config.UIPoint{X: float64(x) / scale, Y: float64(y) / scale},
-		anchor: "bottom_left", // its bottom left at the point
+		anchor: anchor,
 	}
 }
 
