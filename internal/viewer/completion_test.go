@@ -277,3 +277,16 @@ func TestCompletionScrollsWithAFastSelection(t *testing.T) {
 		t.Fatalf("settled at offset %v with row %d selected", offset, selected)
 	}
 }
+
+func TestCompletionWidthHoldsIndentedRows(t *testing.T) {
+	app := testStyleApp("bar")
+	long := "a-rather-long-recent-document-name.pdf"
+	rows := completionRowsFor([]completionItem{{display: long, recent: true}, {display: "b.pdf"}})
+	app.completion = completionState{view: &uiView{visible: true, rows: rows}}
+	app.placeCompletion()
+	width := app.completion.view.place.width.Value * float64(app.px(1))
+	_, right, _, left := app.insets(app.style(config.ElementRow).Padding.V)
+	if need := float64(app.depthIndent(1) + measureText(app.fontFace, long) + int(left+right)); width < need {
+		t.Fatalf("completion %v wide, its indented row needs %v", width, need)
+	}
+}
