@@ -767,6 +767,16 @@ onon.ui.create({
 	if app.message != "chose bell" {
 		t.Fatalf("Enter in a prompt without on_submit: %q", app.message)
 	}
+	app.SetUIQuery(view.id, "al")
+	if view.promptInput.Value != "al" {
+		t.Fatalf("set_query left the prompt showing %q", view.promptInput.Value)
+	}
+	// Escape closes a prompt with text in it, as it would its list.
+	app.sequenceLookup["<Esc>"] = "close"
+	view.onKey(app, keyDown(sdl.KeycodeEscape, 0))
+	if view.visible {
+		t.Fatal("Escape left a prompt with text open")
+	}
 }
 
 func TestLuaUIFields(t *testing.T) {

@@ -9,6 +9,7 @@ import (
 	"onon/internal/config"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
+	lua "github.com/yuin/gopher-lua"
 )
 
 func (a *App) ShowUI(spec config.UIOverlay) error {
@@ -91,6 +92,9 @@ func (a *App) SetUIQuery(id string, query string) {
 		return
 	}
 	view.query = query
+	if view.prompt != "" {
+		view.promptInput.Set(query)
+	}
 	a.ensureUIViewSelectionVisible(view)
 	a.pendingRedraw = true
 }
@@ -211,7 +215,9 @@ func (a *App) runUIViewAction(view *uiView, action string) {
 	case "confirm":
 		a.activateUIView(view)
 	case "close":
-		if view.searching || view.query != "" {
+		// A search is closed before its list; a prompt's text is the
+		// view's own, closed with it.
+		if view.prompt == "" && (view.searching || view.query != "") {
 			view.searching = false
 			a.setUIViewQuery(view, "")
 			return
@@ -668,9 +674,10 @@ func (a *App) luaViewScrollAction(view *uiView, action string) bool {
 // on_mouse first, and those after a press in it until the release. The
 // view hears when the pointer leaves it, and events on_mouse does not
 // take go to the list, or scroll what the view draws. A view that draws
-// is drawn again as the pointer moves over it, for its regions.
+// is drawn again as the pointer moves between its regions.
 func (a *App) setLuaViewMouse(view *uiView, callback string) {
 	pressed, hovering := false, false
+	var hovered lua.LValue // the region the pointer was last over
 	run := func(a *App, ev config.UIMouseEvent) bool {
 		if callback == "" {
 			return false
@@ -702,7 +709,12 @@ func (a *App) setLuaViewMouse(view *uiView, callback string) {
 		ev, inside := a.luaViewMouseEvent(view, e.X, e.Y)
 		left := hovering && !inside && !pressed
 		hovering = inside
-		redraw := view.drawBody != nil && (inside || left)
+		region := ev.Region
+		if !inside {
+			region = nil
+		}
+		redraw := region != hovered
+		hovered = region
 		if inside || pressed {
 			ev.Type = "move"
 			if run(a, ev) {
