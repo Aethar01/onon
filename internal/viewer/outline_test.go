@@ -189,3 +189,24 @@ func TestOutlineKeepsItsWidthWhileFilteringAndExpanding(t *testing.T) {
 		t.Fatalf("the outline went from %v to %v wide", before, after)
 	}
 }
+
+func TestOutlineGoingUpToAParentPreviewsIt(t *testing.T) {
+	app := testLayoutApp(6)
+	app.winW, app.winH = 1000, 300
+	app.recomputeLayout(app.viewportSize())
+	app.outline = []mupdf.OutlineItem{
+		{Title: "Chapter 1", Page: 0, Parent: -1},
+		{Title: "Chapter 2", Page: 3, Parent: -1, HasChildren: true},
+		{Title: "Section 2.1", Page: 5, Parent: 1, Depth: 1},
+	}
+	app.config.OutlineInitialDepth = 1
+	app.toggleOutlineMenu()
+	view := app.outlineMenu.view
+	view.selected, view.pointerSelected = 2, true // the pointer left it on the section
+	app.notifySelectionChange()
+	app.collapseSelectedOutline() // h, up to its chapter
+	app.notifySelectionChange()
+	if view.selected != 1 || app.page != 3 {
+		t.Fatalf("going up to chapter 2 selected %d and showed page %d", view.selected, app.page+1)
+	}
+}

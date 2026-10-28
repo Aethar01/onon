@@ -248,7 +248,7 @@ func (a *App) collapseSelectedOutline() {
 		return
 	}
 	if parent := a.outline[selected].Parent; parent >= 0 {
-		view.selected = parent
+		view.selected, view.pointerSelected = parent, false // the keys moved it
 		a.refreshOutlineView()
 	}
 }
