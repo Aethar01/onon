@@ -373,7 +373,7 @@ func TestSearchMatchContextLeadsToAMatchFarAlong(t *testing.T) {
 		t.Fatalf("hits %v, %v", hits, err)
 	}
 	app.search = searchState{query: "needle", matches: map[int][]mupdf.SearchHit{0: hits}, order: []searchHitRef{{}}}
-	text, at := app.searchMatchContext(searchHitRef{}, parseSearchQuery("needle", 0), nil)
+	text, at := app.searchMatchContext(searchHitRef{}, parseSearchQuery("needle", 0), nil, map[searchLine]int{})
 	if !strings.HasPrefix(text, "…") || len(text) >= len(line) || text[at[0]:at[1]] != "needle" || at[0] > matchLead {
 		t.Fatalf("context %q, match at %v", text, at)
 	}
@@ -393,7 +393,7 @@ func TestSearchMatchContextCutsALineWithoutSpaces(t *testing.T) {
 		t.Fatalf("hits %v, %v", hits, err)
 	}
 	app.search = searchState{query: "needle", matches: map[int][]mupdf.SearchHit{0: hits}, order: []searchHitRef{{}}}
-	text, at := app.searchMatchContext(searchHitRef{}, parseSearchQuery("needle", 0), nil)
+	text, at := app.searchMatchContext(searchHitRef{}, parseSearchQuery("needle", 0), nil, map[searchLine]int{})
 	if !strings.HasPrefix(text, "…") || len(text) >= len(line) || text[at[0]:at[1]] != "needle" || at[0] > matchLead {
 		t.Fatalf("context %q, match at %v", text, at)
 	}
@@ -412,5 +412,25 @@ func TestLineMatchesFindsPlainAndRegularMatches(t *testing.T) {
 	}
 	if got := lineMatches(line, words, re); !reflect.DeepEqual(got, [][2]int{{4, 10}, {14, 20}}) {
 		t.Fatalf("whole-word matches %v", got)
+	}
+}
+
+func TestSearchMatchesMarkEachMatchOnALine(t *testing.T) {
+	doc, err := mupdf.Open(testpdf.WritePages(t, []string{"a needle and a needle"}), mupdf.OpenOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+	app := testLayoutApp(1)
+	app.doc = doc
+	hits, err := searchDocumentPage(doc, 0, "needle", nil)
+	if err != nil || len(hits) != 2 {
+		t.Fatalf("hits %v, %v", hits, err)
+	}
+	app.search = searchState{query: "needle", matches: map[int][]mupdf.SearchHit{0: hits}, order: []searchHitRef{{hit: 0}, {hit: 1}}}
+	app.showSearchMatches()
+	rows := app.activeModalUIView().rows
+	if rows[0].highlight != [2]int{2, 8} || rows[1].highlight != [2]int{15, 21} {
+		t.Fatalf("highlights %v and %v", rows[0].highlight, rows[1].highlight)
 	}
 }

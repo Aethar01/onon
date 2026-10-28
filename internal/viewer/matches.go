@@ -23,8 +23,9 @@ func (a *App) showSearchMatches() {
 	pattern := parseSearchQuery(a.search.query, a.page)
 	re, _ := compileSearchPattern(pattern) // it compiled for the search
 	rows := make([]uiRow, len(a.search.order))
+	seen := map[searchLine]int{}
 	for i, ref := range a.search.order {
-		text, highlight := a.searchMatchContext(ref, pattern, re)
+		text, highlight := a.searchMatchContext(ref, pattern, re, seen)
 		rows[i] = uiRow{index: i, key: "p. " + a.pageLabel(ref.page), text: text, highlight: highlight, value: strconv.Itoa(i)}
 	}
 	current := a.search.current
@@ -70,11 +71,19 @@ func (a *App) previewSearchMatch(view *uiView, i int) {
 // so that a match far along a long line still shows.
 const matchLead = 32
 
+// searchLine is a line of a page that matches are on.
+type searchLine struct {
+	page int
+	quad mupdf.Quad // its first
+}
+
 // searchMatchContext returns the text of the line a match of pattern,
 // or of re for one that needs a regular expression, is on, and where in
 // it the match is. A match far along the line has the line start a little
-// before it, from a word where there is one.
-func (a *App) searchMatchContext(ref searchHitRef, pattern searchPattern, re *regexp.Regexp) (string, [2]int) {
+// before it, from a word where there is one. seen counts the matches of
+// each line passed, a page's matches being in reading order, so that the
+// second on a line is the second in its text.
+func (a *App) searchMatchContext(ref searchHitRef, pattern searchPattern, re *regexp.Regexp, seen map[searchLine]int) (string, [2]int) {
 	quads := a.search.matches[ref.page][ref.hit].Quads
 	if len(quads) == 0 {
 		return "", [2]int{}
@@ -89,7 +98,13 @@ func (a *App) searchMatchContext(ref searchHitRef, pattern searchPattern, re *re
 	if len(found) == 0 {
 		return line, [2]int{}
 	}
-	at := found[0]
+	nth := 0
+	if len(sel.Quads) > 0 {
+		key := searchLine{ref.page, sel.Quads[0]}
+		nth = seen[key]
+		seen[key]++
+	}
+	at := found[min(nth, len(found)-1)]
 	if at[0] > matchLead {
 		cut := at[0] - matchLead/2
 		from := strings.LastIndexByte(line[:cut], ' ') + 1
