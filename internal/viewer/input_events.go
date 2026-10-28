@@ -27,6 +27,10 @@ func (a *App) handleSDLKeyDown(e *sdl.KeyboardEvent) {
 		view.onKey(a, e)
 		return
 	}
+	if view := a.views.focused; view != nil && view.visible && view.onKey != nil && a.mode == modeNormal {
+		view.onKey(a, e)
+		return
+	}
 	if a.mode != modeNormal {
 		if a.handleInputEditKey(e) {
 			return
@@ -129,6 +133,9 @@ func (a *App) handleSDLTextInput(e *sdl.TextInputEvent) {
 		if text == "" {
 			return
 		}
+	}
+	if a.typeUIText(text) {
+		return
 	}
 	if view := a.activeModalUIView(); view != nil {
 		if view.searching && view.searchable {
@@ -453,6 +460,10 @@ func (a *App) commitInputMode() {
 }
 
 func (a *App) editInput(edit func(*textInput)) {
+	if target, ok := a.uiEditTarget(); ok {
+		a.editUIText(target, edit)
+		return
+	}
 	a.closeCompletion()
 	edit(&a.input)
 }

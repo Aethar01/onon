@@ -111,6 +111,21 @@ type uiView struct {
 	regions  []uiRegion
 	extent   float64
 	scrollPx float64
+
+	// prompt labels the text field in the header whose text is the query.
+	prompt       string
+	promptInput  textInput
+	promptScroll int
+	// fields are the text fields drawBody has drawn, fieldOrder those it
+	// drew last, in order, and focusField the one typing goes to.
+	fields     map[string]*uiField
+	fieldOrder []string
+	focusField string
+	// takesKeys is set for a panel a click gives the keys to.
+	takesKeys bool
+	// onInput runs as a field's text changes, and onSubmit on Enter in a
+	// field, or the prompt, whose id is empty.
+	onInput, onSubmit func(a *App, id, text string)
 }
 
 type uiRowFilter struct {
@@ -138,6 +153,8 @@ type uiManager struct {
 	// stack holds the modal views under the active one, which closing it
 	// returns to, bottom first.
 	stack []*uiView
+	// focused is the panel the keys go to, while no menu is open.
+	focused *uiView
 }
 
 func (m *uiManager) add(view *uiView) {
@@ -189,6 +206,9 @@ func (m *uiManager) close(view *uiView) {
 	}
 	if m.pressed == view {
 		m.pressed = nil
+	}
+	if m.focused == view {
+		m.focused = nil
 	}
 }
 
@@ -498,7 +518,10 @@ func (a *App) drawUIViewContent(renderer *sdl.Renderer, view *uiView, rect sdl.F
 	if view.header == nil && (view.searching || view.query != "") {
 		header = fmt.Sprintf("%s /%s (%d/%d)", header, view.query, len(items), len(view.rows))
 	}
-	if !view.headless {
+	switch {
+	case view.prompt != "":
+		a.drawPromptHeader(renderer, view, rect, len(items), len(view.rows))
+	case !view.headless:
 		title, detail := splitHeader(header)
 		if err := a.drawModalListHeader(renderer, rect, title, detail); err != nil {
 			return err

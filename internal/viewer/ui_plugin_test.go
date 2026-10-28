@@ -731,3 +731,120 @@ onon.ui.create({ draw = function(canvas) canvas:image(dir .. "/missing.png", 0, 
 		t.Fatalf("a missing image was not reported: %q", app.message)
 	}
 }
+
+func keyDown(code sdl.Keycode, mod sdl.Keymod) *sdl.KeyboardEvent {
+	return &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: code, Mod: mod}
+}
+
+func TestLuaUIPromptTypesTheQuery(t *testing.T) {
+	app := luaUITestApp(t, "")
+	evalLua(t, app, `
+onon.ui.create({
+  prompt = "Open",
+  rows = { "alpha", "beta", "bell" },
+  on_query_changed = function(q) onon.message("query " .. q) end,
+  on_select = function(_, value) onon.message("chose " .. value) end,
+}):show()`)
+	view := app.activeUIView()
+	if !app.typeUIText("bet") || view.query != "bet" || app.message != "query bet" {
+		t.Fatalf("typing into the prompt: query %q message %q", view.query, app.message)
+	}
+	if got := len(view.visibleRows()); got != 1 {
+		t.Fatalf("rows matching the prompt = %d, want 1", got)
+	}
+	view.onKey(app, keyDown(sdl.KeycodeBackspace, 0))
+	if view.query != "be" || len(view.visibleRows()) != 2 {
+		t.Fatalf("backspace in the prompt: query %q", view.query)
+	}
+	// A key that types is the prompt's, not a binding's.
+	app.sequenceLookup = map[string]string{"j": "scroll_down", "<CR>": "confirm"}
+	view.onKey(app, keyDown(sdl.KeycodeJ, 0))
+	if view.selected != 1 {
+		t.Fatalf("a typing key moved the selection to %d", view.selected)
+	}
+	view.onKey(app, keyDown(sdl.KeycodeDown, 0))
+	view.onKey(app, keyDown(sdl.KeycodeReturn, 0))
+	if app.message != "chose bell" {
+		t.Fatalf("Enter in a prompt without on_submit: %q", app.message)
+	}
+}
+
+func TestLuaUIFields(t *testing.T) {
+	app := luaUITestApp(t, "")
+	app.fontFace = basicfont.Face7x13
+	evalLua(t, app, `
+view = onon.ui.create({
+  title = "Sign in",
+  draw = function(canvas, box)
+    local h = canvas:input("name", 0, 0, box.w, { placeholder = "Name" })
+    canvas:input("password", 0, h + 4, box.w, { secret = true })
+  end,
+  on_input = function(text, id) onon.message("input " .. id .. "=" .. text) end,
+  on_submit = function(text, id) onon.message("submit " .. id .. "=" .. text .. " name=" .. view:field("name")) end,
+})
+view:set_field("name", "al")
+view:show()`)
+	view := app.activeUIView()
+	drawLuaView(t, app, view)
+	if view.focusField != "name" || strings.Join(view.fieldOrder, ",") != "name,password" {
+		t.Fatalf("fields %q, focused %q", view.fieldOrder, view.focusField)
+	}
+	app.typeUIText("ice")
+	if app.message != "input name=alice" {
+		t.Fatalf("typing into the first field: %q", app.message)
+	}
+	view.onKey(app, keyDown(sdl.KeycodeTab, 0))
+	app.typeUIText("pw")
+	view.onKey(app, keyDown(sdl.KeycodeReturn, 0))
+	if app.message != "submit password=pw name=alice" {
+		t.Fatalf("Enter in the second field: %q", app.message)
+	}
+	view.onKey(app, keyDown(sdl.KeycodeTab, sdl.KeymodShift))
+	if view.focusField != "name" {
+		t.Fatalf("Shift-Tab focused %q", view.focusField)
+	}
+	if f := view.fields["password"]; f.display() != "••" {
+		t.Fatalf("a secret field shows %q", f.display())
+	}
+	// A click on a field focuses it.
+	pass := view.fields["password"].rect
+	view.onMouseButton(app, &sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: uint8(sdl.ButtonLeft), X: pass.X + 2, Y: pass.Y + 2})
+	if view.focusField != "password" {
+		t.Fatalf("clicking the password field focused %q", view.focusField)
+	}
+}
+
+func TestLuaUIPanelFocus(t *testing.T) {
+	app := luaUITestApp(t, "")
+	app.fontFace = basicfont.Face7x13
+	evalLua(t, app, `
+panel = onon.ui.create({
+  modal = false, anchor = "top_right", width = 200, height = 80,
+  draw = function(canvas, box) canvas:input("note", 0, 0, box.w) end,
+  on_input = function(text) onon.message(text) end,
+})
+panel:show()`)
+	view := app.views.panels[0]
+	drawLuaView(t, app, view)
+	if app.typeUIText("x") {
+		t.Fatal("a panel took typing without the keys")
+	}
+	rect := view.fields["note"].rect
+	app.handlePanelMouseButton(&sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: uint8(sdl.ButtonLeft), X: rect.X + 2, Y: rect.Y + 2})
+	app.handlePanelMouseButton(&sdl.MouseButtonEvent{Type: sdl.EventMouseButtonUp, Button: uint8(sdl.ButtonLeft), X: rect.X + 2, Y: rect.Y + 2})
+	if app.keyView() != view || !app.typeUIText("hi") || app.message != "hi" {
+		t.Fatalf("clicking the panel's field did not give it the keys: message %q", app.message)
+	}
+	view.onKey(app, keyDown(sdl.KeycodeEscape, 0))
+	if app.keyView() != nil {
+		t.Fatal("Escape left the panel the keys")
+	}
+	evalLua(t, app, `panel:focus() onon.message(tostring(panel:focused()))`)
+	if app.message != "true" {
+		t.Fatalf("panel:focus() then focused() = %s", app.message)
+	}
+	app.handlePanelMouseButton(&sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: uint8(sdl.ButtonLeft), X: 1, Y: 700})
+	if app.keyView() != nil {
+		t.Fatal("a press on the document left the panel the keys")
+	}
+}

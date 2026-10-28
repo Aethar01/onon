@@ -343,6 +343,16 @@ func (r *Runtime) RunUIRow(callback string, row UIRowRef) error {
 	return r.runCallback(callback, lua.LNumber(row.Index), lua.LString(row.Value), lua.LString(row.Text), lua.LString(row.ID), lv)
 }
 
+// RunUIText runs on_input or on_submit with a text field's text and id,
+// nil for the prompt.
+func (r *Runtime) RunUIText(callback, text, id string) error {
+	field := lua.LValue(lua.LNil)
+	if id != "" {
+		field = lua.LString(id)
+	}
+	return r.runCallback(callback, lua.LString(text), field)
+}
+
 func (r *Runtime) RunUIQuery(callback, query string) error {
 	return r.runCallback(callback, lua.LString(query))
 }

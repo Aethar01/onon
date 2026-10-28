@@ -271,6 +271,12 @@ func uiOverlayFromLuaSpec(L *lua.LState, rt *Runtime, spec *lua.LTable) UIOverla
 	default:
 		L.RaiseError("ui.create: anchor must be a place or a point")
 	}
+	if prompt := spec.RawGetString("prompt"); prompt != lua.LNil {
+		if prompt.Type() != lua.LTString {
+			L.RaiseError("ui.create: prompt must be a string")
+		}
+		overlay.Prompt = prompt.String()
+	}
 	if dock := spec.RawGetString("dock"); dock != lua.LNil {
 		overlay.Dock = lua.LVAsString(dock)
 		if !slices.Contains(UIDocks, overlay.Dock) {
@@ -287,6 +293,8 @@ func uiOverlayFromLuaSpec(L *lua.LState, rt *Runtime, spec *lua.LTable) UIOverla
 		"on_action":            &overlay.OnAction,
 		"on_mouse":             &overlay.OnMouse,
 		"draw":                 &overlay.Draw,
+		"on_input":             &overlay.OnInput,
+		"on_submit":            &overlay.OnSubmit,
 	} {
 		switch fn := spec.RawGetString(name).(type) {
 		case *lua.LFunction:
@@ -363,6 +371,43 @@ func newLuaView(L *lua.LState, rt *Runtime, overlay UIOverlay) *lua.LTable {
 			rt.host.SetUIQuery(overlay.ID, overlay.Query)
 		}
 		return 0
+	}))
+	shown := func() bool { return rt.host != nil && rt.host.UIVisible(overlay.ID) }
+	L.SetField(view, "field", L.NewFunction(func(L *lua.LState) int {
+		field := L.CheckString(2)
+		if shown() {
+			L.Push(lua.LString(rt.host.UIField(overlay.ID, field)))
+		} else {
+			L.Push(lua.LString(overlay.Fields[field]))
+		}
+		return 1
+	}))
+	L.SetField(view, "set_field", L.NewFunction(func(L *lua.LState) int {
+		field, text := L.CheckString(2), L.CheckString(3)
+		if overlay.Fields == nil {
+			overlay.Fields = map[string]string{}
+		}
+		overlay.Fields[field] = text
+		if shown() {
+			rt.host.SetUIField(overlay.ID, field, text)
+		}
+		return 0
+	}))
+	L.SetField(view, "focus", L.NewFunction(func(L *lua.LState) int {
+		if shown() {
+			rt.host.FocusUI(overlay.ID, true)
+		}
+		return 0
+	}))
+	L.SetField(view, "blur", L.NewFunction(func(L *lua.LState) int {
+		if shown() {
+			rt.host.FocusUI(overlay.ID, false)
+		}
+		return 0
+	}))
+	L.SetField(view, "focused", L.NewFunction(func(L *lua.LState) int {
+		L.Push(lua.LBool(shown() && rt.host.UIFocused(overlay.ID)))
+		return 1
 	}))
 	L.SetField(view, "redraw", L.NewFunction(func(L *lua.LState) int {
 		if rt.host != nil && rt.host.UIVisible(overlay.ID) {

@@ -3,8 +3,8 @@ package viewer
 import "fmt"
 
 func (a *App) copyActiveTextInputToClipboard() bool {
-	if a.mode != modeNormal {
-		text, ok := a.input.SelectedText()
+	if input := a.editingInput(); input != nil {
+		text, ok := input.SelectedText()
 		if !ok || text == "" {
 			return true
 		}
@@ -31,8 +31,8 @@ func (a *App) copyActiveTextInputToClipboard() bool {
 }
 
 func (a *App) cutActiveTextInputToClipboard() bool {
-	if a.mode != modeNormal {
-		text, ok := a.input.SelectedText()
+	if input := a.editingInput(); input != nil {
+		text, ok := input.SelectedText()
 		if !ok || text == "" {
 			return true
 		}
@@ -71,15 +71,18 @@ func (a *App) pasteIntoActiveTextInput() bool {
 	if text == "" {
 		return true
 	}
-	if view := a.activeModalUIView(); view != nil && view.searching {
-		a.setUIViewQuery(view, view.query+text)
-	} else if a.mode != modeNormal {
+	if _, ok := a.uiEditTarget(); ok || a.mode != modeNormal {
 		a.editInput(func(input *textInput) { input.InsertText(text) })
+	} else if view := a.activeModalUIView(); view != nil && view.searching {
+		a.setUIViewQuery(view, view.query+text)
 	}
 	return true
 }
 
 func (a *App) activeTextInputValue() (string, bool) {
+	if target, ok := a.uiEditTarget(); ok {
+		return target.input.Value, true
+	}
 	if view := a.activeModalUIView(); view != nil && view.searching {
 		return view.query, true
 	}

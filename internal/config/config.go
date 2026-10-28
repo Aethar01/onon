@@ -143,9 +143,14 @@ type UIOverlay struct {
 	// Stack opens a modal view over the menu open, which it returns to,
 	// instead of replacing it.
 	Stack bool
+	// Prompt, if set, puts a text field in the header, labelled with it,
+	// whose text is the query. Fields are the text fields' first texts,
+	// by id.
+	Prompt string
+	Fields map[string]string
 	// The callbacks, each the ID of a registered Lua function or empty.
 	OnSelect, OnClose, OnSelectionChanged, OnQueryChanged string
-	OnKey, OnAction, OnMouse, Draw                        string
+	OnKey, OnAction, OnMouse, Draw, OnInput, OnSubmit     string
 	Generation                                            int
 }
 
@@ -230,6 +235,12 @@ type Host interface {
 	// RedrawUI draws the view again, as a view with a draw function needs
 	// when what it draws changes.
 	RedrawUI(id string)
+	// UIField and SetUIField get and set the text of a view's text field.
+	UIField(id, field string) string
+	SetUIField(id, field, text string)
+	// FocusUI gives a view the keys, or with focus false takes them back.
+	FocusUI(id string, focus bool)
+	UIFocused(id string) bool
 	Page() int
 	PageCount() int
 	GotoPage(page int) error

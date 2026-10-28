@@ -359,6 +359,10 @@ func (c *recordingCanvas) Page(page int, x, y, w, h float64) (float64, float64) 
 	c.calls = append(c.calls, "page "+formatNumber(float64(page)))
 	return w, h
 }
+func (c *recordingCanvas) Input(id string, x, y, w float64, o InputOptions) float64 {
+	c.calls = append(c.calls, "input "+id)
+	return 20
+}
 func (c *recordingCanvas) Region(id lua.LValue, x, y, w, h float64) bool {
 	c.calls = append(c.calls, "region "+id.String())
 	return false

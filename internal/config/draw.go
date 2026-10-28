@@ -144,6 +144,16 @@ type Canvas interface {
 	// Region names a rect for the pointer events over it, reporting
 	// whether the pointer is over it.
 	Region(id lua.LValue, x, y, w, h float64) bool
+	// Input draws the text field id of a view, w wide, returning its
+	// height.
+	Input(id string, x, y, w float64, opts InputOptions) float64
+}
+
+// InputOptions are how a text field is drawn: a placeholder shown while
+// it is empty, and with Secret its text hidden, as a password's.
+type InputOptions struct {
+	Placeholder string
+	Secret      bool
 }
 
 // TextOptions are how a canvas draws text. Size is in logical pixels, the
@@ -405,6 +415,16 @@ func luaCanvasMetatable(L *lua.LState, cache *drawCache) *lua.LTable {
 			L.Push(lua.LNumber(w))
 			L.Push(lua.LNumber(h))
 			return 2
+		},
+		"input": func(L *lua.LState) int {
+			c := check(L)
+			var o InputOptions
+			if opts, ok := L.Get(6).(*lua.LTable); ok {
+				o.Placeholder = lua.LVAsString(opts.RawGetString("placeholder"))
+				o.Secret = lua.LVAsBool(opts.RawGetString("secret"))
+			}
+			L.Push(lua.LNumber(c.Input(L.CheckString(2), float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), float64(L.CheckNumber(5)), o)))
+			return 1
 		},
 		"region": func(L *lua.LState) int {
 			c := check(L)

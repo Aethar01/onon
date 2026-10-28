@@ -415,6 +415,9 @@ func (a *App) pluginMouseEventPayload(e *sdl.MouseButtonEvent) map[string]any {
 }
 
 func (a *App) textInputNeeded() bool {
+	if _, ok := a.uiEditTarget(); ok {
+		return true
+	}
 	return a.mode != modeNormal ||
 		func() bool {
 			view := a.activeModalUIView()
@@ -512,6 +515,9 @@ func (a *App) drawFrame() error {
 	if err := a.drawUIViews(a.renderer); err != nil {
 		return err
 	}
+	// A view's text fields are known once drawn, and typing into them
+	// needs text input on before the first key.
+	a.syncTextInput()
 	a.drawAutoscrollMarker(a.renderer) // over a menu it scrolls
 	if err := a.drawTitleBar(a.renderer); err != nil {
 		return err

@@ -290,6 +290,7 @@ func (a *App) createLuaView(spec config.UIOverlay) *uiView {
 		selected = clampInt(spec.Selected-1, 0, len(spec.Rows)-1)
 	}
 	view := &uiView{
+		takesKeys:  spec.OnKey != "" || spec.Prompt != "",
 		id:         spec.ID,
 		owner:      "lua",
 		generation: spec.Generation,
@@ -310,16 +311,45 @@ func (a *App) createLuaView(spec config.UIOverlay) *uiView {
 	}
 	// A list fits its panel to its rows; a view that draws keeps its size.
 	view.geometry = func(a *App) (sdl.FRect, int) { return a.luaViewGeometry(view, spec.Draw == "") }
+	// Keys go first to the field or prompt typed in, then to on_key, then
+	// to the list. Escape gives a panel's keys back to the document.
 	view.onKey = func(a *App, e *sdl.KeyboardEvent) bool {
-		if spec.OnKey != "" && e.Type == sdl.EventKeyDown && !view.searching {
-			if key, ok := keyToken(e); ok {
-				handled, err := a.runtime.RunUIKey(spec.OnKey, key.String())
-				if a.afterLuaViewCallback("ui_key", err); handled {
-					return true
-				}
+		key, ok := keyToken(e)
+		if !ok || e.Type != sdl.EventKeyDown {
+			return a.handleGenericUIViewKey(view, e)
+		}
+		if a.handleUIEditKey(view, key) {
+			return true
+		}
+		if spec.OnKey != "" && !view.searching {
+			handled, err := a.runtime.RunUIKey(spec.OnKey, key.String())
+			if a.afterLuaViewCallback("ui_key", err); handled {
+				return true
 			}
 		}
+		if !view.modal && e.Key == sdl.KeycodeEscape {
+			a.focusUIView(view, false)
+			return true
+		}
 		return a.handleGenericUIViewKey(view, e)
+	}
+	if spec.OnInput != "" {
+		view.onInput = func(a *App, id, text string) {
+			a.afterLuaViewCallback("ui_input", a.runtime.RunUIText(spec.OnInput, text, id))
+		}
+	}
+	if spec.OnSubmit != "" {
+		view.onSubmit = func(a *App, id, text string) {
+			a.afterLuaViewCallback("ui_submit", a.runtime.RunUIText(spec.OnSubmit, text, id))
+		}
+	}
+	for id, text := range spec.Fields {
+		view.field(id).input.Set(text)
+	}
+	if spec.Prompt != "" {
+		view.prompt = spec.Prompt
+		view.promptInput.Set(spec.Query)
+		view.searchable = false // typing goes to the prompt, without /
 	}
 	a.setLuaViewMouse(view, spec.OnMouse)
 	view.onAction = func(a *App, view *uiView, action string) bool {
@@ -574,6 +604,7 @@ func (a *App) drawLuaViewBody(view *uiView, callback string, renderer *sdl.Rende
 		view: view, pointerOver: a.viewUnderPointer() == view,
 	}
 	view.regions = view.regions[:0]
+	view.fieldOrder = view.fieldOrder[:0]
 	scale := float64(a.px(1))
 	state := config.DrawState{
 		Element: config.ElementPanel,
@@ -651,6 +682,9 @@ func (a *App) setLuaViewMouse(view *uiView, callback string) {
 	view.onMouseButton = func(a *App, e *sdl.MouseButtonEvent) bool {
 		ev, inside := a.luaViewMouseEvent(view, e.X, e.Y)
 		down := e.Type == sdl.EventMouseButtonDown
+		if down && inside && e.Button == uint8(sdl.ButtonLeft) && a.pressUIField(view, e.X, e.Y) {
+			return true
+		}
 		if down && inside || !down && pressed {
 			pressed = down
 			ev.Type = "release"
@@ -737,8 +771,17 @@ func (a *App) handlePanelMouseButton(e *sdl.MouseButtonEvent) bool {
 	var view *uiView
 	if e.Type == sdl.EventMouseButtonUp {
 		view, a.views.pressed = a.views.pressed, nil
-	} else if view = a.panelAt(e.X, e.Y); view != nil {
+	} else {
+		view = a.panelAt(e.X, e.Y)
 		a.views.pressed = view
+		// A press elsewhere takes the keys back from the panel that had
+		// them; one on a panel that takes keys gives them to it.
+		if focused := a.views.focused; focused != nil && focused != view {
+			a.focusUIView(focused, false)
+		}
+		if view != nil && (view.takesKeys || len(view.fieldOrder) > 0) {
+			a.focusUIView(view, true)
+		}
 	}
 	if view == nil {
 		return false
