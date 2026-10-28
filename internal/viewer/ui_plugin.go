@@ -1,6 +1,7 @@
 package viewer
 
 import (
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -11,7 +12,7 @@ import (
 )
 
 func (a *App) ShowUI(spec config.UIOverlay) error {
-	if spec.Modal {
+	if spec.Modal && !spec.Stack {
 		callCallbacks := true
 		if active := a.activeUIView(); active != nil && active.owner == "lua" && active.generation != spec.Generation {
 			callCallbacks = false
@@ -280,26 +281,26 @@ func (a *App) createLuaView(spec config.UIOverlay) *uiView {
 		selected = clampInt(spec.Selected-1, 0, len(spec.Rows)-1)
 	}
 	view := &uiView{
-		id:            spec.ID,
-		owner:         "lua",
-		generation:    spec.Generation,
-		title:         spec.Title,
-		rows:          uiRowsFromConfig(spec.Rows),
-		selected:      selected,
-		scroll:        max(0, spec.Scroll),
-		query:         spec.Query,
-		searchable:    spec.Searchable,
-		noFilter:      !spec.Filter,
-		modal:         spec.Modal,
-		headless:      spec.Draw != "" && spec.Title == "",
-		widthPercent:  spec.Width,
-		heightPercent: spec.Height,
+		id:         spec.ID,
+		owner:      "lua",
+		generation: spec.Generation,
+		title:      spec.Title,
+		rows:       uiRowsFromConfig(spec.Rows),
+		selected:   selected,
+		scroll:     max(0, spec.Scroll),
+		query:      spec.Query,
+		searchable: spec.Searchable,
+		noFilter:   !spec.Filter,
+		modal:      spec.Modal,
+		stack:      spec.Modal && spec.Stack,
+		headless:   spec.Draw != "" && spec.Title == "",
+		place:      viewPlacement{width: spec.Width, height: spec.Height, anchor: spec.Anchor, at: spec.At, dock: spec.Dock},
 	}
 	if view.id == "" {
 		view.id = "lua" + strconv.Itoa(len(a.views.views)+1)
 	}
 	// A list fits its panel to its rows; a view that draws keeps its size.
-	view.geometry = func(a *App) (sdl.FRect, int) { return a.luaViewGeometry(view, spec.Anchor, spec.Draw == "") }
+	view.geometry = func(a *App) (sdl.FRect, int) { return a.luaViewGeometry(view, spec.Draw == "") }
 	view.onKey = func(a *App, e *sdl.KeyboardEvent) bool {
 		if spec.OnKey != "" && e.Type == sdl.EventKeyDown && !view.searching {
 			if key, ok := keyToken(e); ok {
@@ -367,24 +368,151 @@ func (a *App) afterLuaViewCallback(source string, err error) {
 	a.pendingRedraw = true
 }
 
-// luaViewGeometry places a plugin's view: its share of the window, at its
-// anchor, a gap from the edges it is anchored to. A list fits its panel
+// viewPlacement is where a plugin's view sits: its size, and an anchor,
+// a point it is pinned to, or a side of the window it is docked to.
+type viewPlacement struct {
+	width, height config.UISize
+	anchor        string
+	at            *config.UIPoint
+	dock          string
+}
+
+// maxDockShare is the most of the document's part of the window a docked
+// view takes.
+const maxDockShare = 0.8
+
+// uiLength is size in output pixels, a percentage being of whole.
+func (a *App) uiLength(size config.UISize, whole float64) float64 {
+	if size.Percent {
+		return whole * size.Value / 100
+	}
+	return size.Value * float64(a.px(1))
+}
+
+// documentRect is the document's part of the window: above the status
+// bar, and beside the docked views.
+func (a *App) documentRect() sdl.FRect {
+	doc, _ := a.dockLayout(nil)
+	return doc
+}
+
+// dockLayout lays out the docked views in the order they opened, each
+// taking its width or height from its side of what those before it left.
+// It returns what is left, the document's part of the window, and
+// target's place.
+func (a *App) dockLayout(target *uiView) (doc, rect sdl.FRect) {
+	h := a.winH
+	if a.statusVisible() {
+		h -= a.statusReservedHeight()
+	}
+	doc = sdl.FRect{W: float32(max(a.winW, 1)), H: float32(max(h, 1))}
+	for _, view := range a.views.panels {
+		if view.place.dock == "" || !view.visible {
+			continue
+		}
+		var r sdl.FRect
+		switch view.place.dock {
+		case "left", "right":
+			r = sdl.FRect{X: doc.X, Y: doc.Y, H: doc.H}
+			r.W = float32(math.Round(min(a.uiLength(view.place.width, float64(a.winW)), float64(doc.W)*maxDockShare)))
+			if view.place.dock == "right" {
+				r.X = doc.X + doc.W - r.W
+			} else {
+				doc.X += r.W
+			}
+			doc.W -= r.W
+		default:
+			r = sdl.FRect{X: doc.X, Y: doc.Y, W: doc.W}
+			r.H = float32(math.Round(min(a.uiLength(view.place.height, float64(a.winH)), float64(doc.H)*maxDockShare)))
+			if view.place.dock == "bottom" {
+				r.Y = doc.Y + doc.H - r.H
+			} else {
+				doc.Y += r.H
+			}
+			doc.H -= r.H
+		}
+		if view == target {
+			rect = r
+		}
+	}
+	return doc, rect
+}
+
+// hasDock reports whether a view is docked, moving the document from the
+// window's corner.
+func (a *App) hasDock() bool {
+	for _, view := range a.views.panels {
+		if view.place.dock != "" && view.visible {
+			return true
+		}
+	}
+	return false
+}
+
+// withDocumentViewport draws with the document's part of the window as
+// the renderer's viewport while views are docked, so the document is
+// drawn as it is laid out, from its own corner, and not under them.
+func (a *App) withDocumentViewport(renderer *sdl.Renderer, draw func()) {
+	if !a.hasDock() {
+		draw()
+		return
+	}
+	r := a.documentRect()
+	rect := sdl.Rect{X: int32(r.X), Y: int32(r.Y), W: int32(r.W), H: int32(r.H)}
+	sdl.SetRenderViewport(renderer, &rect)
+	defer sdl.SetRenderViewport(renderer, nil)
+	draw()
+}
+
+// uiPointOnScreen is where pt is in the window, and false when it is on a
+// page not shown.
+func (a *App) uiPointOnScreen(pt config.UIPoint) (float64, float64, bool) {
+	if pt.Page == 0 {
+		scale := float64(a.px(1))
+		return pt.X * scale, pt.Y * scale, true
+	}
+	page := pt.Page - 1
+	if page >= len(a.pageMetrics) || page >= len(a.pageToRow) {
+		return 0, 0, false
+	}
+	if a.renderMode == renderSingle && (a.page < 0 || a.page >= len(a.pageToRow) || a.pageToRow[page] != a.pageToRow[a.page]) {
+		return 0, 0, false
+	}
+	x, y, ok := a.pageScreenOrigin(page)
+	if !ok {
+		return 0, 0, false
+	}
+	dx, dy := a.pageTransform(page).toScreen(pt.X, pt.Y)
+	ox, oy := a.viewportOrigin()
+	return ox + x + dx, oy + y + dy, true
+}
+
+// luaViewGeometry places a plugin's view. A docked view fills its place.
+// Another takes its size, at most the document's part of the window, and
+// sits at its anchor there, a gap from the edges it is anchored to, or
+// with its top left at the point it is pinned to. A list fits its panel
 // to its rows, keeping the edge it is anchored to, or a centred one its
 // top, so filtering leaves the header in place.
-func (a *App) luaViewGeometry(view *uiView, anchor string, fit bool) (sdl.FRect, int) {
-	viewportW, viewportH := a.viewportSize()
+func (a *App) luaViewGeometry(view *uiView, fit bool) (sdl.FRect, int) {
+	p := &view.place
+	rowHeight, head, bottom := a.modalListRowHeight(), a.uiViewHeadHeight(view), a.modalListBottomPadding()
+	if p.dock != "" {
+		_, rect := a.dockLayout(view)
+		return rect, max(1, (int(rect.H)-head-bottom)/rowHeight)
+	}
+	area := a.documentRect()
 	gap := 0
-	if anchor != "center" {
+	if p.at == nil && p.anchor != "center" {
 		gap = a.ipx(12)
 	}
-	w := clampInt(viewportW*view.widthPercent/100, 1, max(1, viewportW-2*gap))
-	h := clampInt(viewportH*view.heightPercent/100, 1, max(1, viewportH-2*gap))
+	areaW, areaH := int(area.W)-2*gap, int(area.H)-2*gap
+	w := clampInt(int(math.Round(a.uiLength(p.width, float64(a.winW)))), 1, max(1, areaW))
+	h := clampInt(int(math.Round(a.uiLength(p.height, float64(a.winH)))), 1, max(1, areaH))
 	if fit {
 		// a list keeps the least size of a menu
-		w = max(w, min(260, viewportW-2*gap))
-		h = max(h, min(160, viewportH-2*gap))
+		w = max(w, min(260, areaW))
+		h = max(h, min(160, areaH))
 	}
-	rowHeight, head, bottom := a.modalListRowHeight(), a.uiViewHeadHeight(view), a.modalListBottomPadding()
 	rows := max(1, (h-head-bottom)/rowHeight)
 	full := h
 	if fit {
@@ -392,16 +520,23 @@ func (a *App) luaViewGeometry(view *uiView, anchor string, fit bool) (sdl.FRect,
 		rows = min(rows, max(1, len(view.visibleRows())))
 		h = min(full, head+rows*rowHeight+bottom)
 	}
-	x, y := (viewportW-w)/2, (viewportH-full)/2
-	if strings.HasSuffix(anchor, "left") {
-		x = gap
-	} else if strings.HasSuffix(anchor, "right") {
-		x = viewportW - w - gap
+	if p.at != nil {
+		x, y, ok := a.uiPointOnScreen(*p.at)
+		if !ok {
+			x, y = -1e6, -1e6 // out of sight, with its page
+		}
+		return sdl.FRect{X: float32(math.Round(x)), Y: float32(math.Round(y)), W: float32(w), H: float32(h)}, rows
 	}
-	if strings.HasPrefix(anchor, "top") {
-		y = gap
-	} else if strings.HasPrefix(anchor, "bottom") {
-		y = viewportH - h - gap
+	x, y := int(area.X)+(int(area.W)-w)/2, int(area.Y)+(int(area.H)-full)/2
+	if strings.HasSuffix(p.anchor, "left") {
+		x = int(area.X) + gap
+	} else if strings.HasSuffix(p.anchor, "right") {
+		x = int(area.X+area.W) - w - gap
+	}
+	if strings.HasPrefix(p.anchor, "top") {
+		y = int(area.Y) + gap
+	} else if strings.HasPrefix(p.anchor, "bottom") {
+		y = int(area.Y+area.H) - h - gap
 	}
 	return sdl.FRect{X: float32(x), Y: float32(y), W: float32(w), H: float32(h)}, rows
 }

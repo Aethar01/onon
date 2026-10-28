@@ -132,19 +132,44 @@ type UIOverlay struct {
 	// menus do. Other views are panels: they stay open over the document,
 	// and under any menu, taking only the pointer over them.
 	Modal bool
-	// Width and Height are percentages of the window, and Anchor where
-	// the view sits in it: center, or an edge or corner such as top or
-	// bottom_right.
-	Width, Height int
+	// Width and Height are the view's size. Anchor is where it sits in
+	// the document's part of the window: center, or an edge or corner such
+	// as top or bottom_right; At, if set, pins its top left to a point
+	// instead. A docked view takes a side of the window from the document.
+	Width, Height UISize
 	Anchor        string
+	At            *UIPoint
+	Dock          string
+	// Stack opens a modal view over the menu open, which it returns to,
+	// instead of replacing it.
+	Stack bool
 	// The callbacks, each the ID of a registered Lua function or empty.
 	OnSelect, OnClose, OnSelectionChanged, OnQueryChanged string
 	OnKey, OnAction, OnMouse, Draw                        string
 	Generation                                            int
 }
 
-// UIAnchors are the places a view may be anchored.
-var UIAnchors = []string{"center", "top", "bottom", "left", "right", "top_left", "top_right", "bottom_left", "bottom_right"}
+// UIAnchors are the places a view may be anchored, and UIDocks the sides
+// it may be docked to.
+var (
+	UIAnchors = []string{"center", "top", "bottom", "left", "right", "top_left", "top_right", "bottom_left", "bottom_right"}
+	UIDocks   = []string{"left", "right", "top", "bottom"}
+)
+
+// UISize is a length in logical pixels or, with Percent, a percentage of
+// the window's.
+type UISize struct {
+	Value   float64
+	Percent bool
+}
+
+// UIPoint is a point in the window in logical pixels or, with Page set,
+// a point on that page (1-based) in the page's points, which moves with
+// the page.
+type UIPoint struct {
+	Page int
+	X, Y float64
+}
 
 type UIListRow struct {
 	Text      string

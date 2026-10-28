@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -223,8 +224,8 @@ func uiOverlayFromLuaSpec(L *lua.LState, rt *Runtime, spec *lua.LTable) UIOverla
 		Searchable: true,
 		Filter:     true,
 		Modal:      true,
-		Width:      70,
-		Height:     70,
+		Width:      UISize{Value: 70, Percent: true},
+		Height:     UISize{Value: 70, Percent: true},
 		Anchor:     "center",
 		Generation: rt.pluginGeneration,
 	}
@@ -237,27 +238,45 @@ func uiOverlayFromLuaSpec(L *lua.LState, rt *Runtime, spec *lua.LTable) UIOverla
 	if query := spec.RawGetString("query"); query.Type() == lua.LTString {
 		overlay.Query = query.String()
 	}
-	for name, field := range map[string]*bool{"searchable": &overlay.Searchable, "filter": &overlay.Filter, "modal": &overlay.Modal} {
+	for name, field := range map[string]*bool{"searchable": &overlay.Searchable, "filter": &overlay.Filter, "modal": &overlay.Modal, "stack": &overlay.Stack} {
 		if value := spec.RawGetString(name); value.Type() == lua.LTBool {
 			*field = lua.LVAsBool(value)
 		}
 	}
-	for name, field := range map[string]*int{"width": &overlay.Width, "height": &overlay.Height} {
-		value := spec.RawGetString(name)
-		if value == lua.LNil {
-			continue
+	for name, field := range map[string]*UISize{"width": &overlay.Width, "height": &overlay.Height} {
+		if value := spec.RawGetString(name); value != lua.LNil {
+			size, err := luaUISize(value)
+			if err != nil {
+				L.RaiseError("ui.create: %s %v", name, err)
+			}
+			*field = size
 		}
-		n, ok := value.(lua.LNumber)
-		if !ok || n <= 0 || n > 100 {
-			L.RaiseError("ui.create: %s must be a percentage of the window, from 1 to 100", name)
-		}
-		*field = int(n)
 	}
-	if anchor := spec.RawGetString("anchor"); anchor != lua.LNil {
-		overlay.Anchor = lua.LVAsString(anchor)
+	switch anchor := spec.RawGetString("anchor").(type) {
+	case *lua.LNilType:
+	case lua.LString:
+		overlay.Anchor = string(anchor)
 		if !slices.Contains(UIAnchors, overlay.Anchor) {
-			L.RaiseError("ui.create: unknown anchor %q; use one of %s", overlay.Anchor, strings.Join(UIAnchors, ", "))
+			L.RaiseError("ui.create: unknown anchor %q; use one of %s, or a point", overlay.Anchor, strings.Join(UIAnchors, ", "))
 		}
+	case *lua.LTable:
+		x, xok := anchor.RawGetString("x").(lua.LNumber)
+		y, yok := anchor.RawGetString("y").(lua.LNumber)
+		page := anchor.RawGetString("page")
+		pageNumber, pageok := page.(lua.LNumber)
+		if !xok || !yok || page != lua.LNil && (!pageok || pageNumber < 1) {
+			L.RaiseError("ui.create: an anchor point is { x = number, y = number [, page = page number] }")
+		}
+		overlay.At = &UIPoint{Page: int(pageNumber), X: float64(x), Y: float64(y)}
+	default:
+		L.RaiseError("ui.create: anchor must be a place or a point")
+	}
+	if dock := spec.RawGetString("dock"); dock != lua.LNil {
+		overlay.Dock = lua.LVAsString(dock)
+		if !slices.Contains(UIDocks, overlay.Dock) {
+			L.RaiseError("ui.create: unknown dock %q; use one of %s", overlay.Dock, strings.Join(UIDocks, ", "))
+		}
+		overlay.Modal = false
 	}
 	for name, field := range map[string]*string{
 		"on_select":            &overlay.OnSelect,
@@ -278,6 +297,24 @@ func uiOverlayFromLuaSpec(L *lua.LState, rt *Runtime, spec *lua.LTable) UIOverla
 		}
 	}
 	return overlay
+}
+
+// luaUISize reads a size: a number of logical pixels, or a string such as
+// "30%" for a percentage of the window.
+func luaUISize(value lua.LValue) (UISize, error) {
+	switch v := value.(type) {
+	case lua.LNumber:
+		if v > 0 {
+			return UISize{Value: float64(v)}, nil
+		}
+	case lua.LString:
+		if n, ok := strings.CutSuffix(strings.TrimSpace(string(v)), "%"); ok {
+			if f, err := strconv.ParseFloat(strings.TrimSpace(n), 64); err == nil && f > 0 && f <= 100 {
+				return UISize{Value: f, Percent: true}, nil
+			}
+		}
+	}
+	return UISize{}, fmt.Errorf("must be logical pixels, more than 0, or a percentage such as \"30%%\"")
 }
 
 func newLuaView(L *lua.LState, rt *Runtime, overlay UIOverlay) *lua.LTable {

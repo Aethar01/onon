@@ -1330,14 +1330,14 @@ func TestUIViewSpec(t *testing.T) {
 	host := &stubHost{}
 	rt.AttachHost(host)
 	if _, err := rt.Eval(`onon.ui.create({
-  modal = false, anchor = "top_left", width = 30, height = 40, filter = false,
+  modal = false, anchor = "top_left", width = 300, height = "40%", filter = false,
   rows = { { text = "a", key = "x", heading = true, swatch = "#ff0000" } },
   draw = function() end, on_key = function() end, on_mouse = function() end,
 }):show()`); err != nil {
 		t.Fatal(err)
 	}
 	ui := host.ui
-	if ui.Modal || ui.Filter || ui.Anchor != "top_left" || ui.Width != 30 || ui.Height != 40 {
+	if ui.Modal || ui.Filter || ui.Anchor != "top_left" || ui.Width != (UISize{Value: 300}) || ui.Height != (UISize{Value: 40, Percent: true}) {
 		t.Fatalf("view spec = %+v", ui)
 	}
 	if ui.Draw == "" || ui.OnKey == "" || ui.OnMouse == "" || ui.OnSelect != "" {
@@ -1349,8 +1349,10 @@ func TestUIViewSpec(t *testing.T) {
 	}
 	for code, want := range map[string]string{
 		`onon.ui.create({ anchor = "middle" })`:              "unknown anchor",
-		`onon.ui.create({ width = 0 })`:                      "width must be a percentage",
-		`onon.ui.create({ height = 101 })`:                   "height must be a percentage",
+		`onon.ui.create({ width = 0 })`:                      "width must be logical pixels",
+		`onon.ui.create({ height = "101%" })`:                "height must be logical pixels",
+		`onon.ui.create({ anchor = { x = 1 } })`:             "an anchor point is",
+		`onon.ui.create({ dock = "middle" })`:                "unknown dock",
 		`onon.ui.create({ on_key = "x" })`:                   "on_key must be a function",
 		`onon.ui.create({ rows = { { swatch = "nope" } } })`: "swatch",
 	} {

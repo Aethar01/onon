@@ -74,6 +74,8 @@ type uiView struct {
 	scrollbarDragOffsetY int
 	modal                bool
 	headless             bool // no header: the rows or body start below the panel's padding
+	stack                bool // a modal view opened over the menu open, not in its place
+	place                viewPlacement
 	widthPercent         int
 	heightPercent        int
 	geometry             func(*App) (sdl.FRect, int)
@@ -127,6 +129,9 @@ type uiManager struct {
 	// hovered is the panel the pointer was last over, and pressed the one
 	// a button went down on, which has the pointer until it is let go.
 	hovered, pressed *uiView
+	// stack holds the modal views under the active one, which closing it
+	// returns to, bottom first.
+	stack []*uiView
 }
 
 func (m *uiManager) add(view *uiView) {
@@ -146,8 +151,16 @@ func (m *uiManager) show(view *uiView) {
 		m.panels = append(slices.DeleteFunc(m.panels, func(p *uiView) bool { return p == view }), view)
 		return
 	}
-	if m.active != nil && m.active != view {
-		m.active.visible = false
+	if m.active != nil && m.active != view && m.active.visible && view.stack {
+		m.stack = append(m.stack, m.active)
+	} else {
+		for _, under := range m.stack {
+			under.visible = false
+		}
+		m.stack = nil
+		if m.active != nil && m.active != view {
+			m.active.visible = false
+		}
 	}
 	m.active = view
 }
@@ -157,8 +170,12 @@ func (m *uiManager) close(view *uiView) {
 		return
 	}
 	view.visible = false
+	m.stack = slices.DeleteFunc(m.stack, func(v *uiView) bool { return v == view })
 	if m.active == view {
 		m.active = nil
+		if n := len(m.stack); n > 0 {
+			m.active, m.stack = m.stack[n-1], m.stack[:n-1]
+		}
 	}
 	m.panels = slices.DeleteFunc(m.panels, func(p *uiView) bool { return p == view })
 	if m.hovered == view {
@@ -177,6 +194,7 @@ func (m *uiManager) closeAll() {
 		}
 	}
 	m.active = nil
+	m.stack = nil
 }
 
 // visibleRows returns the rows matching the view's query, which callers must
@@ -257,7 +275,11 @@ func (a *App) activeModalUIView() *uiView {
 }
 
 func (a *App) showUIView(view *uiView) {
-	a.views.show(view)
+	if view.place.dock != "" {
+		a.relayoutWithViewportAnchor(func() { a.views.show(view) })
+	} else {
+		a.views.show(view)
+	}
 	items := view.visibleRows()
 	if len(items) == 0 {
 		view.selected = -1
@@ -272,7 +294,11 @@ func (a *App) closeUIView(view *uiView, callCallback bool) {
 	if view == nil || !view.visible {
 		return
 	}
-	a.views.close(view)
+	if view.place.dock != "" {
+		a.relayoutWithViewportAnchor(func() { a.views.close(view) })
+	} else {
+		a.views.close(view)
+	}
 	a.pendingRedraw = true
 	a.syncTextInput()
 	if callCallback && view.onClose != nil {
@@ -305,7 +331,11 @@ func (a *App) removeStaleLuaViews(generation int) {
 			continue
 		}
 		delete(a.views.views, id)
-		a.views.close(view)
+		if view.visible && view.place.dock != "" {
+			a.relayoutWithViewportAnchor(func() { a.views.close(view) })
+		} else {
+			a.views.close(view)
+		}
 		if state := a.smoothScrollState(); state != nil && state.modalView == view {
 			a.cancelSmoothScroll()
 		}
@@ -437,7 +467,15 @@ func (a *App) drawUIViewFrame(renderer *sdl.Renderer, view *uiView) error {
 		return view.draw(a, renderer)
 	}
 	rect, _ := view.frameGeometry(a)
-	return a.drawPanel(renderer, config.ElementPanel, rect, func() error { return a.drawUIViewContent(renderer, view, rect) })
+	draw := func() error {
+		return a.drawPanel(renderer, config.ElementPanel, rect, func() error { return a.drawUIViewContent(renderer, view, rect) })
+	}
+	if at := view.place.at; at != nil && at.Page > 0 {
+		// A view pinned to a page goes under the docked views and the
+		// status bar as its page does.
+		return a.withClip(renderer, a.documentRect(), draw)
+	}
+	return draw()
 }
 
 func (a *App) drawUIViewContent(renderer *sdl.Renderer, view *uiView, rect sdl.FRect) error {

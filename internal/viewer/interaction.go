@@ -133,16 +133,18 @@ func (a *App) rowPageScreenOrigin(row rowLayout, pageIndex int) (float64, float6
 	return row.pageX[pageIndex] - a.scrollX + offsetX, row.pageY[pageIndex] - a.scrollY + offsetY
 }
 
+// viewportSize is the size of the document's part of the window: above
+// the status bar, and beside any docked views.
 func (a *App) viewportSize() (int, int) {
-	h := a.winH
-	if a.statusVisible() {
-		h -= a.statusReservedHeight()
-	}
-	if h < 1 {
-		h = 1
-	}
-	w := max(a.winW, 1)
-	return w, h
+	r := a.documentRect()
+	return max(1, int(r.W)), max(1, int(r.H))
+}
+
+// viewportOrigin is where the document's part of the window starts, below
+// and right of the views docked at the top and left.
+func (a *App) viewportOrigin() (float64, float64) {
+	r := a.documentRect()
+	return float64(r.X), float64(r.Y)
 }
 
 func (a *App) contentViewportOffset() (float64, float64) {
@@ -172,6 +174,10 @@ func (a *App) pageGeometryAtScreen(sx, sy float64) (int, float64, float64, bool)
 	if len(a.rows) == 0 {
 		return 0, 0, 0, false
 	}
+	// Pages are laid out from the document's corner, which docked views
+	// move from the window's.
+	ox, oy := a.viewportOrigin()
+	sx, sy = sx-ox, sy-oy
 	if a.renderMode == renderSingle {
 		if a.page < 0 || a.page >= len(a.pageToRow) {
 			return 0, 0, 0, false

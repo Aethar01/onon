@@ -301,7 +301,7 @@ func (a *App) handleSDLMouseMotion(e *sdl.MouseMotionEvent) bool {
 	}
 	if taken, redraw := a.handlePanelMouseMotion(e); taken {
 		// a link under the panel is no longer hovered
-		a.hoverLinkPreview(mupdf.Link{}, false, e.X, e.Y)
+		a.hoverLinkPreview(mupdf.Link{}, false, 0, 0)
 		return a.setHoveredLink(mupdf.Link{}, false) || redraw
 	} else if redraw {
 		a.pendingRedraw = true
@@ -316,7 +316,9 @@ func (a *App) handleSDLMouseMotion(e *sdl.MouseMotionEvent) bool {
 		link, overLink = mupdf.Link{}, false // the button is over the link
 	}
 	hoverChanged := a.setHoveredLink(link, overLink)
-	a.hoverLinkPreview(link, overLink, e.X, e.Y)
+	// The preview is placed in the document's part of the window.
+	ox, oy := a.viewportOrigin()
+	a.hoverLinkPreview(link, overLink, e.X-float32(ox), e.Y-float32(oy))
 
 	if !a.selection.active || uint32(e.State)&uint32(sdl.ButtonLMask) == 0 {
 		return hoverChanged

@@ -497,11 +497,13 @@ func (a *App) drawFrame() error {
 	a.drawing = true
 	defer func() { a.drawing, a.frameStatus = false, nil }()
 	message := a.message
-	a.drawPages(a.renderer)
-	// An on-screen loader animates, so it asks for the next frame.
-	a.pendingRedraw = a.loaderVisible
-	a.drawLinkHints(a.renderer)
-	a.drawLinkPreview(a.renderer)
+	a.withDocumentViewport(a.renderer, func() {
+		a.drawPages(a.renderer)
+		// An on-screen loader animates, so it asks for the next frame.
+		a.pendingRedraw = a.loaderVisible
+		a.drawLinkHints(a.renderer)
+		a.drawLinkPreview(a.renderer)
+	})
 	if a.statusVisible() {
 		if err := a.drawStatusBar(a.renderer); err != nil {
 			return err

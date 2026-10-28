@@ -1,6 +1,7 @@
 package viewer
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -358,8 +359,8 @@ panel = onon.ui.create({
   title = "Panel",
   modal = false,
   anchor = "bottom_right",
-  width = 20,
-  height = 25,
+  width = "20%",
+  height = "25%",
   draw = function(canvas, box) end,
   on_mouse = function(ev)
     log = log .. ev.type .. (ev.button and (" " .. ev.button) or "") .. ";"
@@ -469,5 +470,115 @@ onon.ui.create({
 	view.drawBody(app, nil, body, drawRows)
 	if app.message != "" || rowsDrawn != 2 {
 		t.Fatalf("a failed function ran again: message %q rows %d", app.message, rowsDrawn)
+	}
+}
+
+func TestLuaUIDocksTakeTheirSideFromTheDocument(t *testing.T) {
+	app := luaUITestApp(t, "")
+	full := app.documentRect()
+	evalLua(t, app, `
+left = onon.ui.create({ dock = "left", width = 200, draw = function() end })
+top = onon.ui.create({ dock = "top", height = "10%", draw = function() end })
+left:show()
+top:show()`)
+	doc := app.documentRect()
+	if doc.X != 200 || doc.Y != 80 || doc.W != full.W-200 || doc.H != full.H-80 {
+		t.Fatalf("document beside docks = %+v, full %+v", doc, full)
+	}
+	if w, h := app.viewportSize(); w != int(doc.W) || h != int(doc.H) {
+		t.Fatalf("viewport %dx%d, document %+v", w, h, doc)
+	}
+	var left, top *uiView
+	for _, view := range app.views.panels {
+		if view.place.dock == "left" {
+			left = view
+		} else {
+			top = view
+		}
+	}
+	// The top dock opened second, so it spans what the left one left.
+	if rect, _ := left.frameGeometry(app); rect != (sdl.FRect{W: 200, H: full.H}) {
+		t.Fatalf("left dock at %+v", rect)
+	}
+	if rect, _ := top.frameGeometry(app); rect != (sdl.FRect{X: 200, W: full.W - 200, H: 80}) {
+		t.Fatalf("top dock at %+v", rect)
+	}
+	// A view anchored to a corner sits in the document's part of the window.
+	evalLua(t, app, `onon.ui.create({ anchor = "top_left", width = 100, height = 50, draw = function() end }):show()`)
+	gap := float32(app.ipx(12))
+	if rect, _ := app.activeUIView().frameGeometry(app); rect.X != 200+gap || rect.Y != 80+gap {
+		t.Fatalf("anchored view at %+v", rect)
+	}
+	app.closeAllUI()
+	evalLua(t, app, `left:close() top:close()`)
+	if app.documentRect() != full {
+		t.Fatalf("closing the docks left %+v, want %+v", app.documentRect(), full)
+	}
+}
+
+func TestLuaUIDockMovesPageHitTesting(t *testing.T) {
+	app := luaUITestApp(t, "")
+	pages := testLayoutApp(1)
+	app.pageMetrics, app.pageCount = pages.pageMetrics, pages.pageCount
+	app.relayoutWithViewportAnchor(nil)
+	x, y, _ := app.pageScreenOrigin(0)
+	before, _, _, ok := app.pageGeometryAtScreen(x+1, y+1)
+	if !ok || before != 0 {
+		t.Fatal("no page under its own corner")
+	}
+	evalLua(t, app, `onon.ui.create({ dock = "left", width = 300, draw = function() end }):show()`)
+	x, y, _ = app.pageScreenOrigin(0)
+	// Page origins are in the document's part of the window, which the dock
+	// moved right; the window point is that far further right.
+	if _, _, _, ok := app.pageGeometryAtScreen(x+1, y+1); ok {
+		t.Fatal("the page was hit at its corner unmoved by the dock")
+	}
+	if page, _, _, ok := app.pageGeometryAtScreen(300+x+1, y+1); !ok || page != 0 {
+		t.Fatalf("the page's corner, moved by the dock, did not hit it")
+	}
+}
+
+func TestLuaUIStackedMenuReturnsToTheOneUnder(t *testing.T) {
+	app := luaUITestApp(t, "")
+	evalLua(t, app, `
+closed = ""
+onon.ui.create({ title = "under", rows = { "a" }, on_close = function() closed = closed .. "under;" end }):show()
+onon.ui.create({ title = "over", stack = true, rows = { "b" }, on_close = function() closed = closed .. "over;" onon.message(closed) end }):show()`)
+	over := app.activeUIView()
+	if over.title != "over" || len(app.views.stack) != 1 || !app.views.stack[0].visible {
+		t.Fatalf("stacked menu: active %q, stack %d", over.title, len(app.views.stack))
+	}
+	app.runUIViewAction(over, "close")
+	if active := app.activeUIView(); active == nil || active.title != "under" || app.message != "over;" {
+		t.Fatalf("after closing the stacked menu: active %+v, message %q", active, app.message)
+	}
+	evalLua(t, app, `onon.ui.create({ title = "over", stack = true, rows = { "b" } }):show()`)
+	app.closeAllUI()
+	if app.activeUIView() != nil || len(app.views.stack) != 0 {
+		t.Fatal("closing all left a stacked menu")
+	}
+}
+
+func TestLuaUIAnchorPoints(t *testing.T) {
+	app := luaUITestApp(t, "")
+	pages := testLayoutApp(20)
+	app.pageMetrics, app.pageCount = pages.pageMetrics, pages.pageCount
+	app.relayoutWithViewportAnchor(nil)
+	evalLua(t, app, `
+onon.ui.create({ modal = false, anchor = { x = 30, y = 40 }, width = 50, height = 20, draw = function() end }):show()
+onon.ui.create({ modal = false, anchor = { page = 2, x = 10, y = 20 }, width = 50, height = 20, draw = function() end }):show()`)
+	window, page := app.views.panels[0], app.views.panels[1]
+	if rect, _ := window.frameGeometry(app); rect != (sdl.FRect{X: 30, Y: 40, W: 50, H: 20}) {
+		t.Fatalf("view at a window point: %+v", rect)
+	}
+	before, _ := page.frameGeometry(app)
+	x, y, _ := app.pageScreenOrigin(1)
+	dx, dy := app.pageTransform(1).toScreen(10, 20)
+	if before.X != float32(math.Round(x+dx)) || before.Y != float32(math.Round(y+dy)) {
+		t.Fatalf("view pinned to page 2 at %+v, page point at %.0f,%.0f", before, x+dx, y+dy)
+	}
+	app.scrollBy(0, 30)
+	if after, _ := page.frameGeometry(app); after.Y != before.Y-30 {
+		t.Fatalf("pinned view did not scroll with its page: %v then %v", before.Y, after.Y)
 	}
 }

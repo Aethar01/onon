@@ -133,9 +133,10 @@ func (a *App) drawUIViews(renderer *sdl.Renderer) error {
 	tr := a.config.Theme.Motion.Panel
 	// Panels are drawn under the menu. A panel's draw function may close
 	// one, so they are drawn from a copy.
-	for _, panel := range slices.Clone(a.views.panels) {
-		p := a.animateFrom(tweenKey{kind: "panel in", view: panel}, 0, 1, tr)
-		if err := a.faded(p, func() error { return a.drawUIView(renderer, panel) }); err != nil {
+	// Menus a menu was stacked over are drawn under it.
+	for _, under := range slices.Concat(a.views.panels, a.views.stack) {
+		p := a.animateFrom(tweenKey{kind: "panel in", view: under}, 0, 1, tr)
+		if err := a.faded(p, func() error { return a.drawUIView(renderer, under) }); err != nil {
 			return err
 		}
 	}
