@@ -1395,6 +1395,35 @@ func TestUIViewCallbacksReportHandling(t *testing.T) {
 	}
 }
 
+func TestPromptsOptionPlacesPrompts(t *testing.T) {
+	cfg := Default()
+	desc, _ := lookupOption("prompts")
+	if err := desc.applyText(&cfg, `{ command = { width = "50%" }, search = "bar", go_to = { anchor = "top", width = 300 } }`); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]PromptPlacement{
+		"command": {Width: UISize{Value: 50, Percent: true}, Anchor: "center"},
+		"search":  {},
+		"go_to":   {Width: UISize{Value: 300}, Anchor: "top"},
+	}
+	if !reflect.DeepEqual(cfg.Prompts, want) {
+		t.Fatalf("prompts = %+v", cfg.Prompts)
+	}
+	if got := desc.format(&cfg); got != `{command = {width = "50%", anchor = "center"}, go_to = {width = 300, anchor = "top"}, search = "bar"}` {
+		t.Fatalf("formatted as %s", got)
+	}
+	// What :set shows, :set takes back.
+	again := Default()
+	if err := desc.applyText(&again, desc.format(&cfg)); err != nil || !reflect.DeepEqual(again.Prompts, want) {
+		t.Fatalf("reading back %s: %+v, %v", desc.format(&cfg), again.Prompts, err)
+	}
+	for _, bad := range []string{`{ menu = "bar" }`, `{ command = "box" }`, `{ command = { anchor = "middle" } }`, `{ command = { height = 40 } }`, `{ command = { width = 0 } }`, `os.exit()`} {
+		if err := desc.applyText(&cfg, bad); err == nil {
+			t.Errorf("accepted %s", bad)
+		}
+	}
+}
+
 func TestMenusOptionPlacesMenus(t *testing.T) {
 	cfg := Default()
 	desc, _ := lookupOption("menus")

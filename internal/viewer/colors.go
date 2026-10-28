@@ -9,7 +9,7 @@ import (
 )
 
 func (a *App) statusVisible() bool {
-	return a.statusBarShown || a.mode != modeNormal
+	return a.statusBarShown || a.promptInBar()
 }
 
 // palette is the theme's colours for the current color mode.

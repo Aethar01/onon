@@ -29,6 +29,7 @@ const (
 	ElementStatusLeft
 	ElementStatusRight
 	ElementPrompt
+	ElementPromptBox
 	ElementCursor
 	ElementInputSelection
 	ElementInput
@@ -76,6 +77,7 @@ var elementSpecs = [ElementCount]struct {
 	ElementStatusLeft:        {"status_left", noElement, slices.Concat(boxProps, []string{"text", "padding"}), "The left of the status bar, holding messages and prompts. Its padding above and below sets the bar's height."},
 	ElementStatusRight:       {"status_right", ElementStatusLeft, slices.Concat(boxProps, []string{"text", "padding"}), "The right of the status bar; the sides of its padding set its text in."},
 	ElementPrompt:            {"prompt", noElement, []string{"text"}, "A prompt's prefix, such as : or /."},
+	ElementPromptBox:         {"prompt_box", ElementPanel, slices.Concat(boxProps, []string{"text", "padding"}), "A prompt in a box of its own, where the prompts option places it away from the status bar. Its padding surrounds its line of text."},
 	ElementCursor:            {"cursor", noElement, slices.Concat(boxProps, []string{"width"}), "The text cursor in a prompt."},
 	ElementInputSelection:    {"input_selection", noElement, boxProps, "Selected text in a prompt."},
 	ElementInput:             {"input", ElementRow, slices.Concat(boxProps, textProps), "A text field a plugin's view draws. Its secondary colour is for the placeholder."},
@@ -314,6 +316,8 @@ func elementDefaults(t *Theme, e Element) Style {
 		s.Text = some(paletteColor("muted", 1))
 	case ElementPrompt:
 		s.Text = some(paletteColor("accent", 1))
+	case ElementPromptBox:
+		s.Padding = some(symmetric(line/2+2, textInset))
 	case ElementCursor:
 		s.Fill = some(paletteColor("accent", 1))
 	case ElementInputSelection:

@@ -42,6 +42,7 @@ onon.options.page_gap_horizontal = 0 -- Horizontal gap between pages in a spread
 onon.options.page_gap_vertical = 0 -- Vertical gap between page rows.
 onon.options.pinch_sensitivity = 1 -- Trackpad pinch zoom sensitivity; 1 preserves the gesture scale.
 onon.options.prompt_history_max = 100 -- Maximum entries kept in each of the command and search prompt histories; 0 keeps none.
+onon.options.prompts = {} -- Where prompts sit, by name, such as { command = { anchor = "center", width = "50%" } }: each is "bar", in the status bar as by default, or a box of its own with an anchor, as views take, centred if not given, and a width in logical pixels or a percentage, half the window if not given. Prompts: command, go_to, password, prompt, search.
 onon.options.recent_files_max = 20 -- Maximum recent files retained and displayed.
 onon.options.render_mode = "continuous" -- Initial render mode: continuous or single.
 onon.options.render_oversample = 1 -- Render scale multiplier; values above 1 supersample.

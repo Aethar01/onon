@@ -21,6 +21,7 @@ type Config struct {
 	LinkSchemes           []string
 	HTTPHeaders           map[string]map[string]string // by host, for remote documents
 	Menus                 map[string]MenuPlacement     // by MenuNames, where onon's own menus sit
+	Prompts               map[string]PromptPlacement   // by PromptNames, where prompts sit
 	RenderThreads         int
 	MuPDFStoreMB          int
 	HintChars             string
@@ -188,6 +189,18 @@ var (
 type MenuPlacement struct {
 	Width, Height UISize
 	Anchor        string
+}
+
+// PromptNames are the prompts the prompts option places: the command line,
+// go to page, a document's password, a plugin's question, and search.
+var PromptNames = []string{"command", "go_to", "password", "prompt", "search"}
+
+// PromptPlacement is where a prompt sits: with no anchor in the status
+// bar, as by default, or else in a box of its own at the anchor, Width
+// wide or, left zero, half the window.
+type PromptPlacement struct {
+	Width  UISize
+	Anchor string
 }
 
 // UIAnchors are the places a view may be anchored, and UIDocks the sides

@@ -49,7 +49,7 @@ func (a *App) layoutStatus() statusLayout {
 	x0, x1 := int(math.Round(float64(marginLeft))), a.winW-int(math.Round(float64(marginRight)))
 	y := a.winH - int(math.Round(float64(marginBottom))) - h
 	l := statusLayout{bar: sdl.FRect{X: float32(x0), Y: float32(y), W: float32(x1 - x0), H: float32(h)}}
-	input := a.mode != modeNormal
+	input := a.promptInBar()
 	pads := int(leftPadL + leftPadR + rightPadL + rightPadR)
 	l.left, l.right = fitStatusText(a.fontFace, a.formatStatusBar(a.config.StatusBarLeft), a.formatStatusBar(a.config.StatusBarRight), x1-x0-pads, gap, input)
 	rightW := 0
@@ -122,21 +122,11 @@ func (a *App) drawStatusBar(renderer *sdl.Renderer) error {
 	}
 	textBox := sdl.FRect{X: float32(l.textX), Y: l.bar.Y, W: end - float32(l.textX) + a.hairline(), H: l.bar.H}
 	err := a.withClip(renderer, textBox, func() error {
-		// A prompt's text is laid out once for its selection, its
-		// composition and its cursor.
-		var layout textLayout
-		if a.mode != modeNormal {
-			layout = a.statusTextLayout(l)
-			a.drawTextSelection(renderer, &layout, &a.input)
+		if !a.promptInBar() {
+			return a.drawStatusMessage(renderer, l, &leftStyle)
 		}
-		if err := a.drawStatusLeft(renderer, l, &leftStyle, &layout); err != nil {
-			return err
-		}
-		if a.mode != modeNormal {
-			display, _ := a.inputDisplay()
-			a.drawTextCursor(renderer, &layout, &a.input, tweenKey{kind: "cursor", text: display})
-		}
-		return nil
+		a.motion.fadingText = ""
+		return a.drawPromptText(renderer, a.promptLayout(), &leftStyle)
 	})
 	if err != nil {
 		return err
@@ -156,51 +146,60 @@ func boxDrawn(st *config.Style) bool {
 	return st.Fill.V.Alpha > 0 || st.BorderWidth.V > 0 || st.Shadow.V.N > 0 || st.Draw.V != nil
 }
 
-// drawStatusLeft draws the left text; while a prompt is open, its prefix,
-// such as : or /, is drawn in the accent colour.
-func (a *App) drawStatusLeft(renderer *sdl.Renderer, l statusLayout, st *config.Style, layout *textLayout) error {
-	if a.mode == modeNormal {
-		return a.drawStatusMessage(renderer, l, st)
-	}
-	a.motion.fadingText = ""
+// drawPromptText draws the open prompt's line: its text, selection and
+// cursor, its prefix, such as : or /, in the accent colour. In the status
+// bar the line is the left template, the prompt in place of {message}.
+func (a *App) drawPromptText(renderer *sdl.Renderer, p promptLayout, st *config.Style) error {
+	// The text is laid out once for its selection, its composition and
+	// its cursor.
+	layout := a.promptTextLayout(p)
+	a.drawTextSelection(renderer, &layout, &a.input)
 	fg := a.textColor(st, false)
-	x := a.promptOrigin() - a.promptStart()
-	prompt := a.style(config.ElementPrompt)
-	before, after, found := strings.Cut(a.config.StatusBarLeft, "{message}")
-	if !found {
-		return a.drawText(renderer, l.left, x, l.baseline, fg)
-	}
-	prefix := a.inputPrefix()
+	x := a.promptOrigin() - p.start
 	display, _ := a.inputDisplay()
-	display, composeStart, composeLen := a.compose(&a.input, display)
+	shown, composeStart, composeLen := a.compose(&a.input, display)
+	before, after := "", ""
+	if p.inBar {
+		var found bool
+		before, after, found = strings.Cut(a.config.StatusBarLeft, "{message}")
+		if !found {
+			if err := a.drawText(renderer, a.statusLayout().left, x, p.baseline, fg); err != nil {
+				return err
+			}
+			a.drawTextCursor(renderer, &layout, &a.input, tweenKey{kind: "cursor", text: display})
+			return nil
+		}
+	}
+	prompt := a.style(config.ElementPrompt)
 	parts := []struct {
 		text string
 		clr  color.RGBA
 	}{
 		{a.formatStatusBar(before), fg},
-		{prefix, a.textColor(&prompt, false)},
-		{display, fg},
+		{a.inputPrefix(), a.textColor(&prompt, false)},
+		{shown, fg},
 		{a.formatStatusBar(after), fg},
 	}
 	for _, part := range parts {
 		if part.text == "" {
 			continue
 		}
-		if err := a.drawText(renderer, part.text, x, l.baseline, part.clr); err != nil {
+		if err := a.drawText(renderer, part.text, x, p.baseline, part.clr); err != nil {
 			return err
 		}
 		x += measureText(a.fontFace, part.text)
 	}
-	a.drawComposition(renderer, layout, composeStart, composeLen, st.Text.V)
+	a.drawComposition(renderer, &layout, composeStart, composeLen, st.Text.V)
+	a.drawTextCursor(renderer, &layout, &a.input, tweenKey{kind: "cursor", text: display})
 	return nil
 }
 
-// statusTextLayout is the status bar prompt's text as drawn, after its
-// prefix, scrolled with it.
-func (a *App) statusTextLayout(l statusLayout) textLayout {
+// promptTextLayout is the prompt's text as drawn, after its prefix,
+// scrolled with it.
+func (a *App) promptTextLayout(p promptLayout) textLayout {
 	display, _ := a.inputDisplay()
 	display, _, _ = a.compose(&a.input, display)
-	top, bottom := a.statusTextSpan(l)
+	top, bottom := a.statusTextSpan(p.baseline)
 	return textLayout{
 		face:       a.fontFace,
 		lines:      layoutLines(a.fontFace, display, 0, false),
@@ -255,8 +254,8 @@ func (a *App) inputDisplay() (display, left string) {
 // promptOrigin is the x at which the prompt starts. Long input scrolls left,
 // keeping its start hidden, so the cursor stays on screen.
 func (a *App) promptOrigin() int {
-	l := a.statusLayout()
-	start := l.textX + a.promptStart()
+	l := a.promptLayout()
+	start := l.textX + l.start
 	display, left := a.inputDisplay()
 	prefix := a.inputPrefix()
 	prefixWidth := measureText(a.fontFace, prefix)
@@ -273,10 +272,11 @@ func (a *App) promptOrigin() int {
 	return start - a.inputScroll
 }
 
-// statusTextSpan is the top and bottom of the status text's glyphs.
-func (a *App) statusTextSpan(l statusLayout) (int, int) {
+// statusTextSpan is the top and bottom of the glyphs of a line of UI
+// text on baseline.
+func (a *App) statusTextSpan(baseline int) (int, int) {
 	m := a.fontFace.Metrics()
-	return l.baseline - m.Ascent.Ceil(), l.baseline + m.Descent.Ceil()
+	return baseline - m.Ascent.Ceil(), baseline + m.Descent.Ceil()
 }
 
 // fitStatusText keeps the two sides of the status bar from overlapping in
@@ -388,7 +388,8 @@ func (a *App) statusToken(name string) (string, bool) {
 }
 
 // statusMessage is the status bar's message, a prompt's text in place of
-// it, with the text typed and the search prompt's token.
+// it while the prompt is in the bar, with the text typed and the search
+// prompt's token.
 func (a *App) statusMessage() (message, input, prompt string) {
 	message = a.message
 	switch a.mode {
@@ -408,6 +409,9 @@ func (a *App) statusMessage() (message, input, prompt string) {
 			message = a.inputPrefix() + maskText(a.input.Value)
 			input = message
 		}
+	}
+	if !a.promptInBar() {
+		message = a.message // the prompt is in a box of its own
 	}
 	return message, input, prompt
 }

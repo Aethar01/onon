@@ -135,7 +135,7 @@ func TestStatusPromptLaysOutItsComposition(t *testing.T) {
 	app.input.Set("ab")
 	app.input.Cursor = 1
 	app.composition = "xyz"
-	layout := app.statusTextLayout(app.statusLayout())
+	layout := app.promptTextLayout(app.promptLayout())
 	if got := layout.lines[0].text; got != "axyzb" {
 		t.Fatalf("the prompt is laid out as %q, want its composition in it", got)
 	}
