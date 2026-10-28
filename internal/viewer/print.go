@@ -81,7 +81,7 @@ func (a *App) showPrintDialog(selected int) {
 		{text: "Pages", secondary: pages, value: "pages"},
 		{text: "Copies", secondary: strconv.Itoa(s.copies), value: "copies"},
 		{text: "Two-sided", secondary: sides, value: "sides"},
-		{text: "Print", value: "print"},
+		{text: "Print", value: "print", button: true},
 	}
 	for i := range rows {
 		rows[i].index = i

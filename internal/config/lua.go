@@ -272,6 +272,26 @@ func uiOverlayFromLuaSpec(L *lua.LState, rt *Runtime, spec *lua.LTable) UIOverla
 	default:
 		L.RaiseError("ui.create: anchor must be a place or a point")
 	}
+	if columns, ok := spec.RawGetString("columns").(*lua.LTable); ok {
+		for i := 1; i <= columns.Len(); i++ {
+			col, ok := columns.RawGetInt(i).(*lua.LTable)
+			if !ok {
+				L.RaiseError("ui.create: column %d must be a table", i)
+			}
+			c := UIColumn{Title: lua.LVAsString(col.RawGetString("title")), Align: lua.LVAsString(col.RawGetString("align")), Fill: true}
+			if c.Align != "" && c.Align != "left" && c.Align != "center" && c.Align != "right" {
+				L.RaiseError("ui.create: column %d align is left, center or right", i)
+			}
+			if width := col.RawGetString("width"); width != lua.LNil && lua.LVAsString(width) != "*" {
+				size, err := luaUISize(width)
+				if err != nil {
+					L.RaiseError("ui.create: column %d width %v, or \"*\" for a share of the rest", i, err)
+				}
+				c.Width, c.Fill = size, false
+			}
+			overlay.Columns = append(overlay.Columns, c)
+		}
+	}
 	if empty := spec.RawGetString("empty"); empty != lua.LNil {
 		overlay.Empty = lua.LVAsString(empty)
 	}
@@ -299,6 +319,7 @@ func uiOverlayFromLuaSpec(L *lua.LState, rt *Runtime, spec *lua.LTable) UIOverla
 		"draw":                 &overlay.Draw,
 		"on_input":             &overlay.OnInput,
 		"on_submit":            &overlay.OnSubmit,
+		"on_click":             &overlay.OnClick,
 	} {
 		switch fn := spec.RawGetString(name).(type) {
 		case *lua.LFunction:
@@ -518,7 +539,22 @@ func luaTableUIRows(L *lua.LState, value lua.LValue) []UIListRow {
 			Key:       lua.LVAsString(spec.RawGetString("key")),
 			Marker:    lua.LVAsString(spec.RawGetString("marker")),
 			Heading:   lua.LVAsBool(spec.RawGetString("heading")),
+			Button:    lua.LVAsBool(spec.RawGetString("button")),
 			Lua:       item,
+		}
+		if checked := spec.RawGetString("checked"); checked != lua.LNil {
+			row.Checkbox, row.Checked = true, lua.LVAsBool(checked)
+		}
+		if cells, ok := spec.RawGetString("cells").(*lua.LTable); ok {
+			for j := 1; j <= cells.Len(); j++ {
+				row.Cells = append(row.Cells, lua.LVAsString(cells.RawGetInt(j)))
+			}
+			if row.Text == "" {
+				row.Text = strings.Join(row.Cells, " ")
+			}
+			if row.Value == "" && len(row.Cells) > 0 {
+				row.Value = row.Cells[0]
+			}
 		}
 		if swatch := spec.RawGetString("swatch"); swatch != lua.LNil {
 			c, err := colorFromLua(swatch)

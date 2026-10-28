@@ -523,7 +523,8 @@ func (a *App) drawViewBody(renderer *sdl.Renderer, view *uiView, body sdl.FRect,
 		view: view, pointerOver: a.viewUnderPointer() == view,
 	}
 	view.regions = view.regions[:0]
-	view.fieldOrder = view.fieldOrder[:0]
+	view.focusOrder = view.focusOrder[:0]
+	clear(view.controls)
 	scale := float64(a.px(1))
 	state := config.DrawState{
 		Element: view.element,

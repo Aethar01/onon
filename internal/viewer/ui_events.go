@@ -21,7 +21,7 @@ func (a *App) viewKey(view *uiView, e *sdl.KeyboardEvent) {
 	if !ok || e.Type != sdl.EventKeyDown {
 		return
 	}
-	if a.handleUIEditKey(view, key) {
+	if a.handleUIControlKey(view, key) || a.handleUIEditKey(view, key) {
 		return
 	}
 	if view.searchable && a.handleUIViewSearchKey(view, e) {
@@ -178,7 +178,10 @@ func (a *App) viewMouseButton(view *uiView, e *sdl.MouseButtonEvent) {
 	ev, inside := a.viewMouseEvent(view, e.X, e.Y)
 	down := e.Type == sdl.EventMouseButtonDown
 	left := e.Button == uint8(sdl.ButtonLeft)
-	if down && inside && left && a.pressUIField(view, e.X, e.Y) {
+	if down && inside && left && a.pressUIControl(view, e.X, e.Y) {
+		return
+	}
+	if !down && left && a.releaseUIControl(view, e.X, e.Y) {
 		return
 	}
 	if down && inside || !down && view.pointerDown {

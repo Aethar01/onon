@@ -4,7 +4,6 @@ import (
 	"image/color"
 	"math"
 	"runtime"
-	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -90,8 +89,8 @@ func (a *App) uiEditTarget() (uiEdit, bool) {
 	if view == nil {
 		return uiEdit{}, false
 	}
-	if f := view.fields[view.focusField]; f != nil {
-		return uiEdit{view: view, id: view.focusField, input: &f.input}, true
+	if f := view.fields[view.focus]; f != nil {
+		return uiEdit{view: view, id: view.focus, input: &f.input}, true
 	}
 	if view.prompt != "" {
 		return uiEdit{view: view, input: &view.promptInput}, true
@@ -145,8 +144,7 @@ func (a *App) typeUIText(text string) bool {
 }
 
 // handleUIEditKey handles a key pressed in view while it has a field or
-// prompt to type in: Tab and Shift-Tab move between its fields, Enter
-// submits, and the editing keys edit. In a field of more than one line,
+// prompt to type in: Enter submits, and the editing keys edit. In a field of more than one line,
 // Enter starts a new line, Ctrl- or Cmd-Enter submits, and the arrows,
 // Home and End move by line. Keys that type text are taken, the text
 // coming as it is typed. It reports whether it took the key.
@@ -159,18 +157,6 @@ func (a *App) handleUIEditKey(view *uiView, key keys.Key) bool {
 	field := view.fields[target.id]
 	multiline := field != nil && field.lines > 1
 	switch name {
-	case "<Tab>", "<S-Tab>":
-		if n := len(view.fieldOrder); n > 0 {
-			step := 1
-			if name == "<S-Tab>" {
-				step = n - 1
-			}
-			i := max(0, slices.Index(view.fieldOrder, view.focusField))
-			view.focusField = view.fieldOrder[(i+step)%n]
-			view.fields[view.focusField].input.SelectAll()
-			a.pendingRedraw = true
-			return true
-		}
 	case "<CR>", "<C-CR>", "<D-CR>":
 		if multiline && name == "<CR>" {
 			a.editUIText(target, func(t *textInput) { t.InsertText("\n") })
@@ -223,14 +209,14 @@ func (a *App) pressUIField(view *uiView, x, y float32) bool {
 		a.pendingRedraw = true
 		return true
 	}
-	for _, id := range view.fieldOrder {
-		if f := view.fields[id]; inside(f.rect) {
-			view.focusField = id
+	for _, id := range view.focusOrder {
+		if f := view.fields[id]; f != nil && inside(f.rect) {
+			view.focus = id
 			return press(&f.layout, &f.input)
 		}
 	}
 	if view.prompt != "" && inside(view.promptRect) {
-		view.focusField = ""
+		view.focus = ""
 		return press(&view.promptLayout, &view.promptInput)
 	}
 	return false
@@ -332,11 +318,11 @@ func (c *elementCanvas) Input(id string, x, y, w float64, o config.InputOptions)
 	a := c.app
 	f := view.field(id)
 	f.secret, f.lines = o.Secret, max(1, o.Lines)
-	view.fieldOrder = append(view.fieldOrder, id)
-	if view.fields[view.focusField] == nil {
-		view.focusField = id
+	view.focusOrder = append(view.focusOrder, id)
+	if view.focus == "" {
+		view.focus = id // the first field has the typing
 	}
-	focused := view.focusField == id && a.keyView() == view
+	focused := view.focus == id && a.keyView() == view
 	element := config.ElementInput
 	if focused {
 		element = config.ElementInputFocused

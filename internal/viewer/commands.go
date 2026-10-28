@@ -696,13 +696,12 @@ func (a *App) runSet(input string) {
 		if a.runtime != nil {
 			names = a.runtime.OptionNames()
 		}
-		rows := make([]string, 0, len(names))
-		for _, name := range names {
+		rows := make([]uiRow, 0, len(names))
+		for i, name := range names {
 			value, _ := a.runtime.OptionValue(name)
-			rows = append(rows, name+"="+value)
+			rows = append(rows, uiRow{index: i, text: name, value: name, secondary: value})
 		}
-		a.closeAllUI()
-		a.showCoreList("options", "Options", rows, nil)
+		a.showRowList("options", "Options", rows, 70, 70, func(*uiView) {})
 		return
 	}
 	if name, value, ok := strings.Cut(input, "="); ok {

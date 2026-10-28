@@ -1,0 +1,182 @@
+package viewer
+
+import (
+	"math"
+	"slices"
+
+	"onon/internal/config"
+	"onon/internal/keys"
+
+	"github.com/jupiterrider/purego-sdl3/sdl"
+	lua "github.com/yuin/gopher-lua"
+)
+
+// A view's canvas draws buttons and check boxes as it draws text fields:
+// each named, focused in turn with Tab, and clicked with the pointer or,
+// focused, with Space or Enter.
+
+// noteControl records a button or check box of view drawn at rect, for the
+// pointer and the keys, and reports whether it is focused and whether the
+// pointer is over it.
+func (c *elementCanvas) noteControl(id string, rect sdl.FRect) (focused, hovered bool) {
+	view, a := c.view, c.app
+	if view.controls == nil {
+		view.controls = map[string]sdl.FRect{}
+	}
+	view.controls[id] = rect
+	view.focusOrder = append(view.focusOrder, id)
+	view.regions = append(view.regions, uiRegion{id: lua.LString(id), rect: rect})
+	p := a.pointer
+	hovered = c.pointerOver && p.X >= rect.X && p.X < rect.X+rect.W && p.Y >= rect.Y && p.Y < rect.Y+rect.H
+	return view.focus == id && a.keyView() == view, hovered
+}
+
+func (c *elementCanvas) Button(id string, x, y, w float64, label string) float64 {
+	if c.view == nil || c.app.fontFace == nil {
+		return 0
+	}
+	a := c.app
+	st := a.style(config.ElementButton)
+	padTop, padRight, padBottom, padLeft := a.insets(st.Padding.V)
+	scale := float64(a.px(1))
+	h := (float64(a.uiLineHeight()) + float64(padTop+padBottom)) / scale
+	rect := c.rect(x, y, w, h)
+	focused, hovered := c.noteControl(id, rect)
+	if focused || hovered || c.view.pressedControl == id {
+		st = a.style(config.ElementButtonFocused)
+	}
+	if c.renderer == nil {
+		return h
+	}
+	a.drawBox(c.renderer, &st, rect)
+	face := a.styleFace(&st)
+	text := truncateText(face, label, int(rect.W-padLeft-padRight))
+	tx := rect.X + (rect.W-float32(measureText(face, text)))/2
+	baseline := int(rect.Y+padTop) + face.Metrics().Ascent.Ceil()
+	a.drawTextFace(c.renderer, text, int(math.Round(float64(tx))), baseline, a.textColor(&st, false), st.Bold.V)
+	c.restoreClip()
+	return h
+}
+
+func (c *elementCanvas) Checkbox(id string, x, y float64, label string, checked bool) (float64, float64) {
+	if c.view == nil || c.app.fontFace == nil {
+		return 0, 0
+	}
+	a := c.app
+	scale := float64(a.px(1))
+	size := float64(a.uiLineHeight()) / scale
+	gap := 0.0
+	if label != "" {
+		gap = 8 + float64(measureText(a.fontFace, label))/scale
+	}
+	rect := c.rect(x, y, size+gap, size)
+	focused, hovered := c.noteControl(id, rect)
+	if c.renderer == nil {
+		return size + gap, size
+	}
+	a.drawCheckbox(c.renderer, sdl.FRect{X: rect.X, Y: rect.Y, W: rect.H, H: rect.H}, checked, focused || hovered)
+	if label != "" {
+		st := a.style(config.ElementRow)
+		baseline := int(rect.Y) + (int(rect.H)+a.fontFace.Metrics().Ascent.Ceil()-a.fontFace.Metrics().Descent.Ceil())/2
+		a.drawText(c.renderer, label, int(rect.X+rect.H)+a.ipx(8), baseline, a.textColor(&st, false))
+	}
+	return size + gap, size
+}
+
+// drawCheckbox draws a check box over box: an input's box, focused or not,
+// with the check element's mark in it when checked.
+func (a *App) drawCheckbox(renderer *sdl.Renderer, box sdl.FRect, checked, focused bool) {
+	element := config.ElementInput
+	if focused {
+		element = config.ElementInputFocused
+	}
+	st := a.style(element)
+	a.drawBox(renderer, &st, box)
+	if checked {
+		mark := a.style(config.ElementCheck)
+		inset := box.W / 4
+		a.drawBox(renderer, &mark, sdl.FRect{X: box.X + inset, Y: box.Y + inset, W: box.W - 2*inset, H: box.H - 2*inset})
+	}
+}
+
+// clickUIControl clicks view's button or check box id.
+func (a *App) clickUIControl(view *uiView, id string) {
+	a.pendingRedraw = true
+	if view.onClick != nil {
+		view.onClick(a, id)
+	}
+}
+
+// pressUIControl handles a press at x, y in view on a text field, which it
+// focuses, or a button or check box, which it focuses and presses, its
+// release over it clicking it. It reports whether there was one.
+func (a *App) pressUIControl(view *uiView, x, y float32) bool {
+	if a.pressUIField(view, x, y) {
+		return true
+	}
+	for id, r := range view.controls {
+		if x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H && slices.Contains(view.focusOrder, id) {
+			view.focus, view.pressedControl = id, id
+			if !view.modal {
+				a.focusUIView(view, true)
+			}
+			a.pendingRedraw = true
+			return true
+		}
+	}
+	return false
+}
+
+// releaseUIControl handles the release of a button or check box pressed,
+// clicking it if the pointer is still over it, and reports whether one was
+// pressed.
+func (a *App) releaseUIControl(view *uiView, x, y float32) bool {
+	id := view.pressedControl
+	if id == "" {
+		return false
+	}
+	view.pressedControl = ""
+	if r := view.controls[id]; x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H {
+		a.clickUIControl(view, id)
+	}
+	a.pendingRedraw = true
+	return true
+}
+
+// handleUIControlKey handles the keys that move between a view's controls,
+// Tab and Shift-Tab, and click a focused button or check box, Space and
+// Enter, reporting whether it took the key.
+func (a *App) handleUIControlKey(view *uiView, key keys.Key) bool {
+	name := key.String()
+	switch name {
+	case "<Tab>", "<S-Tab>":
+		n := len(view.focusOrder)
+		if n == 0 {
+			return false
+		}
+		step := 1
+		if name == "<S-Tab>" {
+			step = n - 1
+		}
+		i := slices.Index(view.focusOrder, view.focus)
+		if i < 0 {
+			i = n - 1 // the first Tab focuses the first control
+			if step != 1 {
+				i = 0
+			}
+		}
+		view.focus = view.focusOrder[(i+step)%n]
+		if f := view.fields[view.focus]; f != nil {
+			f.input.SelectAll()
+		}
+		a.syncTextInput()
+		a.pendingRedraw = true
+		return true
+	case "<Space>", "<CR>":
+		if _, ok := view.controls[view.focus]; ok && slices.Contains(view.focusOrder, view.focus) {
+			a.clickUIControl(view, view.focus)
+			return true
+		}
+	}
+	return false
+}

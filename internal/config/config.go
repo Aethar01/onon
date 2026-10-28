@@ -150,9 +150,12 @@ type UIOverlay struct {
 	Fields map[string]string
 	// Empty is what an empty list says.
 	Empty string
+	// Columns, if set, lay rows' cells out as a table.
+	Columns []UIColumn
 	// The callbacks, each the ID of a registered Lua function or empty.
 	OnSelect, OnClose, OnSelectionChanged, OnQueryChanged string
 	OnKey, OnAction, OnMouse, Draw, OnInput, OnSubmit     string
+	OnClick                                               string
 	Generation                                            int
 }
 
@@ -162,6 +165,15 @@ var (
 	UIAnchors = []string{"center", "top", "bottom", "left", "right", "top_left", "top_right", "bottom_left", "bottom_right"}
 	UIDocks   = []string{"left", "right", "top", "bottom"}
 )
+
+// UIColumn is a column of a table of rows: its title, its width, or with
+// Fill a share of what the others leave, and how its cells align.
+type UIColumn struct {
+	Title string
+	Width UISize
+	Fill  bool
+	Align string // left, center or right
+}
 
 // UISize is a length in logical pixels or, with Percent, a percentage of
 // the window's.
@@ -194,6 +206,11 @@ type UIListRow struct {
 	Marker    string // drawn just before the text
 	Heading   bool   // a section title, which cannot be chosen
 	Swatch    *Color // a colour sample drawn before the text
+	Button    bool   // drawn as a button
+	// Checkbox draws a check box before the text, checked with Checked.
+	Checkbox, Checked bool
+	// Cells are the row's text in its view's columns.
+	Cells []string
 	// Lua is the row as the plugin gave it, handed back to callbacks.
 	Lua lua.LValue
 }

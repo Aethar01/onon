@@ -196,6 +196,14 @@ func (a *App) createLuaView(spec config.UIOverlay) *uiView {
 			a.afterLuaViewCallback("ui_submit", rt.RunUIText(spec.OnSubmit, text, id))
 		}
 	}
+	if spec.OnClick != "" {
+		view.onClick = func(a *App, id string) {
+			a.afterLuaViewCallback("ui_click", rt.RunUIClick(spec.OnClick, id))
+		}
+	}
+	for _, c := range spec.Columns {
+		view.columns = append(view.columns, uiColumn{title: c.Title, width: c.Width, fill: c.Fill, align: c.Align})
+	}
 	if spec.OnSelect != "" {
 		view.onSelect = func(a *App, row uiRow) {
 			a.afterLuaViewCallback("ui_select", rt.RunUIRow(spec.OnSelect, luaRowRef(row)))

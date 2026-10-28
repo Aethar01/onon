@@ -353,6 +353,11 @@ func (r *Runtime) RunUIText(callback, text, id string) error {
 	return r.runCallback(callback, lua.LString(text), field)
 }
 
+// RunUIClick runs on_click with the id of the button or check box clicked.
+func (r *Runtime) RunUIClick(callback, id string) error {
+	return r.runCallback(callback, lua.LString(id))
+}
+
 func (r *Runtime) RunUIQuery(callback, query string) error {
 	return r.runCallback(callback, lua.LString(query))
 }

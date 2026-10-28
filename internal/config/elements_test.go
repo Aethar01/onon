@@ -363,6 +363,14 @@ func (c *recordingCanvas) Input(id string, x, y, w float64, o InputOptions) floa
 	c.calls = append(c.calls, "input "+id)
 	return 20
 }
+func (c *recordingCanvas) Button(id string, x, y, w float64, label string) float64 {
+	c.calls = append(c.calls, "button "+id)
+	return 20
+}
+func (c *recordingCanvas) Checkbox(id string, x, y float64, label string, checked bool) (float64, float64) {
+	c.calls = append(c.calls, "checkbox "+id)
+	return 20, 20
+}
 func (c *recordingCanvas) Region(id lua.LValue, x, y, w, h float64) bool {
 	c.calls = append(c.calls, "region "+id.String())
 	return false

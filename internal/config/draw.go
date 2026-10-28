@@ -147,6 +147,10 @@ type Canvas interface {
 	// Input draws the text field id of a view, w wide, returning its
 	// height.
 	Input(id string, x, y, w float64, opts InputOptions) float64
+	// Button draws the button id of a view, w wide, returning its height,
+	// and Checkbox the check box id, returning its size.
+	Button(id string, x, y, w float64, label string) float64
+	Checkbox(id string, x, y float64, label string, checked bool) (float64, float64)
 }
 
 // InputOptions are how a text field is drawn: a placeholder shown while
@@ -428,6 +432,18 @@ func luaCanvasMetatable(L *lua.LState, cache *drawCache) *lua.LTable {
 			}
 			L.Push(lua.LNumber(c.Input(L.CheckString(2), float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), float64(L.CheckNumber(5)), o)))
 			return 1
+		},
+		"button": func(L *lua.LState) int {
+			c := check(L)
+			L.Push(lua.LNumber(c.Button(L.CheckString(2), float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), float64(L.CheckNumber(5)), L.CheckString(6))))
+			return 1
+		},
+		"checkbox": func(L *lua.LState) int {
+			c := check(L)
+			w, h := c.Checkbox(L.CheckString(2), float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), L.OptString(5, ""), L.ToBool(6))
+			L.Push(lua.LNumber(w))
+			L.Push(lua.LNumber(h))
+			return 2
 		},
 		"region": func(L *lua.LState) int {
 			c := check(L)

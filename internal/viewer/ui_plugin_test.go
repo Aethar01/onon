@@ -796,8 +796,8 @@ view:set_field("name", "al")
 view:show()`)
 	view := app.activeUIView()
 	drawLuaView(t, app, view)
-	if view.focusField != "name" || strings.Join(view.fieldOrder, ",") != "name,password" {
-		t.Fatalf("fields %q, focused %q", view.fieldOrder, view.focusField)
+	if view.focus != "name" || strings.Join(view.focusOrder, ",") != "name,password" {
+		t.Fatalf("fields %q, focused %q", view.focusOrder, view.focus)
 	}
 	app.typeUIText("ice")
 	if app.message != "input name=alice" {
@@ -810,8 +810,8 @@ view:show()`)
 		t.Fatalf("Enter in the second field: %q", app.message)
 	}
 	app.viewKey(view, keyDown(sdl.KeycodeTab, sdl.KeymodShift))
-	if view.focusField != "name" {
-		t.Fatalf("Shift-Tab focused %q", view.focusField)
+	if view.focus != "name" {
+		t.Fatalf("Shift-Tab focused %q", view.focus)
 	}
 	if f := view.fields["password"]; f.display() != "••" {
 		t.Fatalf("a secret field shows %q", f.display())
@@ -819,8 +819,8 @@ view:show()`)
 	// A click on a field focuses it.
 	pass := view.fields["password"].rect
 	app.viewMouseButton(view, &sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: uint8(sdl.ButtonLeft), X: pass.X + 2, Y: pass.Y + 2})
-	if view.focusField != "password" {
-		t.Fatalf("clicking the password field focused %q", view.focusField)
+	if view.focus != "password" {
+		t.Fatalf("clicking the password field focused %q", view.focus)
 	}
 }
 

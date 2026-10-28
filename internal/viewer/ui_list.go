@@ -2,6 +2,7 @@ package viewer
 
 import (
 	"fmt"
+	"image/color"
 	"math"
 	"slices"
 	"strings"
@@ -28,7 +29,10 @@ type uiRow struct {
 	heading   bool          // a section title, drawn in the heading face; also disabled
 	button    bool          // drawn as a button, until selected
 	swatch    *config.Color // a colour sample drawn before the text
-	lua       lua.LValue    // the row a plugin gave, handed back to its callbacks
+	checkbox  bool          // a check box drawn before the text, checked with checked
+	checked   bool
+	cells     []string   // the text in each of the view's columns
+	lua       lua.LValue // the row a plugin gave, handed back to its callbacks
 }
 
 // splitHeader splits a panel header such as "Outline /query (3/10)" into
@@ -111,11 +115,18 @@ type uiView struct {
 	promptScroll [2]int
 	promptRect   sdl.FRect  // where its text was last drawn
 	promptLayout textLayout // its text as last drawn
-	// fields are the text fields drawBody has drawn, fieldOrder those it
-	// drew last, in order, and focusField the one typing goes to.
-	fields     map[string]*uiField
-	fieldOrder []string
-	focusField string
+	// fields are the text fields drawBody has drawn, and controls where
+	// it last drew its buttons and check boxes. focusOrder holds what it
+	// drew last that the keys can reach, in order, and focus the one they
+	// go to; pressedControl is a button or check box pressed and not yet
+	// let go.
+	fields         map[string]*uiField
+	controls       map[string]sdl.FRect
+	focusOrder     []string
+	focus          string
+	pressedControl string
+	// columns lay out rows' cells as a table.
+	columns []uiColumn
 
 	// keyHook has each key pressed while the view has the keys, but for
 	// those typed into it, before the list; it reports whether it took
@@ -138,12 +149,22 @@ type uiView struct {
 	// onInput runs as a field's text changes, and onSubmit on Enter in a
 	// field, or the prompt, whose id is empty.
 	onInput, onSubmit func(a *App, id, text string)
+	// onClick runs when a button or check box is clicked.
+	onClick func(a *App, id string)
+}
+
+// uiColumn is a column of a table of rows; see config.UIColumn.
+type uiColumn struct {
+	title string
+	width config.UISize
+	fill  bool
+	align string
 }
 
 // takesKeys reports whether a click gives a panel the keys: it has keys
 // of its own, or text to type.
 func (v *uiView) takesKeys() bool {
-	return v.keyHook != nil || v.prompt != "" || len(v.fieldOrder) > 0
+	return v.keyHook != nil || v.prompt != "" || len(v.focusOrder) > 0
 }
 
 type uiRowFilter struct {
@@ -276,13 +297,76 @@ func (a *App) viewInsets(view *uiView) (top, right, bottom, left float32) {
 	return a.insets(a.style(view.element).Padding.V)
 }
 
-// uiViewHeadHeight is how far view's rows or body start below its top.
+// uiViewHeadHeight is how far view's rows or body start below its top:
+// below its header, if it has one, and its columns' titles.
 func (a *App) uiViewHeadHeight(view *uiView) int {
+	head := a.modalListHeadHeight()
 	if view.headless {
 		top, _, _, _ := a.viewInsets(view)
-		return int(math.Round(float64(top)))
+		head = int(math.Round(float64(top)))
 	}
-	return a.modalListHeadHeight()
+	if view.hasColumnTitles() {
+		head += a.modalListRowHeight()
+	}
+	return head
+}
+
+func (v *uiView) hasColumnTitles() bool {
+	for _, c := range v.columns {
+		if c.title != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// columnSpans lays view's columns out from left to right: each fixed
+// column its width, a percentage being of the whole, and the rest shared
+// by the others, a gap between them.
+func (a *App) columnSpans(view *uiView, left, right int) [][2]int {
+	gap := a.ipx(12)
+	whole := right - left - gap*(len(view.columns)-1)
+	fixed, fills := 0, 0
+	widths := make([]int, len(view.columns))
+	for i, c := range view.columns {
+		if c.fill {
+			fills++
+			continue
+		}
+		widths[i] = int(math.Round(a.uiLength(c.width, float64(whole))))
+		fixed += widths[i]
+	}
+	for i, c := range view.columns {
+		if c.fill {
+			widths[i] = max(0, whole-fixed) / fills
+		}
+	}
+	spans := make([][2]int, len(widths))
+	x := left
+	for i, w := range widths {
+		spans[i] = [2]int{x, w}
+		x += w + gap
+	}
+	return spans
+}
+
+// drawCells draws a row's cells, or the columns' titles, in view's
+// columns from left to right.
+func (a *App) drawCells(renderer *sdl.Renderer, view *uiView, cells []string, left, right, baseline int, face font.Face, clr color.RGBA, bold bool) {
+	for i, span := range a.columnSpans(view, left, right) {
+		if i >= len(cells) {
+			break
+		}
+		text := truncateText(face, cells[i], span[1])
+		x := span[0]
+		switch view.columns[i].align {
+		case "center":
+			x += (span[1] - measureText(face, text)) / 2
+		case "right":
+			x += span[1] - measureText(face, text)
+		}
+		a.drawTextFace(renderer, text, x, baseline, clr, bold)
+	}
 }
 
 // viewBottomPadding is the space below view's last row.
@@ -544,6 +628,17 @@ func (a *App) drawUIViewContent(renderer *sdl.Renderer, view *uiView, rect sdl.F
 			return err
 		}
 	}
+	if view.hasColumnTitles() {
+		titles := make([]string, len(view.columns))
+		for i, c := range view.columns {
+			titles[i] = c.title
+		}
+		st := a.style(config.ElementRowDisabled)
+		box := a.viewRowBox(view, rect, int(rect.Y)+a.uiViewHeadHeight(view)-a.modalListRowHeight(), a.modalListRowHeight())
+		_, padRight, _, padLeft := a.insets(st.Padding.V)
+		baseline := int(box.Y) + a.modalListBaselineOffset(a.modalListRowHeight())
+		a.drawCells(renderer, view, titles, int(math.Round(float64(box.X+padLeft))), int(math.Round(float64(box.X+box.W-padRight))), baseline, a.styleFace(&st), a.textColor(&st, false), st.Bold.V)
+	}
 	drawRows := func() error {
 		if len(items) == 0 {
 			if view.drawBody != nil {
@@ -649,6 +744,13 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 				textX += advance
 				textWidth -= advance
 			}
+			if item.checkbox {
+				size := float32(a.uiLineHeight())
+				a.drawCheckbox(renderer, sdl.FRect{X: float32(textX), Y: float32(y) + (float32(rowHeight)-size)/2, W: size, H: size}, item.checked, false)
+				advance := int(size) + a.ipx(8)
+				textX += advance
+				textWidth -= advance
+			}
 			if item.key != "" {
 				if err := a.drawText(renderer, a.truncateModalListText(item.key, keyColumn), textX, baseline, a.textColor(&st, true)); err != nil {
 					return err
@@ -657,6 +759,10 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 			if keyColumn > 0 {
 				textX += keyColumn + a.ipx(16)
 				textWidth -= keyColumn + a.ipx(16)
+			}
+			if len(view.columns) > 0 && item.cells != nil {
+				a.drawCells(renderer, view, item.cells, textX, textEnd, baseline, face, a.textColor(&st, false), st.Bold.V)
+				continue
 			}
 			if err := a.drawTextFace(renderer, truncateText(face, text, textWidth), textX, baseline, a.textColor(&st, false), st.Bold.V); err != nil {
 				return err
@@ -727,6 +833,7 @@ func uiRowsFromConfig(rows []config.UIListRow) []uiRow {
 		result[i] = uiRow{
 			index: i, id: row.ID, text: row.Text, value: row.Value, secondary: row.Secondary, depth: row.Depth,
 			disabled: row.Disabled || row.Heading, key: row.Key, marker: row.Marker, heading: row.Heading, swatch: row.Swatch, lua: row.Lua,
+			button: row.Button, checkbox: row.Checkbox, checked: row.Checked, cells: row.Cells,
 		}
 	}
 	return result
