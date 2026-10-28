@@ -277,8 +277,9 @@ func elementDefaults(t *Theme, e Element) Style {
 		s.Text = some(paletteColor("accent", 1))
 		s.Bold = some(true)
 	case ElementButton:
+		// Filled softly, as rows are, rather than outlined.
 		s.Radius = some(corners(radius))
-		s.BorderWidth = some(1.0)
+		s.Fill = some(paletteColor("accent", 0.08))
 		s.Text = some(paletteColor("accent", 1))
 	case ElementScrollbar:
 		s.Shape = some(Shape{Kind: "pill"})
@@ -326,8 +327,7 @@ func elementDefaults(t *Theme, e Element) Style {
 	case ElementInputFocused:
 		s.BorderColor = some(paletteColor("accent", 1))
 	case ElementButtonFocused:
-		s.Fill = some(paletteColor("accent", 0.1))
-		s.BorderColor = some(paletteColor("accent", 1))
+		s.Fill = some(paletteColor("accent", 0.18))
 	case ElementCheck:
 		s.Radius = some(corners(radius / 4))
 		s.Fill = some(paletteColor("accent", 1))
