@@ -22,10 +22,17 @@ func TestLinkPreviewAppearsAfterDelayAndRequestsTiles(t *testing.T) {
 	if !app.previewShown() || view == nil || !view.visible || !app.pendingRedraw {
 		t.Fatal("preview not revealed after the delay")
 	}
-	// Drawn, the panel asks for the page's tiles at once, and keeps them
-	// wanted.
+	// Drawn, the panel notes the page's tiles, which are asked for once
+	// the render worker knows they are wanted, and kept wanted.
 	if err := app.drawViewBody(nil, view, app.uiViewBody(view), func() error { return nil }); err != nil {
 		t.Fatal(err)
+	}
+	if !app.canvasRendersUnasked() {
+		t.Fatal("the preview's tiles were asked for before the worker knew they were wanted")
+	}
+	app.prefetchVisiblePages()
+	if app.canvasRendersUnasked() {
+		t.Fatal("the prefetch did not ask for the preview's tiles")
 	}
 	requested := false
 	for key, req := range app.renderPending {
@@ -34,7 +41,6 @@ func TestLinkPreviewAppearsAfterDelayAndRequestsTiles(t *testing.T) {
 	if !requested {
 		t.Fatalf("no on-screen tiles requested for the previewed page: %v", app.renderPending)
 	}
-	app.prefetchVisiblePages()
 	for key := range app.canvas.tiles {
 		if _, pending := app.renderPending[key]; !pending {
 			t.Fatalf("the preview's tile %+v was let go by the prefetch", key)

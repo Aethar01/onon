@@ -716,7 +716,7 @@ view:show()`)
 	if app.message != "20x10 50x100" {
 		t.Fatalf("image and page sizes: %q", app.message)
 	}
-	if !app.canvas.thumbs[1] {
+	if _, ok := app.canvas.thumbs[1]; !ok {
 		t.Fatal("drawing page 2 did not want its thumbnail")
 	}
 	wanted, onScreen, protected := map[tileKey]bool{}, map[tileKey]bool{}, map[tileKey]bool{}

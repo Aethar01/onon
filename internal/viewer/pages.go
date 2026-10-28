@@ -249,6 +249,7 @@ func (a *App) prefetchVisiblePages() {
 	for _, c := range visible {
 		a.requestTile(c.key, c.rect, 0)
 	}
+	a.requestCanvasRenders()
 	if a.hasPendingVisibleRender() {
 		a.preemptNonVisibleRender(onScreen)
 		return

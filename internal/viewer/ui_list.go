@@ -644,7 +644,9 @@ func (a *App) drawUIViewContent(renderer *sdl.Renderer, view *uiView, rect sdl.F
 		box := a.viewRowBox(view, rect, int(rect.Y)+a.uiViewHeadHeight(view)-a.modalListRowHeight(), a.modalListRowHeight())
 		_, padRight, _, padLeft := a.insets(st.Padding.V)
 		baseline := int(box.Y) + a.modalListBaselineOffset(a.modalListRowHeight())
-		a.drawCells(renderer, view, titles, int(math.Round(float64(box.X+padLeft))), int(math.Round(float64(box.X+box.W-padRight))), baseline, a.styleFace(&st), a.textColor(&st, false), st.Bold.V)
+		// The titles line up with the cells, past the rows' prefix.
+		left := int(math.Round(float64(box.X+padLeft))) + a.rowPrefix(view, items, int(rect.W*0.35)).width()
+		a.drawCells(renderer, view, titles, left, int(math.Round(float64(box.X+box.W-padRight))), baseline, a.styleFace(&st), a.textColor(&st, false), st.Bold.V)
 	}
 	drawRows := func() error {
 		if len(items) == 0 {
@@ -682,7 +684,7 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 	rows = max(1, rows)
 	view.scroll = clampInt(view.scroll, 0, max(0, len(items)-rows))
 	offset := a.listOffset(view, rows, len(items))
-	keyColumn := a.keyColumnWidth(view, items, int(rect.W*0.35))
+	prefix := a.rowPrefix(view, items, int(rect.W*0.35))
 	// Rows sit where the offset puts them, those part-way out of the list
 	// cut off at its edges.
 	head := a.uiViewHeadHeight(view)
@@ -738,34 +740,30 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 			// The right-hand column gets at most 45% of a narrow row.
 			secondary := a.truncateModalListText(item.secondary, int(rect.W*0.45))
 			secondaryWidth := measureText(a.fontFace, secondary)
+			if !item.button {
+				// Every row leaves the room any row's swatch, check box or
+				// key takes, so their text lines up.
+				size := float32(a.uiLineHeight())
+				box := sdl.FRect{X: float32(textX), Y: float32(y) + (float32(rowHeight)-size)/2, W: size, H: size}
+				if item.swatch != nil {
+					swatchStyle := a.style(config.ElementSwatch)
+					swatchStyle.Fill.V = *item.swatch
+					a.drawBox(renderer, &swatchStyle, box)
+				}
+				box.X += float32(prefix.swatch)
+				if item.checkbox {
+					a.drawCheckbox(renderer, box, item.checked, false)
+				}
+				if item.key != "" {
+					if err := a.drawText(renderer, a.truncateModalListText(item.key, prefix.key), textX+prefix.swatch+prefix.checkbox, baseline, a.textColor(&st, true)); err != nil {
+						return err
+					}
+				}
+				textX += prefix.width()
+			}
 			textWidth := textEnd - textX
 			if secondary != "" {
 				textWidth -= secondaryWidth + a.ipx(12)
-			}
-			if item.swatch != nil {
-				swatchStyle := a.style(config.ElementSwatch)
-				swatchStyle.Fill.V = *item.swatch
-				size := float32(a.uiLineHeight())
-				a.drawBox(renderer, &swatchStyle, sdl.FRect{X: float32(textX), Y: float32(y) + (float32(rowHeight)-size)/2, W: size, H: size})
-				advance := int(size) + a.ipx(swatchStyle.Gap.V)
-				textX += advance
-				textWidth -= advance
-			}
-			if item.checkbox {
-				size := float32(a.uiLineHeight())
-				a.drawCheckbox(renderer, sdl.FRect{X: float32(textX), Y: float32(y) + (float32(rowHeight)-size)/2, W: size, H: size}, item.checked, false)
-				advance := int(size) + a.ipx(8)
-				textX += advance
-				textWidth -= advance
-			}
-			if item.key != "" {
-				if err := a.drawText(renderer, a.truncateModalListText(item.key, keyColumn), textX, baseline, a.textColor(&st, true)); err != nil {
-					return err
-				}
-			}
-			if keyColumn > 0 {
-				textX += keyColumn + a.ipx(16)
-				textWidth -= keyColumn + a.ipx(16)
 			}
 			if len(view.columns) > 0 && item.cells != nil {
 				a.drawCells(renderer, view, item.cells, textX, textEnd, baseline, face, a.textColor(&st, false), st.Bold.V)
@@ -785,6 +783,31 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 	return err
 }
 
+// listPrefix is the room the rows of a list leave before their text: for
+// a swatch, a check box and the key column, each where any row has one.
+type listPrefix struct{ swatch, checkbox, key, keyGap int }
+
+func (p listPrefix) width() int { return p.swatch + p.checkbox + p.key + p.keyGap }
+
+// rowPrefix measures the room the rows of items leave before their text,
+// the key column at most keyLimit wide.
+func (a *App) rowPrefix(view *uiView, items []uiRow, keyLimit int) listPrefix {
+	var p listPrefix
+	size := a.uiLineHeight()
+	for _, item := range items {
+		if item.swatch != nil {
+			p.swatch = size + a.ipx(a.style(config.ElementSwatch).Gap.V)
+		}
+		if item.checkbox {
+			p.checkbox = size + a.ipx(8)
+		}
+	}
+	if p.key = a.keyColumnWidth(view, items, keyLimit); p.key > 0 {
+		p.keyGap = a.ipx(16)
+	}
+	return p
+}
+
 // keyColumnWidth is the width of the key column: the widest key of items,
 // at most limit, or 0 with no keys. It is measured once for each list of
 // items view shows.
@@ -793,7 +816,7 @@ func (a *App) keyColumnWidth(view *uiView, items []uiRow, limit int) int {
 	if k.face != a.fontFace || len(k.rows) != len(items) || len(items) > 0 && &k.rows[0] != &items[0] {
 		*k = uiKeyWidth{rows: items, face: a.fontFace}
 		for _, item := range items {
-			if item.key != "" {
+			if item.key != "" && !item.button {
 				k.width = max(k.width, measureText(a.fontFace, item.key))
 			}
 		}

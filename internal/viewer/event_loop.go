@@ -521,6 +521,11 @@ func (a *App) drawFrame() error {
 	// A view's text fields are known once drawn, and typing into them
 	// needs text input on before the first key.
 	a.syncTextInput()
+	// What canvases drew of pages is asked for at once, not left until
+	// the next event.
+	if a.canvasRendersUnasked() {
+		a.prefetchVisiblePages()
+	}
 	a.drawAutoscrollMarker(a.renderer) // over a menu it scrolls
 	if err := a.drawTitleBar(a.renderer); err != nil {
 		return err

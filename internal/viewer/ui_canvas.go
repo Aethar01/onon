@@ -32,11 +32,12 @@ type canvasCache struct {
 	faces  map[canvasFaceKey]font.Face
 	lines  map[canvasLinesKey]canvasLines
 	images map[string]*canvasImage
-	// thumbs are the pages canvases drew this frame, which the renderer
-	// keeps thumbnails of, and tiles the tiles of parts of pages they drew;
-	// see prefetchVisiblePages.
-	thumbs map[int]bool
-	tiles  map[tileKey]bool
+	// thumbs are the pages canvases drew this frame, with the render a
+	// sharper thumbnail needs, if one does, and tiles the tiles of parts of
+	// pages they drew. Drawing notes them; prefetchVisiblePages asks for
+	// them, once it has told the render worker they are wanted.
+	thumbs map[int]renderRequest
+	tiles  map[tileKey]image.Rectangle
 }
 
 const (
@@ -466,21 +467,54 @@ func (c *elementCanvas) Page(page int, x, y, w, h float64, area *config.PageArea
 	return w, h
 }
 
-// wantThumbnail asks for a thumbnail of page at scale device pixels to
-// the point, if the one kept is not as sharp or not current, and keeps it
-// wanted while canvases draw it.
+// wantThumbnail notes a thumbnail of page at scale device pixels to the
+// point, kept wanted while canvases draw it, and rendered if the one kept
+// is not as sharp or not current.
 func (a *App) wantThumbnail(page int, scale float64) {
 	bounds := a.pageMetrics[page].bounds
 	scale = math.Min(scale, overviewThumbLongSide/math.Max(1, math.Max(float64(bounds.X1-bounds.X0), float64(bounds.Y1-bounds.Y0))))
 	if a.canvas.thumbs == nil {
-		a.canvas.thumbs = map[int]bool{}
+		a.canvas.thumbs = map[int]renderRequest{}
 	}
-	a.canvas.thumbs[page] = true
 	version := a.tileVersion(page)
 	if thumb, ok := a.cache.get(thumbnailKey(page)); ok && thumb.scale >= scale*renderUpgradeTolerance && thumb.version == version {
+		a.canvas.thumbs[page] = renderRequest{}
 		return
 	}
-	a.queueRender(renderRequest{key: thumbnailKey(page), scale: scale, rect: mupdf.DeviceRect(bounds, scale), version: version}, 0)
+	if req := a.canvas.thumbs[page]; req.scale < scale {
+		a.canvas.thumbs[page] = renderRequest{key: thumbnailKey(page), scale: scale, rect: mupdf.DeviceRect(bounds, scale), version: version}
+	}
+}
+
+// requestCanvasRenders asks for the thumbnails and tiles canvases drew that
+// are not yet kept, once the render worker knows they are wanted.
+func (a *App) requestCanvasRenders() {
+	for _, req := range a.canvas.thumbs {
+		if req.scale > 0 {
+			a.queueRender(req, 0)
+		}
+	}
+	for key, rect := range a.canvas.tiles {
+		a.requestTile(key, rect, 0)
+	}
+}
+
+// canvasRendersUnasked reports whether canvases drew a thumbnail or tile
+// that is neither kept nor asked for.
+func (a *App) canvasRendersUnasked() bool {
+	for _, req := range a.canvas.thumbs {
+		if _, pending := a.renderPending[req.key]; req.scale > 0 && !pending {
+			return true
+		}
+	}
+	for key := range a.canvas.tiles {
+		_, cached := a.cache.get(key)
+		_, pending := a.renderPending[key]
+		if !cached && !pending {
+			return true
+		}
+	}
+	return false
 }
 
 // addCanvasRenders adds the thumbnails and tiles canvases drew to those
@@ -513,12 +547,10 @@ func (c *elementCanvas) pageArea(page int, box sdl.FRect, area config.PageArea) 
 	version := a.tileVersion(page)
 	pageRect := mupdf.DeviceRect(a.pageMetrics[page].bounds, renderScale)
 	if a.canvas.tiles == nil {
-		a.canvas.tiles = map[tileKey]bool{}
+		a.canvas.tiles = map[tileKey]image.Rectangle{}
 	}
 	for _, pt := range tilesCovering(pageRect, pageDeviceAreaAt(t, x, y, box, renderScale)) {
-		key := tileKey{page: page, scale: renderScale, x: pt.X, y: pt.Y, version: version}
-		a.canvas.tiles[key] = true
-		a.requestTile(key, tileRect(pageRect, pt.X, pt.Y), 0)
+		a.canvas.tiles[tileKey{page: page, scale: renderScale, x: pt.X, y: pt.Y, version: version}] = tileRect(pageRect, pt.X, pt.Y)
 	}
 	if c.renderer == nil {
 		return
