@@ -344,11 +344,25 @@ func (c *recordingCanvas) Fill(path []PathOp, clr Color) {
 func (c *recordingCanvas) Stroke(path []PathOp, clr Color, width float64) {
 	c.calls = append(c.calls, "stroke "+FormatPath(path)+" "+formatStyleColor(clr)+" "+formatNumber(width))
 }
-func (c *recordingCanvas) Text(x, y float64, text string, clr Color, bold bool) float64 {
+func (c *recordingCanvas) Text(x, y float64, text string, clr Color, o TextOptions) (float64, float64) {
 	c.calls = append(c.calls, "text "+text)
-	return 42
+	return 42, 16
 }
-func (c *recordingCanvas) Measure(text string, bold bool) (float64, float64) { return 10, 16 }
+func (c *recordingCanvas) Measure(text string, o TextOptions) (float64, float64) { return 10, 16 }
+func (c *recordingCanvas) Clip(x, y, w, h float64)                               { c.calls = append(c.calls, "clip") }
+func (c *recordingCanvas) Unclip()                                               { c.calls = append(c.calls, "unclip") }
+func (c *recordingCanvas) Image(path string, x, y, w, h float64) (float64, float64, error) {
+	c.calls = append(c.calls, "image "+filepath.Base(path))
+	return w, h, nil
+}
+func (c *recordingCanvas) Page(page int, x, y, w, h float64) (float64, float64) {
+	c.calls = append(c.calls, "page "+formatNumber(float64(page)))
+	return w, h
+}
+func (c *recordingCanvas) Region(id lua.LValue, x, y, w, h float64) bool {
+	c.calls = append(c.calls, "region "+id.String())
+	return false
+}
 
 func TestDrawFunctionDrawsOnTheCanvas(t *testing.T) {
 	rt := mustLoadThemeTestConfig(t, `

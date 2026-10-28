@@ -105,6 +105,12 @@ type uiView struct {
 	// drawBody draws the view below its header in place of its rows, which
 	// drawRows draws.
 	drawBody func(a *App, renderer *sdl.Renderer, body sdl.FRect, drawRows func() error) error
+	// regions are those drawBody last named, and extent how far below the
+	// body's top it drew, which scrollPx scrolls into it; all in output
+	// pixels.
+	regions  []uiRegion
+	extent   float64
+	scrollPx float64
 }
 
 type uiRowFilter struct {
@@ -331,6 +337,7 @@ func (a *App) removeStaleLuaViews(generation int) {
 			continue
 		}
 		delete(a.views.views, id)
+		a.canvas.clearImages() // a reloaded plugin may have changed its images
 		if view.visible && view.place.dock != "" {
 			a.relayoutWithViewportAnchor(func() { a.views.close(view) })
 		} else {

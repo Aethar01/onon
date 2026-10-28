@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	lua "github.com/yuin/gopher-lua"
 )
@@ -126,9 +127,33 @@ type Canvas interface {
 	Default()
 	Fill(path []PathOp, c Color)
 	Stroke(path []PathOp, c Color, width float64)
-	// Text draws text with the top of its line at y, returning its width.
-	Text(x, y float64, text string, c Color, bold bool) float64
-	Measure(text string, bold bool) (w, h float64)
+	// Text draws text with the top of its first line at y, returning the
+	// size it takes.
+	Text(x, y float64, text string, c Color, opts TextOptions) (w, h float64)
+	Measure(text string, opts TextOptions) (w, h float64)
+	// Clip limits drawing to a rect, within the clip the canvas was given,
+	// until Unclip.
+	Clip(x, y, w, h float64)
+	Unclip()
+	// Image draws the image file at path over a rect, a width or height
+	// of 0 keeping its proportions, returning the size it took.
+	Image(path string, x, y, w, h float64) (float64, float64, error)
+	// Page draws a page (0-based) fitted to a rect, a height of 0 keeping
+	// its proportions, returning the size it took.
+	Page(page int, x, y, w, h float64) (float64, float64)
+	// Region names a rect for the pointer events over it, reporting
+	// whether the pointer is over it.
+	Region(id lua.LValue, x, y, w, h float64) bool
+}
+
+// TextOptions are how a canvas draws text. Size is in logical pixels, the
+// UI font's when 0. With Width, text is wrapped to it, or truncated if
+// Wrap is false, and aligned within it; without, Align places text's
+// left, centre or right at x.
+type TextOptions struct {
+	Bold, Mono, Wrap bool
+	Size, Width      float64
+	Align            string // left, center or right
 }
 
 // DrawState is what a draw function is told about the element it draws.
@@ -137,6 +162,7 @@ type DrawState struct {
 	X, Y, W, H float64 // the box, in logical pixels from the window's top left
 	Alt        bool    // whether alternate-color mode is on
 	Time       float64 // seconds since onon started, for drawing that moves
+	Scroll     float64 // how far a view's body is scrolled, in logical pixels
 }
 
 const luaCanvasType = "onon.canvas"
@@ -146,7 +172,8 @@ const luaCanvasType = "onon.canvas"
 type drawCache struct {
 	canvas     *lua.LUserData
 	box, state *lua.LTable
-	depth      int // the draw functions running
+	depth      int    // the draw functions running
+	dir        string // where image paths not absolute are from
 	colors     map[string]Color
 	paths      map[string][]PathOp
 }
@@ -188,8 +215,14 @@ func (c *drawCache) path(s string) ([]PathOp, error) {
 // box and state are the same tables on every call, saving their garbage
 // on every frame.
 func (r *Runtime) RunDraw(fn *lua.LFunction, canvas Canvas, state DrawState) error {
+	_, err := r.runDraw(fn, canvas, state, 0)
+	return err
+}
+
+// runDraw runs a draw function, returning what it returned when nret is 1.
+func (r *Runtime) runDraw(fn *lua.LFunction, canvas Canvas, state DrawState, nret int) (lua.LValue, error) {
 	if r == nil || r.state == nil {
-		return fmt.Errorf("no Lua state")
+		return lua.LNil, fmt.Errorf("no Lua state")
 	}
 	L := r.state
 	ud := r.draw.canvas
@@ -200,6 +233,10 @@ func (r *Runtime) RunDraw(fn *lua.LFunction, canvas Canvas, state DrawState) err
 	}
 	if r.draw.box == nil {
 		r.draw.box, r.draw.state = L.NewTable(), L.NewTable()
+	}
+	r.draw.dir = ""
+	if r.cfg.ConfigPath != "" {
+		r.draw.dir = filepath.Dir(r.cfg.ConfigPath)
 	}
 	box, st := r.draw.box, r.draw.state
 	// A draw run from another, as a row's is from a view's canvas:default(),
@@ -220,7 +257,48 @@ func (r *Runtime) RunDraw(fn *lua.LFunction, canvas Canvas, state DrawState) err
 	st.RawSetString("element", lua.LString(state.Element.String()))
 	st.RawSetString("alt", lua.LBool(state.Alt))
 	st.RawSetString("time", lua.LNumber(state.Time))
-	return r.callLua(lua.P{Fn: fn, NRet: 0, Protect: true}, ud, box, st)
+	st.RawSetString("scroll", lua.LNumber(state.Scroll))
+	ret := lua.LValue(lua.LNil)
+	err := r.doLua(func() error {
+		if err := L.CallByParam(lua.P{Fn: fn, NRet: nret, Protect: true}, ud, box, st); err != nil {
+			return err
+		}
+		if nret > 0 {
+			ret = L.Get(-1)
+			L.Pop(nret)
+		}
+		return nil
+	})
+	return ret, err
+}
+
+// luaTextOptions reads canvas text options at n: true for bold, or a table
+// of bold, mono, size, width, wrap and align.
+func luaTextOptions(L *lua.LState, n int) TextOptions {
+	switch v := L.Get(n).(type) {
+	case lua.LBool:
+		return TextOptions{Bold: bool(v)}
+	case *lua.LTable:
+		o := TextOptions{
+			Bold:  lua.LVAsBool(v.RawGetString("bold")),
+			Mono:  lua.LVAsBool(v.RawGetString("mono")),
+			Wrap:  lua.LVAsBool(v.RawGetString("wrap")),
+			Size:  float64(lua.LVAsNumber(v.RawGetString("size"))),
+			Width: float64(lua.LVAsNumber(v.RawGetString("width"))),
+			Align: lua.LVAsString(v.RawGetString("align")),
+		}
+		if o.Align != "" && o.Align != "left" && o.Align != "center" && o.Align != "right" {
+			L.ArgError(n, "align is left, center or right")
+		}
+		if o.Size < 0 || o.Width < 0 {
+			L.ArgError(n, "size and width cannot be negative")
+		}
+		return o
+	case *lua.LNilType:
+		return TextOptions{}
+	}
+	L.ArgError(n, "expected true for bold, or a table of text options")
+	return TextOptions{}
 }
 
 func luaCanvasMetatable(L *lua.LState, cache *drawCache) *lua.LTable {
@@ -283,14 +361,56 @@ func luaCanvasMetatable(L *lua.LState, cache *drawCache) *lua.LTable {
 		},
 		"text": func(L *lua.LState) int {
 			c := check(L)
-			L.Push(lua.LNumber(c.Text(float64(L.CheckNumber(2)), float64(L.CheckNumber(3)), L.CheckString(4), color(L, 5), L.OptBool(6, false))))
-			return 1
-		},
-		"measure": func(L *lua.LState) int {
-			w, h := check(L).Measure(L.CheckString(2), L.OptBool(3, false))
+			w, h := c.Text(float64(L.CheckNumber(2)), float64(L.CheckNumber(3)), L.CheckString(4), color(L, 5), luaTextOptions(L, 6))
 			L.Push(lua.LNumber(w))
 			L.Push(lua.LNumber(h))
 			return 2
+		},
+		"measure": func(L *lua.LState) int {
+			w, h := check(L).Measure(L.CheckString(2), luaTextOptions(L, 3))
+			L.Push(lua.LNumber(w))
+			L.Push(lua.LNumber(h))
+			return 2
+		},
+		"clip": func(L *lua.LState) int {
+			c := check(L)
+			if L.GetTop() < 2 {
+				c.Unclip()
+				return 0
+			}
+			c.Clip(float64(L.CheckNumber(2)), float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), float64(L.CheckNumber(5)))
+			return 0
+		},
+		"image": func(L *lua.LState) int {
+			c := check(L)
+			path := L.CheckString(2)
+			if !filepath.IsAbs(path) && cache.dir != "" {
+				path = filepath.Join(cache.dir, path)
+			}
+			w, h, err := c.Image(path, float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), float64(L.OptNumber(5, 0)), float64(L.OptNumber(6, 0)))
+			if err != nil {
+				L.ArgError(2, err.Error())
+			}
+			L.Push(lua.LNumber(w))
+			L.Push(lua.LNumber(h))
+			return 2
+		},
+		"page": func(L *lua.LState) int {
+			c := check(L)
+			page := L.CheckInt(2)
+			if page < 1 {
+				L.ArgError(2, "pages start at 1")
+			}
+			w, h := c.Page(page-1, float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), float64(L.CheckNumber(5)), float64(L.OptNumber(6, 0)))
+			L.Push(lua.LNumber(w))
+			L.Push(lua.LNumber(h))
+			return 2
+		},
+		"region": func(L *lua.LState) int {
+			c := check(L)
+			id := L.CheckAny(2)
+			L.Push(lua.LBool(c.Region(id, float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), float64(L.CheckNumber(5)), float64(L.CheckNumber(6)))))
+			return 1
 		},
 		"path": func(L *lua.LState) int {
 			ud, _ := newLuaPath(L)

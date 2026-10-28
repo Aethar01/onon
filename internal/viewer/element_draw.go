@@ -36,7 +36,9 @@ func (a *App) drawElement(renderer *sdl.Renderer, st *config.Style, rect sdl.FRe
 		Alt:  a.altColors,
 		Time: time.Since(startTime).Seconds(),
 	}
-	if err := a.runtime.RunDraw(st.Draw.V, canvas, state); err != nil {
+	err := a.runtime.RunDraw(st.Draw.V, canvas, state)
+	canvas.Unclip()
+	if err != nil {
 		a.reportThemeError(st.Draw.V, "theme draw "+st.Element.String(), err)
 		if !canvas.drewDefault {
 			canvas.Default()
@@ -45,7 +47,8 @@ func (a *App) drawElement(renderer *sdl.Renderer, st *config.Style, rect sdl.FRe
 	return canvas.drewDefault
 }
 
-// elementCanvas is the canvas a draw function draws an element's box on.
+// elementCanvas is the canvas a draw function draws an element's box, or
+// a plugin's view, on.
 type elementCanvas struct {
 	app         *App
 	renderer    *sdl.Renderer
@@ -53,6 +56,16 @@ type elementCanvas struct {
 	box         sdl.Rect
 	drawDefault func()
 	drewDefault bool
+	// clip is the canvas's own clip, while clipped.
+	clip    sdl.Rect
+	clipped bool
+	// view is the view the canvas draws, if it draws one, and pointerOver
+	// whether the pointer is over it, for its regions.
+	view        *uiView
+	pointerOver bool
+	// extent is how far below the box's top the canvas has drawn, in
+	// output pixels.
+	extent float64
 }
 
 func (c *elementCanvas) Default() {
@@ -61,6 +74,10 @@ func (c *elementCanvas) Default() {
 	}
 	c.drewDefault = true
 	c.drawDefault()
+	// What the default drew clipped itself, leaving the clip it found.
+	if c.clipped && c.renderer != nil {
+		sdl.SetRenderClipRect(c.renderer, &c.clip)
+	}
 }
 
 func (c *elementCanvas) Fill(path []config.PathOp, clr config.Color) {
@@ -80,11 +97,12 @@ func (c *elementCanvas) drawPath(path []config.PathOp, clr config.Color, stroke 
 	if len(path) == 0 || c.box.W <= 0 || c.box.H <= 0 {
 		return
 	}
+	ops, bounds := fitPath(path, float32(c.box.W), float32(c.box.H), c.app.px(1))
+	c.extend(float64(bounds.Y + bounds.H))
 	rgba := c.app.styleColor(clr, c.style.Opacity.V)
-	if rgba.A == 0 {
+	if rgba.A == 0 || c.renderer == nil {
 		return
 	}
-	ops, bounds := fitPath(path, float32(c.box.W), float32(c.box.H), c.app.px(1))
 	shape := boxShape{Shape: config.Shape{Kind: "path"}, ops: c.app.pathKeys.pack(ops), scale: 1}
 	spec := maskSpec{shape: shape, w: bounds.W, h: bounds.H, stroke: stroke}
 	c.app.drawMask(c.renderer, spec, c.box.X+bounds.X, c.box.Y+bounds.Y, rgba)
@@ -195,30 +213,4 @@ func unpackPath(packed string) []config.PathOp {
 		ops = append(ops, op)
 	}
 	return ops
-}
-
-func (c *elementCanvas) Text(x, y float64, text string, clr config.Color, bold bool) float64 {
-	face := c.app.fontFace
-	if bold {
-		face = c.app.headingFont()
-	}
-	if face == nil {
-		return 0
-	}
-	left := int(c.box.X) + int(math.Round(float64(c.app.px(x))))
-	baseline := int(c.box.Y) + int(math.Round(float64(c.app.px(y)))) + face.Metrics().Ascent.Ceil()
-	c.app.drawTextFace(c.renderer, text, left, baseline, c.app.styleColor(clr, c.style.Opacity.V), bold)
-	return float64(measureText(face, text)) / float64(c.app.px(1))
-}
-
-func (c *elementCanvas) Measure(text string, bold bool) (w, h float64) {
-	face := c.app.fontFace
-	if bold {
-		face = c.app.headingFont()
-	}
-	if face == nil {
-		return 0, 0
-	}
-	scale := float64(c.app.px(1))
-	return float64(measureText(face, text)) / scale, float64(c.app.uiLineHeight()) / scale
 }

@@ -72,6 +72,12 @@ func (a *App) SetUIScroll(id string, scroll int) {
 	if view == nil {
 		return
 	}
+	if view.drawBody != nil && len(view.rows) == 0 {
+		// what a view draws scrolls by logical pixels
+		view.scrollPx = 0
+		a.scrollLuaViewBy(view, float64(scroll)*float64(a.px(1)))
+		return
+	}
 	_, rows := view.contentGeometry(a)
 	view.scroll = clampInt(scroll, 0, max(0, len(view.visibleRows())-rows))
 	a.pendingRedraw = true
@@ -101,6 +107,9 @@ func (a *App) UIScroll(id string) int {
 	view := a.views.views[id]
 	if view == nil {
 		return 0
+	}
+	if view.drawBody != nil && len(view.rows) == 0 {
+		return int(math.Round(view.scrollPx / float64(a.px(1))))
 	}
 	return view.scroll
 }
@@ -312,14 +321,16 @@ func (a *App) createLuaView(spec config.UIOverlay) *uiView {
 		}
 		return a.handleGenericUIViewKey(view, e)
 	}
-	if spec.OnAction != "" {
-		view.onAction = func(a *App, _ *uiView, action string) bool {
-			handled, err := a.runtime.RunUIAction(spec.OnAction, action)
-			a.afterLuaViewCallback("ui_action", err)
-			return handled
-		}
-	}
 	a.setLuaViewMouse(view, spec.OnMouse)
+	view.onAction = func(a *App, view *uiView, action string) bool {
+		if spec.OnAction != "" {
+			handled, err := a.runtime.RunUIAction(spec.OnAction, action)
+			if a.afterLuaViewCallback("ui_action", err); handled {
+				return true
+			}
+		}
+		return a.luaViewScrollAction(view, action)
+	}
 	if spec.OnSelect != "" {
 		view.onSelect = func(a *App, row uiRow) {
 			a.afterLuaViewCallback("ui_select", a.runtime.RunUIRow(spec.OnSelect, luaRowRef(row)))
@@ -542,9 +553,11 @@ func (a *App) luaViewGeometry(view *uiView, fit bool) (sdl.FRect, int) {
 }
 
 // drawLuaViewBody draws a view's body with its plugin's draw function,
-// canvas:default() drawing its rows. If the function fails, the error is
-// reported once, the rows are drawn in its place, and it is not called
-// again until the configuration changes.
+// canvas:default() drawing its rows. What it draws below the body scrolls
+// into it. If the function fails, the error is reported once, the rows
+// are drawn in its place, and it is not called again until the
+// configuration changes. A function that returns true is drawn again on
+// the next frame.
 func (a *App) drawLuaViewBody(view *uiView, callback string, renderer *sdl.Renderer, body sdl.FRect, drawRows func() error) error {
 	if a.themeErrors[view] {
 		return drawRows()
@@ -554,34 +567,83 @@ func (a *App) drawLuaViewBody(view *uiView, callback string, renderer *sdl.Rende
 	st := a.style(config.ElementPanel)
 	st.Opacity.V = 1
 	var rowsErr error
-	canvas := &elementCanvas{app: a, renderer: renderer, style: &st, box: pixelRect(body), drawDefault: func() { rowsErr = drawRows() }}
+	box := pixelRect(body)
+	box.Y -= int32(math.Round(view.scrollPx))
+	canvas := &elementCanvas{
+		app: a, renderer: renderer, style: &st, box: box, drawDefault: func() { rowsErr = drawRows() },
+		view: view, pointerOver: a.viewUnderPointer() == view,
+	}
+	view.regions = view.regions[:0]
 	scale := float64(a.px(1))
 	state := config.DrawState{
 		Element: config.ElementPanel,
 		X:       float64(body.X) / scale, Y: float64(body.Y) / scale,
 		W: float64(body.W) / scale, H: float64(body.H) / scale,
-		Alt:  a.altColors,
-		Time: time.Since(startTime).Seconds(),
+		Alt:    a.altColors,
+		Time:   time.Since(startTime).Seconds(),
+		Scroll: view.scrollPx / scale,
 	}
-	if err := a.runtime.RunUIDraw(callback, canvas, state); err != nil {
+	err := a.withClip(renderer, body, func() error {
+		again, err := a.runtime.RunUIDraw(callback, canvas, state)
+		canvas.Unclip()
+		if again {
+			a.pendingRedraw = true
+		}
+		return err
+	})
+	if err != nil {
 		a.reportThemeError(view, "ui draw", err)
 		canvas.Default()
 	}
+	view.extent = canvas.extent
+	if overflow := view.extent - float64(body.H); overflow > 0 {
+		view.scrollPx = clampFloat(view.scrollPx, 0, overflow)
+		thumb := sdl.FRect{Y: body.Y + float32(view.scrollPx/view.extent)*body.H, H: body.H * body.H / float32(view.extent)}
+		a.drawScrollbarThumb(renderer, body, thumb)
+	} else {
+		view.scrollPx = 0
+	}
 	return rowsErr
+}
+
+// scrollLuaViewBy scrolls what a view's draw function draws by delta
+// output pixels, reporting whether it had that to scroll.
+func (a *App) scrollLuaViewBy(view *uiView, delta float64) bool {
+	overflow := view.extent - float64(a.uiViewBody(view).H)
+	if view.drawBody == nil || overflow <= 0 {
+		return false
+	}
+	view.scrollPx = clampFloat(view.scrollPx+delta, 0, overflow)
+	a.pendingRedraw = true
+	return true
+}
+
+// luaViewScrollAction scrolls a view's drawn body for the actions that
+// move a list, reporting whether action was one.
+func (a *App) luaViewScrollAction(view *uiView, action string) bool {
+	if len(view.rows) > 0 {
+		return false
+	}
+	line, page := float64(3*a.uiLineHeight()), float64(a.uiViewBody(view).H)
+	delta := map[string]float64{
+		"scroll_down": line, "scroll_up": -line, "next_page": page, "prev_page": -page,
+		"last_page": view.extent, "first_page": -view.extent,
+	}
+	d, ok := delta[action]
+	return ok && a.scrollLuaViewBy(view, d)
 }
 
 // setLuaViewMouse gives view's pointer events in its frame to the plugin's
 // on_mouse first, and those after a press in it until the release. The
 // view hears when the pointer leaves it, and events on_mouse does not
-// take go to the list.
+// take go to the list, or scroll what the view draws. A view that draws
+// is drawn again as the pointer moves over it, for its regions.
 func (a *App) setLuaViewMouse(view *uiView, callback string) {
-	view.onMouseButton = func(a *App, e *sdl.MouseButtonEvent) bool { return a.handleGenericUIViewMouseButton(view, e) }
-	view.onMouseMotion = func(a *App, e *sdl.MouseMotionEvent) bool { return a.handleGenericUIViewMouseMotion(view, e) }
-	if callback == "" {
-		return
-	}
 	pressed, hovering := false, false
 	run := func(a *App, ev config.UIMouseEvent) bool {
+		if callback == "" {
+			return false
+		}
 		handled, err := a.runtime.RunUIMouse(callback, ev)
 		a.afterLuaViewCallback("ui_mouse", err)
 		return handled
@@ -606,6 +668,7 @@ func (a *App) setLuaViewMouse(view *uiView, callback string) {
 		ev, inside := a.luaViewMouseEvent(view, e.X, e.Y)
 		left := hovering && !inside && !pressed
 		hovering = inside
+		redraw := view.drawBody != nil && (inside || left)
 		if inside || pressed {
 			ev.Type = "move"
 			if run(a, ev) {
@@ -615,7 +678,7 @@ func (a *App) setLuaViewMouse(view *uiView, callback string) {
 			ev.Type = "leave"
 			run(a, ev)
 		}
-		return a.handleGenericUIViewMouseMotion(view, e) || left
+		return a.handleGenericUIViewMouseMotion(view, e) || redraw
 	}
 	view.onWheel = func(a *App, e *sdl.MouseWheelEvent) bool {
 		ev, inside := a.luaViewMouseEvent(view, e.MouseX, e.MouseY)
@@ -624,18 +687,23 @@ func (a *App) setLuaViewMouse(view *uiView, callback string) {
 		}
 		wx, wy := normalizedWheelDeltas(e)
 		ev.Type, ev.DX, ev.DY = "wheel", float64(wx), -float64(wy)
-		return run(a, ev)
+		return run(a, ev) || a.scrollLuaViewBy(view, -float64(wy)*float64(3*a.uiLineHeight()))
 	}
 }
 
 // luaViewMouseEvent is the pointer at x, y in the window as on_mouse is
-// told of it, in logical pixels from the top left of view's body, and
-// whether it is in view's frame.
+// told of it, in logical pixels from the top left of what view's body
+// draws, scrolled, with the region there, and whether it is in view's
+// frame.
 func (a *App) luaViewMouseEvent(view *uiView, x, y float32) (config.UIMouseEvent, bool) {
 	frame, _ := view.frameGeometry(a)
 	body := a.uiViewBody(view)
 	scale := float64(a.px(1))
-	ev := config.UIMouseEvent{X: float64(x-body.X) / scale, Y: float64(y-body.Y) / scale}
+	ev := config.UIMouseEvent{
+		X:      float64(x-body.X) / scale,
+		Y:      (float64(y-body.Y) + view.scrollPx) / scale,
+		Region: view.regionAt(x, y),
+	}
 	return ev, pointInRect(int(x), int(y), frame)
 }
 

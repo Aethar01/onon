@@ -1,6 +1,9 @@
 package viewer
 
 import (
+	"bytes"
+	"image"
+	"image/png"
 	"math"
 	"os"
 	"path/filepath"
@@ -11,6 +14,7 @@ import (
 	"onon/internal/config"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
+	"golang.org/x/image/font/basicfont"
 )
 
 func TestLuaUIViewNormalizesInitialFilteredSelection(t *testing.T) {
@@ -580,5 +584,150 @@ onon.ui.create({ modal = false, anchor = { page = 2, x = 10, y = 20 }, width = 5
 	app.scrollBy(0, 30)
 	if after, _ := page.frameGeometry(app); after.Y != before.Y-30 {
 		t.Fatalf("pinned view did not scroll with its page: %v then %v", before.Y, after.Y)
+	}
+}
+
+func TestCanvasTextLines(t *testing.T) {
+	app := testLayoutApp(0)
+	face := basicfont.Face7x13 // 7 pixels a character
+	laid := app.canvasTextLines(face, "hello world foo\nabcdefghijklmnop", config.TextOptions{Width: 77, Wrap: true})
+	want := []string{"hello world", "foo", "abcdefghijk", "lmnop"}
+	if strings.Join(laid.lines, "|") != strings.Join(want, "|") || laid.width != 77 {
+		t.Fatalf("wrapped lines %q width %d, want %q", laid.lines, laid.width, want)
+	}
+	laid = app.canvasTextLines(face, "hello world foo", config.TextOptions{Width: 77})
+	if len(laid.lines) != 1 || !strings.HasSuffix(laid.lines[0], "...") || laid.width > 77 {
+		t.Fatalf("truncated line %q width %d", laid.lines, laid.width)
+	}
+}
+
+// drawLuaView draws app's open view's body without a renderer, as a frame
+// would.
+func drawLuaView(t *testing.T, app *App, view *uiView) {
+	t.Helper()
+	if err := view.drawBody(app, nil, app.uiViewBody(view), func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLuaUIDrawnBodyScrolls(t *testing.T) {
+	app := luaUITestApp(t, "")
+	app.fontFace = basicfont.Face7x13
+	evalLua(t, app, `
+view = onon.ui.create({
+  width = 200, height = 100,
+  draw = function(canvas, box, state)
+    local w, h = canvas:measure("a\nb", { width = 50 })
+    assert(h == 26, "two lines of 13: " .. h)
+    canvas:rect(0, 0, box.w, 500, "accent")
+  end,
+  on_mouse = function(ev) onon.message(ev.type .. " " .. ev.y) end,
+})
+view:show()`)
+	view := app.activeUIView()
+	drawLuaView(t, app, view)
+	body := app.uiViewBody(view)
+	if view.extent != 500 {
+		t.Fatalf("extent = %v, want 500", view.extent)
+	}
+	view.onWheel(app, &sdl.MouseWheelEvent{Y: -1, MouseX: body.X + 5, MouseY: body.Y + 5})
+	if view.scrollPx <= 0 {
+		t.Fatal("the wheel did not scroll the drawn body")
+	}
+	evalLua(t, app, `view:set_scroll(1000)`)
+	if want := 500 - float64(body.H); view.scrollPx != want {
+		t.Fatalf("scrolled past the end: %v, want %v", view.scrollPx, want)
+	}
+	evalLua(t, app, `onon.message(tostring(view:scroll()))`)
+	if want := strconv.Itoa(int(500 - body.H)); app.message != want {
+		t.Fatalf("view:scroll() = %s, want %s", app.message, want)
+	}
+	view.onMouseButton(app, &sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: uint8(sdl.ButtonLeft), X: body.X + 5, Y: body.Y + 5})
+	if want := "press " + strconv.Itoa(int(500-body.H)+5); app.message != want {
+		t.Fatalf("on_mouse in scrolled content: %q, want %q", app.message, want)
+	}
+	app.runUIViewAction(view, "first_page")
+	if view.scrollPx != 0 {
+		t.Fatalf("first_page left the body scrolled %v", view.scrollPx)
+	}
+}
+
+func TestLuaUIRegionsAndAnimation(t *testing.T) {
+	app := luaUITestApp(t, "")
+	evalLua(t, app, `
+hovered = nil
+view = onon.ui.create({
+  width = 200, height = 100,
+  draw = function(canvas, box)
+    canvas:region("back", 0, 0, box.w, box.h)
+    hovered = canvas:region("button", 10, 10, 50, 20)
+    return true
+  end,
+  on_mouse = function(ev) onon.message(ev.type .. " " .. tostring(ev.region)) return true end,
+})
+view:show()`)
+	view := app.activeUIView()
+	body := app.uiViewBody(view)
+	app.pointer = sdl.FPoint{X: body.X + 20, Y: body.Y + 15}
+	app.pendingRedraw = false
+	drawLuaView(t, app, view)
+	if !app.pendingRedraw {
+		t.Fatal("a draw function returning true did not ask for the next frame")
+	}
+	evalLua(t, app, `onon.message(tostring(hovered))`)
+	if app.message != "true" {
+		t.Fatalf("region under the pointer hovered = %s", app.message)
+	}
+	view.onMouseButton(app, &sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: uint8(sdl.ButtonLeft), X: body.X + 20, Y: body.Y + 15})
+	if app.message != "press button" {
+		t.Fatalf("press over the button: %q", app.message)
+	}
+	view.onMouseButton(app, &sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: uint8(sdl.ButtonLeft), X: body.X + 150, Y: body.Y + 50})
+	if app.message != "press back" {
+		t.Fatalf("press beside the button: %q", app.message)
+	}
+}
+
+func TestLuaUIImagesAndPages(t *testing.T) {
+	dir := t.TempDir()
+	img := image.NewRGBA(image.Rect(0, 0, 4, 2))
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "icon.png"), buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	app := luaUITestApp(t, "")
+	pages := testLayoutApp(2)
+	app.pageMetrics, app.pageCount = pages.pageMetrics, pages.pageCount
+	evalLua(t, app, `
+dir = `+strconv.Quote(dir)+`
+view = onon.ui.create({
+  draw = function(canvas)
+    local w, h = canvas:image(dir .. "/icon.png", 0, 0, 20)
+    local pw, ph = canvas:page(2, 0, 0, 50)
+    onon.message(w .. "x" .. h .. " " .. pw .. "x" .. ph)
+  end,
+})
+view:show()`)
+	view := app.activeUIView()
+	drawLuaView(t, app, view)
+	if app.message != "20x10 50x100" {
+		t.Fatalf("image and page sizes: %q", app.message)
+	}
+	if !app.canvas.thumbs[1] {
+		t.Fatal("drawing page 2 did not want its thumbnail")
+	}
+	wanted, onScreen, protected := map[tileKey]bool{}, map[tileKey]bool{}, map[tileKey]bool{}
+	app.addCanvasThumbnails(wanted, onScreen, protected)
+	if !wanted[thumbnailKey(1)] || !protected[thumbnailKey(1)] {
+		t.Fatal("the drawn page's thumbnail is not kept wanted")
+	}
+	evalLua(t, app, `view:close()
+onon.ui.create({ draw = function(canvas) canvas:image(dir .. "/missing.png", 0, 0) end }):show()`)
+	drawLuaView(t, app, app.activeUIView())
+	if !strings.Contains(app.message, "missing.png") {
+		t.Fatalf("a missing image was not reported: %q", app.message)
 	}
 }

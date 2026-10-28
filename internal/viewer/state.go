@@ -173,6 +173,7 @@ type sdlState struct {
 	masks       maskCache                          // the theme's shapes, rasterised
 	styles      *[config.ElementCount]config.Style // the theme's styles, resolved; nil until drawn
 	pathKeys    pathKeys                           // draw functions' paths, packed
+	canvas      canvasCache                        // what canvases draw beyond the UI font
 	frameStart  time.Time                          // when the current animation frame began
 	// displayFrame is the window's display's refresh interval, or 0 when
 	// unknown; see animationFrameDuration.

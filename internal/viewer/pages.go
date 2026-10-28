@@ -229,6 +229,7 @@ func (a *App) prefetchVisiblePages() {
 	for _, c := range prefetch {
 		wanted[c.key] = true
 	}
+	a.addCanvasThumbnails(wanted, onScreen, protected)
 	a.cache.protected = protected
 	if a.renderWorker != nil {
 		a.renderWorker.SetWanted(wanted)

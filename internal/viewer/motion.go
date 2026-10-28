@@ -131,6 +131,8 @@ func (a *App) drawUIViews(renderer *sdl.Renderer) error {
 		m.shownView = view
 	}
 	tr := a.config.Theme.Motion.Panel
+	// The thumbnails canvases want are those they draw this frame.
+	clear(a.canvas.thumbs)
 	// Panels are drawn under the menu. A panel's draw function may close
 	// one, so they are drawn from a copy.
 	// Menus a menu was stacked over are drawn under it.

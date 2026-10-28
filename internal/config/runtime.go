@@ -375,6 +375,9 @@ func (r *Runtime) RunUIMouse(callback string, e UIMouseEvent) (bool, error) {
 	if e.Clicks > 0 {
 		tbl.RawSetString("clicks", lua.LNumber(e.Clicks))
 	}
+	if e.Region != nil && e.Region != lua.LNil {
+		tbl.RawSetString("region", e.Region)
+	}
 	if e.Type == "wheel" {
 		tbl.RawSetString("dx", lua.LNumber(e.DX))
 		tbl.RawSetString("dy", lua.LNumber(e.DY))
@@ -382,13 +385,15 @@ func (r *Runtime) RunUIMouse(callback string, e UIMouseEvent) (bool, error) {
 	return r.runCallbackHandled(callback, tbl)
 }
 
-// RunUIDraw runs a view's draw function as draw(canvas, box, state).
-func (r *Runtime) RunUIDraw(callback string, canvas Canvas, state DrawState) error {
+// RunUIDraw runs a view's draw function as draw(canvas, box, state),
+// reporting whether it asked to be run again on the next frame.
+func (r *Runtime) RunUIDraw(callback string, canvas Canvas, state DrawState) (bool, error) {
 	fn, ok := r.callbacks[callback]
 	if !ok {
-		return fmt.Errorf("unknown lua callback: %s", callback)
+		return false, fmt.Errorf("unknown lua callback: %s", callback)
 	}
-	return r.RunDraw(fn, canvas, state)
+	again, err := r.runDraw(fn, canvas, state, 1)
+	return lua.LVAsBool(again), err
 }
 
 func (r *Runtime) RunUIClose(callback string) error {

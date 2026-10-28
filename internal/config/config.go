@@ -201,6 +201,9 @@ type UIMouseEvent struct {
 	X, Y   float64
 	Clicks int     // 2 for a double click, for press
 	DX, DY float64 // for wheel: positive is right and down
+	// Region is the id of the region the canvas last drew under the
+	// pointer, the one drawn last where they overlap.
+	Region lua.LValue
 }
 
 type documentMeta struct {
