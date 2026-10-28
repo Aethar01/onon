@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"onon/internal/mupdf"
 )
@@ -68,7 +69,7 @@ const matchLead = 32
 
 // searchMatchContext returns the text of the line a match is on, and
 // where in it the match is. A match far along the line has the line
-// start a little before it, from a word.
+// start a little before it, from a word where there is one.
 func (a *App) searchMatchContext(ref searchHitRef) (string, [2]int) {
 	quads := a.search.matches[ref.page][ref.hit].Quads
 	if len(quads) == 0 {
@@ -88,7 +89,14 @@ func (a *App) searchMatchContext(ref searchHitRef) (string, [2]int) {
 		return line, [2]int{}
 	}
 	if at > matchLead {
-		from := strings.LastIndexByte(line[:at-matchLead/2], ' ') + 1
+		cut := at - matchLead/2
+		from := strings.LastIndexByte(line[:cut], ' ') + 1
+		if from == 0 { // no word to start from, as in a long URL
+			from = cut
+			for !utf8.RuneStart(line[from]) {
+				from++
+			}
+		}
 		line = "…" + line[from:]
 		at += len("…") - from
 	}

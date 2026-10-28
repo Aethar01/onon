@@ -378,3 +378,23 @@ func TestSearchMatchContextLeadsToAMatchFarAlong(t *testing.T) {
 		t.Fatalf("context %q, match at %v", text, at)
 	}
 }
+
+func TestSearchMatchContextCutsALineWithoutSpaces(t *testing.T) {
+	line := "https://example.com/" + strings.Repeat("abcdefgh", 8) + "/needle/rest"
+	doc, err := mupdf.Open(testpdf.WritePages(t, []string{line}), mupdf.OpenOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+	app := testLayoutApp(1)
+	app.doc = doc
+	hits, err := searchDocumentPage(doc, 0, "needle", nil)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("hits %v, %v", hits, err)
+	}
+	app.search = searchState{query: "needle", matches: map[int][]mupdf.SearchHit{0: hits}, order: []searchHitRef{{}}}
+	text, at := app.searchMatchContext(searchHitRef{})
+	if !strings.HasPrefix(text, "…") || len(text) >= len(line) || text[at[0]:at[1]] != "needle" || at[0] > matchLead {
+		t.Fatalf("context %q, match at %v", text, at)
+	}
+}
