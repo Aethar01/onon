@@ -2,6 +2,7 @@
 #import <objc/runtime.h>
 
 static const void *OnonTitlebarHoverControllerKey = &OnonTitlebarHoverControllerKey;
+static const CGFloat ononFadedTrafficLightAlpha = 0.01;
 
 static void ononApplyMacOSWindowStyleProperties(NSWindow *window) {
     if (window == nil) {
@@ -129,27 +130,23 @@ static void ononApplyMacOSWindowStyleProperties(NSWindow *window) {
     return YES;
 }
 
+// setTrafficLightsVisible fades the buttons almost out rather than hiding
+// them: macOS reports a fully transparent button as disabled, so tools that
+// close windows through Accessibility, such as Hammerspoon, could not press
+// it, and AppKit shows hidden buttons again when it lays out the titlebar.
+// At ononFadedTrafficLightAlpha they cannot be seen.
 - (void)setTrafficLightsVisible:(BOOL)visible animated:(BOOL)animated {
     if (_visible == visible && animated) {
         return;
     }
     _visible = visible;
 
+    CGFloat alpha = visible ? 1.0 : ononFadedTrafficLightAlpha;
     if (!animated) {
         for (NSUInteger i = 0; i < 3; i++) {
-            NSButton *button = _buttons[i];
-            button.alphaValue = visible ? 1.0 : 0.0;
-            button.hidden = !visible;
+            _buttons[i].alphaValue = alpha;
         }
         return;
-    }
-
-    if (visible) {
-        for (NSUInteger i = 0; i < 3; i++) {
-            NSButton *button = _buttons[i];
-            button.alphaValue = 0.0;
-            button.hidden = NO;
-        }
     }
 
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
@@ -157,15 +154,9 @@ static void ononApplyMacOSWindowStyleProperties(NSWindow *window) {
         context.allowsImplicitAnimation = YES;
 
         for (NSUInteger i = 0; i < 3; i++) {
-            _buttons[i].animator.alphaValue = visible ? 1.0 : 0.0;
+            _buttons[i].animator.alphaValue = alpha;
         }
-    } completionHandler:^{
-        if (!_visible) {
-            for (NSUInteger i = 0; i < 3; i++) {
-                _buttons[i].hidden = YES;
-            }
-        }
-    }];
+    } completionHandler:nil];
 }
 
 - (void)mouseEntered:(NSEvent *)event {
