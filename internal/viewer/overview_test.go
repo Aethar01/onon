@@ -339,3 +339,14 @@ func TestOverviewThumbnailSizeDoesNotDependOnPageCount(t *testing.T) {
 		t.Fatalf("thumbnail is %.1fpx wide, far past overview_thumb_width %v", short.rows[0].pageW[0], want)
 	}
 }
+
+func TestOverviewOpensWithNoDocument(t *testing.T) {
+	app := testLayoutApp(0)
+	app.relayoutWithViewportAnchor(nil) // as a change of display scale does
+	if app.page != 0 {
+		t.Fatalf("page = %d with no document, want 0", app.page)
+	}
+	app.toggleOverview()
+	app.runAction("scroll_down")
+	app.toggleOverview()
+}
