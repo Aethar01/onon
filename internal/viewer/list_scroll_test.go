@@ -28,7 +28,7 @@ func TestListOffsetFollowsScroll(t *testing.T) {
 	_, rows := view.frameGeometry(app)
 	start := time.Now()
 	app.motion.now = start
-	if got := app.listOffset(view, rows, 100); got != 0 {
+	if got, _ := app.listOffset(view, rows, 100); got != 0 {
 		t.Fatalf("first offset = %v", got)
 	}
 
@@ -36,20 +36,72 @@ func TestListOffsetFollowsScroll(t *testing.T) {
 	app.moveUIViewSelection(view, rows+2)
 	target := float64(view.scroll)
 	app.motion.now = start.Add(8 * time.Millisecond)
-	mid := app.listOffset(view, rows, 100)
+	app.listOffset(view, rows, 100)
+	app.motion.now = start.Add(40 * time.Millisecond)
+	mid, _ := app.listOffset(view, rows, 100)
 	if mid <= 0 || mid >= target || !app.motion.animating {
 		t.Fatalf("offset part-way = %v toward %v, animating %v", mid, target, app.motion.animating)
 	}
 	app.motion.now = start.Add(time.Second)
-	if got := app.listOffset(view, rows, 100); got != target {
+	if got, _ := app.listOffset(view, rows, 100); got != target {
 		t.Fatalf("offset settled at %v, want %v", got, target)
 	}
 
 	// Without keyboard smooth scrolling it jumps.
 	app.config.SmoothScrollSources = 0
 	app.moveUIViewSelection(view, -rows-2)
-	if got := app.listOffset(view, rows, 100); got != float64(view.scroll) {
+	if got, _ := app.listOffset(view, rows, 100); got != float64(view.scroll) {
 		t.Fatalf("offset = %v, want a jump to %d", got, view.scroll)
+	}
+}
+
+// listFrame draws view's list at now and returns its offset and where the
+// selected row's box is, in rows from the list's top.
+func listFrame(app *App, view *uiView, now time.Time) (offset, box float64) {
+	app.beginMotionFrame()
+	app.motion.now = now
+	_, rows := view.frameGeometry(app)
+	items := view.visibleRows()
+	offset, shift := app.listOffset(view, rows, len(items))
+	key := tweenKey{kind: "selection", view: view}
+	app.animate(key, float64(uiViewSelectedRow(view, items)), app.config.Theme.Motion.Selection)
+	return offset, app.shiftTween(key, shift) - offset
+}
+
+func TestSelectionBoxKeepsItsPlaceAsTheListScrolls(t *testing.T) {
+	for _, smooth := range []bool{true, false} {
+		app, view := testListApp(100)
+		app.config.ScrollOff = 0
+		if !smooth {
+			app.config.SmoothScrollSources = 0
+		}
+		_, rows := view.frameGeometry(app)
+		now := time.Now()
+		listFrame(app, view, now)
+		app.moveUIViewSelection(view, rows-1)
+		for range 10 {
+			now = now.Add(16 * time.Millisecond)
+			listFrame(app, view, now)
+		}
+		bottom := float64(rows - 1)
+
+		// Stepping past the last row shown, or round to the first, the
+		// box glides only as far as the screen has it go.
+		for _, step := range []struct {
+			delta int
+			from  float64
+			to    float64
+		}{{1, bottom, bottom}, {1, bottom, bottom}, {-200, bottom, 0}, {200, 0, bottom}} {
+			app.moveUIViewSelection(view, step.delta)
+			for i := range 12 {
+				now = now.Add(8 * time.Millisecond)
+				offset, box := listFrame(app, view, now)
+				lo, hi := min(step.from, step.to), max(step.from, step.to)
+				if box < lo-1e-9 || box > hi+1e-9 {
+					t.Fatalf("smooth %v, step %+v, frame %d: box at %v with offset %v, want within %v..%v", smooth, step, i, box, offset, lo, hi)
+				}
+			}
+		}
 	}
 }
 
@@ -62,7 +114,7 @@ func TestListRestsWhereScrolledTo(t *testing.T) {
 		t.Fatalf("offset %v scroll %d after scrolling 2.4 rows", view.offset, view.scroll)
 	}
 	app.motion.now = time.Now().Add(time.Second)
-	if got := app.listOffset(view, rows, 100); got != 2.4 {
+	if got, _ := app.listOffset(view, rows, 100); got != 2.4 {
 		t.Fatalf("a swipe's resting place moved to %v", got)
 	}
 	// The row under the pointer is the one drawn there.
@@ -78,7 +130,7 @@ func TestListRestsWhereScrolledTo(t *testing.T) {
 	// The keyboard settles it on a whole row.
 	app.moveUIViewSelection(view, 3)
 	app.config.SmoothScrollSources = 0
-	if got := app.listOffset(view, rows, 100); got != math.Round(got) {
+	if got, _ := app.listOffset(view, rows, 100); got != math.Round(got) {
 		t.Fatalf("offset after a key = %v, want a whole row", got)
 	}
 	// Scrolling clamps to the list.

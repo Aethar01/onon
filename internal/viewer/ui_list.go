@@ -97,6 +97,7 @@ type uiView struct {
 	offset       float64
 	offsetScroll int
 	settling     bool
+	glideFor     int            // the selection the offset last glided for
 	offsetAt     time.Time      // when offset was last brought up to date
 	filtered     uiRowFilter    // visibleRows' last result
 	keyWidth     uiKeyWidth     // keyColumnWidth's last result
@@ -752,7 +753,7 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 	baselineOffset := a.modalListBaselineOffset(rowHeight)
 	rows = max(1, rows)
 	view.scroll = clampInt(view.scroll, 0, max(0, len(items)-rows))
-	offset := a.listOffset(view, rows, len(items))
+	offset, shift := a.listOffset(view, rows, len(items))
 	prefix := a.rowPrefix(view, items, int(rect.W*0.35))
 	// Rows sit where the offset puts them, those part-way out of the list
 	// cut off at its edges.
@@ -764,12 +765,17 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 	err := a.withClip(renderer, list, func() error {
 		// The selected row's box is drawn first, gliding to it from the
 		// row selected before. It moves among the rows, so it stays with
-		// its row as the list scrolls.
-		for index := first; index < last; index++ {
-			if item := items[index]; item.index == view.selected && !item.heading {
-				at := a.animate(tweenKey{kind: "selection", view: view}, float64(index), a.config.Theme.Motion.Selection)
+		// its row as the list scrolls, and in step with the list when
+		// the list scrolls to show it. It is followed every frame, even
+		// out of view, so a glide begun out of view is not lost.
+		for index, item := range items {
+			if item.index == view.selected && !item.heading {
+				key := tweenKey{kind: "selection", view: view}
+				a.animate(key, float64(index), a.config.Theme.Motion.Selection)
+				at := a.shiftTween(key, shift)
 				st := a.style(config.ElementRowSelected)
 				a.drawBox(renderer, &st, a.viewRowBox(view, rect, rowY(at), rowHeight))
+				break
 			}
 		}
 		for index := first; index < last; index++ {

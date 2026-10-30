@@ -259,19 +259,20 @@ func TestCompletionScrollsWithAFastSelection(t *testing.T) {
 	}
 	start := time.Now()
 	for step := range 40 {
-		app.motion.now = start.Add(time.Duration(step) * 30 * time.Millisecond) // key repeat
 		app.moveCompletion(1)
-		_, visible := view.frameGeometry(app)
-		offset := app.listOffset(view, visible, len(view.rows))
-		// The list glides behind the selection, which stays in view.
-		if selected := view.selected; float64(selected+1) <= offset || float64(selected) >= offset+float64(visible) {
-			t.Fatalf("step %d: row %d out of view at offset %v", step, selected, offset)
+		// The list glides with the selection's box, which stays in view,
+		// round from the last row to the first too.
+		for frame := range 2 {
+			now := start.Add(time.Duration(step)*30*time.Millisecond + time.Duration(frame)*15*time.Millisecond) // key repeat
+			if offset, box := listFrame(app, view, now); box < 0 || box > 4 {
+				t.Fatalf("step %d: row %d's box %v rows into the list at offset %v", step, view.selected, box, offset)
+			}
 		}
 	}
 	// Settled, the selection keeps a row of context.
 	app.motion.now = app.motion.now.Add(time.Second)
 	_, visible := view.frameGeometry(app)
-	offset := app.listOffset(view, visible, len(view.rows))
+	offset, _ := app.listOffset(view, visible, len(view.rows))
 	selected := view.selected
 	if offset != math.Round(offset) || float64(selected) < offset+1 && offset > 0 || float64(selected) > offset+float64(visible)-2 && offset+float64(visible) < float64(len(view.rows)) {
 		t.Fatalf("settled at offset %v with row %d selected", offset, selected)

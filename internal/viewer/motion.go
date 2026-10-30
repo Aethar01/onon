@@ -108,6 +108,20 @@ func (a *App) animateFrom(key tweenKey, from, target float64, tr config.Transiti
 	return tw.value
 }
 
+// shiftTween moves the start of key's transition by d, if it began this
+// frame, and returns where its value is now.
+func (a *App) shiftTween(key tweenKey, d float64) float64 {
+	tw := a.motion.tweens[key]
+	if tw == nil {
+		return math.NaN()
+	}
+	if d != 0 && tw.start.Equal(a.motion.now) && tw.value == tw.from && tw.from != tw.to {
+		tw.from += d
+		tw.value = tw.from
+	}
+	return tw.value
+}
+
 // faded runs draw with what it draws faded to opacity, within any fade
 // already in place.
 func (a *App) faded(opacity float64, draw func() error) error {
