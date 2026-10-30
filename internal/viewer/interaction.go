@@ -57,7 +57,7 @@ func (a *App) relayoutWithViewportAnchor(update func()) {
 	}
 	a.recomputeLayout(a.viewportSize())
 	if !anchor.valid {
-		a.page = clampInt(fallbackPage, 0, a.pageCount-1)
+		a.page = clampInt(fallbackPage, 0, max(0, a.pageCount-1))
 		a.clampScroll()
 		return
 	}
