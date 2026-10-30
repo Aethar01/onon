@@ -28,7 +28,23 @@ const UIViewsReference = `Create views with ` + "`local view = onon.ui.create(sp
 | ` + "`empty`" + ` | What the list says when it has no rows. |
 | ` + "`columns`" + ` | Lays out rows' ` + "`cells`" + ` as a table: a list of columns, each with a ` + "`title`" + `, a ` + "`width`" + ` (logical pixels, a percentage of the row, or ` + "`\"*\"`" + `, the default, for a share of what the others leave) and an ` + "`align`" + ` (` + "`left`" + `, ` + "`center`" + ` or ` + "`right`" + `). Titles show above the rows. |
 
-A row table has ` + "`text`" + `, ` + "`value`" + ` (the text unless set), ` + "`id`" + `, ` + "`secondary`" + ` (drawn on the right), ` + "`depth`" + ` (setting it in a step for each level), ` + "`disabled`" + `, ` + "`key`" + ` (a key binding, drawn in a column before the text), ` + "`marker`" + ` (drawn before the text in the secondary colour, in a column as wide as the widest row's marker, so the text of rows with and without one lines up), ` + "`heading`" + ` (a section title, which cannot be chosen), ` + "`swatch`" + ` (a colour drawn before the text, written as in the elements table), ` + "`checked`" + ` (a check box before the text, checked or not), ` + "`button`" + ` (drawn as a button, as the keybind menu's Add a key… is) and ` + "`cells`" + ` (its text in the view's ` + "`columns`" + `, searched as its text is). Other fields are the plugin's own, and come back with the row.
+A row is a string, its text, or a table of these fields. Other fields are the plugin's own, and come back with the row.
+
+| Field | Type | Meaning |
+|---|---|---|
+| ` + "`text`" + ` | string | The row's text; with ` + "`cells`" + ` and no text, the cells joined by spaces. |
+| ` + "`value`" + ` | string | What ` + "`on_select`" + ` is given as the value: the text unless set, or with ` + "`cells`" + ` the first cell. |
+| ` + "`id`" + ` | string | The row's own name, given to its callbacks. |
+| ` + "`secondary`" + ` | string | Drawn on the right. |
+| ` + "`depth`" + ` | integer | Sets the row in a step for each level. |
+| ` + "`disabled`" + ` | boolean | Disables the row. |
+| ` + "`key`" + ` | string | A key binding, drawn in a column before the text. |
+| ` + "`marker`" + ` | string | Drawn before the text in the secondary colour, in a column as wide as the widest row's marker, so the text of rows with and without one lines up. |
+| ` + "`heading`" + ` | boolean | Makes the row a section title, which cannot be chosen. |
+| ` + "`swatch`" + ` | colour | A colour drawn before the text, written as in the elements table. |
+| ` + "`checked`" + ` | boolean | A check box before the text, checked or not; no check box unless set. |
+| ` + "`button`" + ` | boolean | Draws the row as a button, as the keybind menu's Add a key… is. |
+| ` + "`cells`" + ` | string[] | Its text in the view's ` + "`columns`" + `, searched as its text is. |
 
 #### Drawing a view
 
