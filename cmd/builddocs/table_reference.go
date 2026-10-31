@@ -269,6 +269,47 @@ var luaTableGroups = []luaTableGroup{
 	},
 }
 
+// luaTableLocations says where each documented table is exposed or passed.
+// Keep these in the headings so a reader can identify the table's source
+// without having to read its introductory sentence.
+var luaTableLocations = map[string]string{
+	"Platform":           "`onon.platform`",
+	"Document":           "`onon.document`",
+	"Rectangle":          "page bounds and selection geometry",
+	"Document metadata":  "`onon.document.metadata()`",
+	"Outline entry":      "`onon.document.outline()`",
+	"Page info":          "`onon.document.page_info(page)`",
+	"Selection":          "`onon.document.selection()`",
+	"Selection page":     "`onon.document.selection()` → `pages`",
+	"Page link":          "`plugin.document:page_links()` → `links`",
+	"Plugin manifest":    "`onon-plugin.json`",
+	"Plugin spec":        "`onon.plugin.register(id[, spec])`",
+	"Option declaration": "plugin spec `options`",
+	"Plugin module":      "`onon.plugin.register()` / `require()` result",
+	"Action spec":        "`plugin:register_action()`",
+	"Command spec":       "`plugin:register_command()`",
+	"Command context":    "plugin command callback",
+	"Filesystem options": "`plugin.fs:read_dir()` / `stat()`",
+	"HTTP request":       "`plugin.http:request()`",
+	"Job spec":           "`plugin:job()`",
+	"Handle":             "`onon.schedule()` and async plugin calls",
+	"Operation result":   "async operation callback",
+	"Picker result":      "`onon.pick_file()` / `onon.pick_directory()` callback",
+	"File info":          "`plugin.fs:stat()` result / `read_dir()` entries",
+	"Directory result":   "`plugin.fs:read_dir()` result",
+	"HTTP response":      "`plugin.http:request()` callback",
+	"Job result":         "`plugin:job()` callback",
+	"Page text result":   "`plugin.document:page_text()` callback",
+	"Page links result":  "`plugin.document:page_links()` callback",
+	"Document event":     "document event callbacks",
+	"Opening event":      "`document_open_pre` callback",
+	"Mouse button event": "`mouse_button_pre` / `mouse_button` callbacks",
+	"Selection event":    "`selection_changed` callback",
+	"Page event":         "`page_changed` callback",
+	"Zoom event":         "`zoom_changed` callback",
+	"Option event":       "`option_changed` callback",
+}
+
 // renderLuaTables writes each table in luaTableGroups as a heading and a
 // table of its fields.
 func renderLuaTables(b *strings.Builder) {
@@ -278,7 +319,13 @@ func renderLuaTables(b *strings.Builder) {
 			b.WriteString(group.intro + "\n")
 		}
 		for _, table := range group.tables {
-			fmt.Fprintf(b, "\n#### %s\n\n", table.name)
+			location := luaTableLocations[table.name]
+			if location == "" {
+				panic("missing Lua table location for " + table.name)
+			}
+			// Preserve links to the existing heading while making the table's
+			// source visible in its title.
+			fmt.Fprintf(b, "\n<a id=\"%s\"></a>\n\n#### %s %s\n\n", tableAnchor(table.name), table.name, location)
 			if table.intro != "" {
 				b.WriteString(table.intro + "\n\n")
 			}
@@ -288,4 +335,8 @@ func renderLuaTables(b *strings.Builder) {
 			}
 		}
 	}
+}
+
+func tableAnchor(name string) string {
+	return strings.ToLower(strings.ReplaceAll(name, " ", "-"))
 }
