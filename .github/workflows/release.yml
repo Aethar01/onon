@@ -334,6 +334,9 @@ jobs:
         run: |
           mkdir -p AppDir/usr
           cp -R dist/linux/bin dist/linux/share AppDir/usr/
+          # appimagetool makes .DirIcon from a PNG named after the desktop
+          # file's Icon= at the top of the AppDir; it does not take the SVG.
+          cp dist/linux/share/icons/hicolor/256x256/apps/onon.png AppDir/onon.png
 
           curl -fsSL -o linuxdeploy-x86_64.AppImage https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           chmod +x linuxdeploy-x86_64.AppImage
