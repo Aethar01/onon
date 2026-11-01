@@ -305,6 +305,14 @@ go build
 go test ./...
 ```
 
+Packagers can set the version and name their package manager, so that `:check-updates` tells users to upgrade with it rather than download the release:
+
+```bash
+go build -ldflags "-X onon/internal/config.Version=1.2.3 -X onon/internal/config.InstallMethod=aur"
+```
+
+The message then says "update it with <name>". Builds without a release version are not checked.
+
 On Windows, install the dependencies from MSYS2 UCRT64:
 
 ```bash

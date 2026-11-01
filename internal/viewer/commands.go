@@ -553,6 +553,7 @@ func init() {
 		"lua":              (*App).runLuaCommand,
 		"help":             func(a *App, _ string) { a.toggleHelp() },
 		"version":          func(a *App, _ string) { a.message = "onon " + config.Version },
+		"check-updates":    (*App).checkUpdates,
 	}
 	for name, action := range actionCommands {
 		commandHandlers[name] = func(a *App, _ string) { a.runAction(action) }
