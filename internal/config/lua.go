@@ -114,6 +114,7 @@ func newLuaModule(L *lua.LState, rt *Runtime, cfg *Config) *lua.LTable {
 		{Signature: "onon.page([page])", Function: luaPage(rt)},
 		{Signature: "onon.page_count()", Function: luaPageCount(rt)},
 		{Signature: "onon.version()", Function: luaVersion},
+		{Signature: "onon.check_updates(callback)", Function: luaCheckUpdates(rt)},
 		{Signature: "onon.goto_document_point(spec)", Function: luaGotoDocumentPoint(rt)},
 		{Signature: "onon.mode()", Function: luaMode(rt)},
 		{Signature: "onon.search(query[, backward])", Function: luaSearch(rt)},

@@ -6,21 +6,15 @@ import (
 	"testing"
 	"time"
 
-	"onon/internal/config"
 	"onon/internal/update"
 )
 
-func setUpdateGlobals(t *testing.T, version, method string, result update.Result, err error) *[]string {
+func setUpdateGlobals(t *testing.T, info update.Info, err error) *[]string {
 	t.Helper()
-	previousCheck, previousMethod, previousOpen := checkForUpdates, installMethod, openReleasesPage
-	previousVersion := config.Version
-	t.Cleanup(func() {
-		checkForUpdates, installMethod, openReleasesPage = previousCheck, previousMethod, previousOpen
-		config.Version = previousVersion
-	})
-	config.Version = version
-	installMethod = func() string { return method }
-	checkForUpdates = func(context.Context, string) (update.Result, error) { return result, err }
+	previousCheck, previousOpen := checkForUpdates, openReleasesPage
+	t.Cleanup(func() { checkForUpdates, openReleasesPage = previousCheck, previousOpen })
+	info.URL = update.ReleasesURL
+	checkForUpdates = func(context.Context) (update.Info, error) { return info, err }
 	var opened []string
 	openReleasesPage = func(_ *App, uri string) error {
 		opened = append(opened, uri)
@@ -48,7 +42,7 @@ func runUpdateCheck(t *testing.T) *App {
 }
 
 func TestCheckUpdatesNamesInstallMethod(t *testing.T) {
-	setUpdateGlobals(t, "1.0.0", "aur", update.Result{Latest: "1.1.0", Available: true}, nil)
+	setUpdateGlobals(t, update.Info{Current: "1.0.0", Latest: "1.1.0", Available: true, Method: "aur"}, nil)
 	app := runUpdateCheck(t)
 	if want := "onon 1.1.0 is available: update it with aur"; app.message != want || app.mode != modeNormal {
 		t.Fatalf("got %q in mode %v, want %q", app.message, app.mode, want)
@@ -57,7 +51,7 @@ func TestCheckUpdatesNamesInstallMethod(t *testing.T) {
 
 func TestCheckUpdatesOffersReleasesPageForDownloads(t *testing.T) {
 	for answer, wantOpened := range map[string]bool{"": true, "Y": true, "yes": true, "n": false} {
-		opened := setUpdateGlobals(t, "1.0.0", "", update.Result{Latest: "1.1.0", Available: true}, nil)
+		opened := setUpdateGlobals(t, update.Info{Current: "1.0.0", Latest: "1.1.0", Available: true}, nil)
 		app := runUpdateCheck(t)
 		if app.mode != modePrompt {
 			t.Fatalf("got mode %v, want the prompt", app.mode)
@@ -70,21 +64,21 @@ func TestCheckUpdatesOffersReleasesPageForDownloads(t *testing.T) {
 }
 
 func TestCheckUpdatesReportsUpToDate(t *testing.T) {
-	setUpdateGlobals(t, "1.1.0", "", update.Result{Latest: "1.1.0"}, nil)
+	setUpdateGlobals(t, update.Info{Current: "1.1.0", Latest: "1.1.0"}, nil)
 	if app := runUpdateCheck(t); app.message != "onon 1.1.0 is up to date" {
 		t.Fatalf("got %q", app.message)
 	}
 }
 
 func TestCheckUpdatesReportsErrors(t *testing.T) {
-	setUpdateGlobals(t, "1.0.0", "", update.Result{}, errors.New("offline"))
+	setUpdateGlobals(t, update.Info{Current: "1.0.0"}, errors.New("offline"))
 	if app := runUpdateCheck(t); app.message != "update check failed: offline" {
 		t.Fatalf("got %q", app.message)
 	}
 }
 
 func TestCheckUpdatesSkipsDevBuilds(t *testing.T) {
-	setUpdateGlobals(t, "dev", "", update.Result{}, update.ErrUnreleased)
+	setUpdateGlobals(t, update.Info{Current: "dev"}, update.UnreleasedError{Version: "dev"})
 	if app := runUpdateCheck(t); app.message != "dev builds are not checked for updates" {
 		t.Fatalf("got %q", app.message)
 	}

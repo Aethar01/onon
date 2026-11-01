@@ -24,31 +24,49 @@ var latestURL = "https://api.github.com/repos/Aethar01/onon/releases/latest"
 
 const timeout = 10 * time.Second
 
-// ErrUnreleased is returned for builds that are not a release, such as dev
-// builds, which are not checked.
+// ErrUnreleased matches the error returned for builds that are not a
+// release, such as dev builds, which are not checked.
 var ErrUnreleased = errors.New("not a release build")
 
-// Result is what a check found.
-type Result struct {
-	Latest    string // the latest release's tag
-	Available bool   // Latest is newer than the running version
+// UnreleasedError is the error for a build that is not a release, which
+// names its version.
+type UnreleasedError struct{ Version string }
+
+func (e UnreleasedError) Error() string {
+	return e.Version + " builds are not checked for updates"
 }
 
-// Check asks GitHub whether a release newer than current exists.
-func Check(ctx context.Context, current string) (Result, error) {
+func (e UnreleasedError) Is(target error) bool { return target == ErrUnreleased }
+
+// Info is what a check found. :check-updates and onon.check_updates both
+// report it.
+type Info struct {
+	Current   string // the running version
+	Latest    string // the latest release's tag; empty if the check failed
+	Available bool   // Latest is newer than Current
+	Method    string // how onon was installed, as Method gives it
+	URL       string // the releases page
+}
+
+// Check asks GitHub whether a release newer than current exists, for onon
+// built with the install method built. Info is filled in as far as it got,
+// even when an error is returned.
+func Check(ctx context.Context, current, built string) (Info, error) {
+	info := Info{Current: current, Method: Method(built), URL: ReleasesURL}
 	have, ok := parseVersion(current)
 	if !ok {
-		return Result{}, ErrUnreleased
+		return info, UnreleasedError{current}
 	}
 	tag, err := latest(ctx)
 	if err != nil {
-		return Result{}, err
+		return info, err
 	}
 	want, ok := parseVersion(tag)
 	if !ok {
-		return Result{}, fmt.Errorf("latest release has an unexpected tag %q", tag)
+		return info, fmt.Errorf("latest release has an unexpected tag %q", tag)
 	}
-	return Result{Latest: tag, Available: newer(want, have)}, nil
+	info.Latest, info.Available = tag, newer(want, have)
+	return info, nil
 }
 
 // Instruction says how to upgrade onon installed by method.
