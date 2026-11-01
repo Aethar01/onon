@@ -28,25 +28,27 @@ const timeout = 10 * time.Second
 // builds, which are not checked.
 var ErrUnreleased = errors.New("not a release build")
 
-// Check reports, as a message, whether a release newer than current exists
-// and how to upgrade to it when installed by method.
-func Check(ctx context.Context, current, method string) (string, error) {
+// Result is what a check found.
+type Result struct {
+	Latest    string // the latest release's tag
+	Available bool   // Latest is newer than the running version
+}
+
+// Check asks GitHub whether a release newer than current exists.
+func Check(ctx context.Context, current string) (Result, error) {
 	have, ok := parseVersion(current)
 	if !ok {
-		return "", ErrUnreleased
+		return Result{}, ErrUnreleased
 	}
 	tag, err := latest(ctx)
 	if err != nil {
-		return "", err
+		return Result{}, err
 	}
 	want, ok := parseVersion(tag)
 	if !ok {
-		return "", fmt.Errorf("latest release has an unexpected tag %q", tag)
+		return Result{}, fmt.Errorf("latest release has an unexpected tag %q", tag)
 	}
-	if !newer(want, have) {
-		return "onon " + current + " is up to date", nil
-	}
-	return "onon " + tag + " is available: " + Instruction(method), nil
+	return Result{Latest: tag, Available: newer(want, have)}, nil
 }
 
 // Instruction says how to upgrade onon installed by method.

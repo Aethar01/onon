@@ -227,7 +227,7 @@ type inputState struct {
 	printResult    chan string // delivers the outcome of a print in progress
 	printers       printerList
 	printersFound  chan printerList // delivers a printer lookup in progress
-	updateResult   chan string      // delivers the outcome of :check-updates
+	updateResult   chan updateCheck // delivers the outcome of :check-updates
 	preview        *linkPreview
 	discardWarned  bool // the user was told that unsaved edits would be lost
 	editPos        int  // see markEdited

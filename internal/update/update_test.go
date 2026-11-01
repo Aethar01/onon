@@ -21,26 +21,21 @@ func serveLatest(t *testing.T, status int, body string) {
 	t.Cleanup(func() { latestURL = previous })
 }
 
-func TestCheckReportsNewerRelease(t *testing.T) {
-	serveLatest(t, http.StatusOK, `{"tag_name":"1.10.0"}`)
-	msg, err := Check(context.Background(), "1.9.2", "homebrew")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := "onon 1.10.0 is available: update it with homebrew"; msg != want {
-		t.Fatalf("got %q, want %q", msg, want)
-	}
-}
-
-func TestCheckReportsUpToDate(t *testing.T) {
-	for _, current := range []string{"1.2.3", "v1.2.3", "1.3.0"} {
-		serveLatest(t, http.StatusOK, `{"tag_name":"1.2.3"}`)
-		msg, err := Check(context.Background(), current, "")
+func TestCheckComparesVersions(t *testing.T) {
+	for current, available := range map[string]bool{
+		"1.9.2":   true,
+		"v1.9.9":  true,
+		"1.10.0":  false,
+		"v1.10.0": false,
+		"2.0.0":   false,
+	} {
+		serveLatest(t, http.StatusOK, `{"tag_name":"1.10.0"}`)
+		got, err := Check(context.Background(), current)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.HasSuffix(msg, "is up to date") {
-			t.Fatalf("%s: got %q", current, msg)
+		if got != (Result{Latest: "1.10.0", Available: available}) {
+			t.Errorf("%s: got %+v", current, got)
 		}
 	}
 }
@@ -50,7 +45,7 @@ func TestCheckSkipsUnreleasedBuilds(t *testing.T) {
 	latestURL = "http://127.0.0.1:0" // must not be reached
 	t.Cleanup(func() { latestURL = previous })
 	for _, current := range []string{"dev", "", "1.2", "1.2.3-rc1"} {
-		if _, err := Check(context.Background(), current, ""); !errors.Is(err, ErrUnreleased) {
+		if _, err := Check(context.Background(), current); !errors.Is(err, ErrUnreleased) {
 			t.Fatalf("%q: got %v, want ErrUnreleased", current, err)
 		}
 	}
@@ -58,7 +53,7 @@ func TestCheckSkipsUnreleasedBuilds(t *testing.T) {
 
 func TestCheckReportsGitHubErrors(t *testing.T) {
 	serveLatest(t, http.StatusForbidden, `{}`)
-	if _, err := Check(context.Background(), "1.0.0", ""); err == nil || !strings.Contains(err.Error(), "403") {
+	if _, err := Check(context.Background(), "1.0.0"); err == nil || !strings.Contains(err.Error(), "403") {
 		t.Fatalf("got %v", err)
 	}
 }
