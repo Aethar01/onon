@@ -15,6 +15,7 @@ type CommandReferenceEntry struct {
 
 var specs = []Spec{
 	{Name: "back", Help: ":back - Jump back to the previous position"},
+	{Name: "check-updates", Help: ":check-updates - Check GitHub for a newer release and say how to upgrade"},
 	{Name: "colors", ArgCompletions: []string{"alt", "normal"}, Help: ":colors normal|alt - Set color mode"},
 	{Name: "config", Help: ":config - Open the config file in a text editor, creating it if there is none"},
 	{Name: "copy", Help: ":copy - Copy the selection"},

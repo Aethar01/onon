@@ -137,6 +137,7 @@ func (a *App) Run() error {
 		a.finishKeybindCapture(time.Now())
 		a.revealLinkPreview()
 		a.pollPrintResult()
+		a.pollUpdateCheck()
 		a.prefetchVisiblePages()
 		a.adjustRenderBaseScaleForExtremeZoom(a.scale)
 		a.emitViewStateEvents()
