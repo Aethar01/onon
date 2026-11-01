@@ -195,10 +195,11 @@ var luaTableGroups = []luaTableGroup{
 			}},
 			{"Update info", "What `onon.check_updates` gives its callback, with the [Operation result](#operation-result)'s fields. `:check-updates` reports the same check.", []luaField{
 				{"current", "string", "The running version."},
-				{"latest", "string", "The latest release's version, or empty if the check failed."},
+				{"latest", "string", "The latest release's version, or for a git build main's latest commit; empty if the check failed."},
 				{"available", "boolean", "Whether `latest` is newer than `current`."},
+				{"behind", "integer", "For a git build, how many commits main has that it does not; else 0."},
 				{"method", "string", "The package manager onon was installed with, or empty for a download."},
-				{"url", "string", "The releases page."},
+				{"url", "string", "The releases page, or for a git build main's commits."},
 			}},
 			{"File info", "A `plugin.fs:stat` result, and each of a `read_dir` result's `entries`.", []luaField{
 				{"name", "string", "The file's name."},

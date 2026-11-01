@@ -13,7 +13,9 @@ func setUpdateGlobals(t *testing.T, info update.Info, err error) *[]string {
 	t.Helper()
 	previousCheck, previousOpen := checkForUpdates, openReleasesPage
 	t.Cleanup(func() { checkForUpdates, openReleasesPage = previousCheck, previousOpen })
-	info.URL = update.ReleasesURL
+	if info.URL == "" {
+		info.URL = update.ReleasesURL
+	}
 	checkForUpdates = func(context.Context) (update.Info, error) { return info, err }
 	var opened []string
 	openReleasesPage = func(_ *App, uri string) error {
@@ -60,6 +62,27 @@ func TestCheckUpdatesOffersReleasesPageForDownloads(t *testing.T) {
 		if got := len(*opened) == 1 && (*opened)[0] == update.ReleasesURL; got != wantOpened {
 			t.Errorf("answer %q: opened %v", answer, *opened)
 		}
+	}
+}
+
+func TestCheckUpdatesSaysHowFarBehindGitBuildsAre(t *testing.T) {
+	git := update.Info{Current: "0.9.4.r0.g49e499b", Latest: "5825ad4", Available: true, Behind: 73, URL: update.CommitsURL}
+	withMethod := git
+	withMethod.Method = "aur"
+	setUpdateGlobals(t, withMethod, nil)
+	app := runUpdateCheck(t)
+	if want := "onon is 73 commits behind main: update it with aur"; app.message != want {
+		t.Fatalf("got %q, want %q", app.message, want)
+	}
+
+	opened := setUpdateGlobals(t, git, nil)
+	app = runUpdateCheck(t)
+	if want := "onon is 73 commits behind main, open its commits? [Y/n]"; app.mode != modePrompt || app.promptState.label != want {
+		t.Fatalf("got %q in mode %v, want %q", app.promptState.label, app.mode, want)
+	}
+	app.answerPrompt("")
+	if len(*opened) != 1 || (*opened)[0] != update.CommitsURL {
+		t.Fatalf("opened %v", *opened)
 	}
 }
 

@@ -59,8 +59,13 @@ func (a *App) reportUpdateCheck(check updateCheck) {
 		a.message = "onon " + info.Current + " is up to date"
 	case info.Method == "" && a.mode == modeNormal && a.activeUIView() == nil:
 		// A download is upgraded from the releases page, so offer to open
-		// it, unless that would interrupt what the user is doing.
-		a.askPrompt("onon "+info.Latest+" is available, open the releases page? [Y/n]", "", func(answer string) {
+		// it, or for a git build main's commits, unless that would
+		// interrupt what the user is doing.
+		page := "the releases page"
+		if info.URL == update.CommitsURL {
+			page = "its commits"
+		}
+		a.askPrompt(update.Summary(info)+", open "+page+"? [Y/n]", "", func(answer string) {
 			switch strings.ToLower(strings.TrimSpace(answer)) {
 			case "", "y", "yes":
 				if err := openReleasesPage(a, info.URL); err != nil {
@@ -69,6 +74,6 @@ func (a *App) reportUpdateCheck(check updateCheck) {
 			}
 		})
 	default:
-		a.message = "onon " + info.Latest + " is available: " + update.Instruction(info.Method)
+		a.message = update.Summary(info) + ": " + update.Instruction(info)
 	}
 }

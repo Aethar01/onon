@@ -27,8 +27,10 @@ var checkUpdates = func(ctx context.Context) (update.Info, error) {
 // # Parameters
 //
 //   - callback: Receives an [Update info](#update-info) table once the check
-//     finishes. Builds that are not a release, such as dev builds, are not
-//     checked: success is false and error says why.
+//     finishes. A git build, whose version names its commit, is checked for
+//     newer commits on main instead. Other builds that are not a release,
+//     such as dev builds, are not checked: success is false and error says
+//     why.
 //
 // # Returns
 //
@@ -55,6 +57,7 @@ func luaCheckUpdates(rt *Runtime) lua.LGFunction {
 				"current":   info.Current,
 				"latest":    info.Latest,
 				"available": info.Available,
+				"behind":    info.Behind,
 				"method":    info.Method,
 				"url":       info.URL,
 			}
