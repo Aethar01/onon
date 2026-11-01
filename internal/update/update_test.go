@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -41,11 +42,53 @@ func TestCheckComparesVersions(t *testing.T) {
 	}
 }
 
+func serveCompare(t *testing.T, status int, body string) *string {
+	t.Helper()
+	var path string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(server.Close)
+	previous := compareURL
+	compareURL = server.URL + "/compare/main..."
+	t.Cleanup(func() { compareURL = previous })
+	return &path
+}
+
+func TestCheckComparesGitBuildsWithMain(t *testing.T) {
+	for _, current := range []string{"0.9.4.r0.g49e499b", "v0.9.4.r2.g49e499b", "0.9.4-2-g49e499b", "v0.9.4-0-g49e499b"} {
+		for _, behind := range []int{73, 0} {
+			path := serveCompare(t, http.StatusOK, `{"behind_by":`+strconv.Itoa(behind)+`,"base_commit":{"sha":"5825ad4bb6e4cbdd494235b83181c9b1aa245135"}}`)
+			got, err := Check(context.Background(), current, "aur")
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := Info{Current: current, Latest: "5825ad4", Available: behind > 0, Behind: behind, Method: "aur", URL: CommitsURL}
+			if got != want {
+				t.Errorf("%s behind %d: got %+v", current, behind, got)
+			}
+			if *path != "/compare/main...49e499b" {
+				t.Errorf("%s: asked for %q", current, *path)
+			}
+		}
+	}
+}
+
+func TestCheckReportsUnknownGitCommits(t *testing.T) {
+	serveCompare(t, http.StatusNotFound, `{}`)
+	_, err := Check(context.Background(), "v0.9.4.r3.gdeadbee", "")
+	if err == nil || err.Error() != "commit deadbee is not on GitHub" {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func TestCheckSkipsUnreleasedBuilds(t *testing.T) {
 	previous := latestURL
 	latestURL = "http://127.0.0.1:0" // must not be reached
 	t.Cleanup(func() { latestURL = previous })
-	for _, current := range []string{"dev", "", "1.2", "1.2.3-rc1"} {
+	for _, current := range []string{"dev", "", "1.2", "1.2.3-rc1", "1.2.3.r4", "1.2.3.r4.gxyz1234", "1.2.3-4-g12ab", "1.2.3-g1a2b3c4"} {
 		info, err := Check(context.Background(), current, "aur")
 		if !errors.Is(err, ErrUnreleased) {
 			t.Fatalf("%q: got %v, want ErrUnreleased", current, err)
@@ -67,13 +110,32 @@ func TestCheckReportsGitHubErrors(t *testing.T) {
 }
 
 func TestInstruction(t *testing.T) {
-	for method, want := range map[string]string{
-		"":         "download it from " + ReleasesURL,
-		"homebrew": "update it with homebrew",
-		"aur":      "update it with aur",
+	for _, c := range []struct {
+		info Info
+		want string
+	}{
+		{Info{URL: ReleasesURL}, "download it from " + ReleasesURL},
+		{Info{URL: CommitsURL}, "rebuild it from main"},
+		{Info{Method: "homebrew", URL: ReleasesURL}, "update it with homebrew"},
+		{Info{Method: "aur", URL: CommitsURL}, "update it with aur"},
 	} {
-		if got := Instruction(method); got != want {
-			t.Errorf("%q: got %q, want %q", method, got, want)
+		if got := Instruction(c.info); got != c.want {
+			t.Errorf("%+v: got %q, want %q", c.info, got, c.want)
+		}
+	}
+}
+
+func TestSummary(t *testing.T) {
+	for _, c := range []struct {
+		info Info
+		want string
+	}{
+		{Info{Latest: "1.10.0", URL: ReleasesURL}, "onon 1.10.0 is available"},
+		{Info{Latest: "5825ad4", Behind: 73, URL: CommitsURL}, "onon is 73 commits behind main"},
+		{Info{Latest: "5825ad4", Behind: 1, URL: CommitsURL}, "onon is 1 commit behind main"},
+	} {
+		if got := Summary(c.info); got != c.want {
+			t.Errorf("%+v: got %q, want %q", c.info, got, c.want)
 		}
 	}
 }

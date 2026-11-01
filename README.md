@@ -311,7 +311,7 @@ Packagers can set the version and name their package manager, so that `:check-up
 go build -ldflags "-X onon/internal/config.Version=1.2.3 -X onon/internal/config.InstallMethod=aur"
 ```
 
-The message then says "update it with <name>". Builds without a release version are not checked.
+The message then says "update it with <name>". A version from `git describe --long --tags`, such as `0.9.4-3-g49e499b`, or in the form AUR `-git` packages give it, such as `0.9.4.r3.g49e499b`, is checked for newer commits on main rather than a newer release. Builds with any other version are not checked.
 
 On Windows, install the dependencies from MSYS2 UCRT64:
 
