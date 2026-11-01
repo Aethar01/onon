@@ -173,7 +173,7 @@ var luaTableGroups = []luaTableGroup{
 	},
 	{
 		name:  "Results",
-		intro: "Callbacks are given these. The results of a plugin's filesystem, HTTP, document and job calls have the [Operation result](#operation-result)'s fields as well as their own; timers and `onon.schedule` call their callbacks with nothing.",
+		intro: "Callbacks are given these. The results of a plugin's filesystem, HTTP, document and job calls, and of `onon.check_updates`, have the [Operation result](#operation-result)'s fields as well as their own; timers and `onon.schedule` call their callbacks with nothing.",
 		tables: []luaTable{
 			{"Handle", "Returned by `onon.schedule` and every asynchronous plugin call.", []luaField{
 				{"id", "integer", "The operation's ID, which its result carries too."},
@@ -192,6 +192,13 @@ var luaTableGroups = []luaTableGroup{
 				{"path", "string", "The path picked, or empty."},
 				{"cancelled", "boolean", "Whether the picker was closed without picking, which is not an error."},
 				{"error", "string", "Why the picker failed, or empty."},
+			}},
+			{"Update info", "What `onon.check_updates` gives its callback, with the [Operation result](#operation-result)'s fields. `:check-updates` reports the same check.", []luaField{
+				{"current", "string", "The running version."},
+				{"latest", "string", "The latest release's version, or empty if the check failed."},
+				{"available", "boolean", "Whether `latest` is newer than `current`."},
+				{"method", "string", "The package manager onon was installed with, or empty for a download."},
+				{"url", "string", "The releases page."},
 			}},
 			{"File info", "A `plugin.fs:stat` result, and each of a `read_dir` result's `entries`.", []luaField{
 				{"name", "string", "The file's name."},
@@ -295,6 +302,7 @@ var luaTableLocations = map[string]string{
 	"Handle":             "`onon.schedule()` and async plugin calls",
 	"Operation result":   "async operation callback",
 	"Picker result":      "`onon.pick_file()` / `onon.pick_directory()` callback",
+	"Update info":        "`onon.check_updates()` callback",
 	"File info":          "`plugin.fs:stat()` result / `read_dir()` entries",
 	"Directory result":   "`plugin.fs:read_dir()` result",
 	"HTTP response":      "`plugin.http:request()` callback",

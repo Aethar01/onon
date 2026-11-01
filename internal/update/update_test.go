@@ -30,11 +30,12 @@ func TestCheckComparesVersions(t *testing.T) {
 		"2.0.0":   false,
 	} {
 		serveLatest(t, http.StatusOK, `{"tag_name":"1.10.0"}`)
-		got, err := Check(context.Background(), current)
+		got, err := Check(context.Background(), current, "aur")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got != (Result{Latest: "1.10.0", Available: available}) {
+		want := Info{Current: current, Latest: "1.10.0", Available: available, Method: "aur", URL: ReleasesURL}
+		if got != want {
 			t.Errorf("%s: got %+v", current, got)
 		}
 	}
@@ -45,15 +46,22 @@ func TestCheckSkipsUnreleasedBuilds(t *testing.T) {
 	latestURL = "http://127.0.0.1:0" // must not be reached
 	t.Cleanup(func() { latestURL = previous })
 	for _, current := range []string{"dev", "", "1.2", "1.2.3-rc1"} {
-		if _, err := Check(context.Background(), current); !errors.Is(err, ErrUnreleased) {
+		info, err := Check(context.Background(), current, "aur")
+		if !errors.Is(err, ErrUnreleased) {
 			t.Fatalf("%q: got %v, want ErrUnreleased", current, err)
+		}
+		if want := current + " builds are not checked for updates"; err.Error() != want {
+			t.Fatalf("got %q, want %q", err, want)
+		}
+		if info.Current != current || info.Method != "aur" || info.Latest != "" {
+			t.Fatalf("%q: got %+v", current, info)
 		}
 	}
 }
 
 func TestCheckReportsGitHubErrors(t *testing.T) {
 	serveLatest(t, http.StatusForbidden, `{}`)
-	if _, err := Check(context.Background(), "1.0.0"); err == nil || !strings.Contains(err.Error(), "403") {
+	if _, err := Check(context.Background(), "1.0.0", ""); err == nil || !strings.Contains(err.Error(), "403") {
 		t.Fatalf("got %v", err)
 	}
 }
