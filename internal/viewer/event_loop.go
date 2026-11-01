@@ -28,6 +28,7 @@ func initSDL() error {
 	if !sdl.Init(sdl.InitVideo) {
 		return fmt.Errorf("SDL init failed: %s", sdl.GetError())
 	}
+	watchKeyModifiers()
 	return nil
 }
 
