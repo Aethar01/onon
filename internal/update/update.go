@@ -51,16 +51,10 @@ func Check(ctx context.Context, current, method string) (string, error) {
 
 // Instruction says how to upgrade onon installed by method.
 func Instruction(method string) string {
-	switch method {
-	case "":
+	if method == "" {
 		return "download it from " + ReleasesURL
-	case "homebrew":
-		return "run brew upgrade --cask onon"
-	case "aur":
-		return "update it with your AUR helper"
-	default:
-		return "update it with " + method
 	}
+	return "update it with " + method
 }
 
 // Method is how this onon was installed: the build's InstallMethod, else

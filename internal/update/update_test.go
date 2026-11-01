@@ -27,7 +27,7 @@ func TestCheckReportsNewerRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "onon 1.10.0 is available: run brew upgrade --cask onon"; msg != want {
+	if want := "onon 1.10.0 is available: update it with homebrew"; msg != want {
 		t.Fatalf("got %q, want %q", msg, want)
 	}
 }
@@ -66,9 +66,8 @@ func TestCheckReportsGitHubErrors(t *testing.T) {
 func TestInstruction(t *testing.T) {
 	for method, want := range map[string]string{
 		"":         "download it from " + ReleasesURL,
-		"homebrew": "run brew upgrade --cask onon",
-		"aur":      "update it with your AUR helper",
-		"nix":      "update it with nix",
+		"homebrew": "update it with homebrew",
+		"aur":      "update it with aur",
 	} {
 		if got := Instruction(method); got != want {
 			t.Errorf("%q: got %q, want %q", method, got, want)

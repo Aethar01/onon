@@ -311,7 +311,7 @@ Packagers can set the version and name their package manager, so that `:check-up
 go build -ldflags "-X onon/internal/config.Version=1.2.3 -X onon/internal/config.InstallMethod=aur"
 ```
 
-`homebrew` and `aur` get specific instructions; any other name is shown as "update it with <name>". Builds without a release version are not checked.
+The message then says "update it with <name>". Builds without a release version are not checked.
 
 On Windows, install the dependencies from MSYS2 UCRT64:
 
