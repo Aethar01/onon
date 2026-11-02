@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -184,7 +185,7 @@ func TestOpenResumesSavedPage(t *testing.T) {
 
 	// An explicit page goes there, in the document's saved view.
 	app.zoom = 2
-	if err := app.Open("file://" + first + "#page=3"); err != nil {
+	if err := app.Open("file:///" + strings.TrimPrefix(filepath.ToSlash(first), "/") + "#page=3"); err != nil {
 		t.Fatal(err)
 	}
 	if app.page != 2 || app.zoom != 1 {
