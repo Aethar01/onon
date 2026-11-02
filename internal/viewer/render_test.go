@@ -169,6 +169,19 @@ func TestPrefetchQueuesVisibleTilesBeforeLookahead(t *testing.T) {
 	}
 }
 
+func TestPrefetchStartsMetricLoaderWhenNothingVisibleCanRender(t *testing.T) {
+	app := testPrefetchApp(20, 1)
+	for i := range app.pageMetrics {
+		app.pageMetrics[i].bounds = mupdf.Rect{} // laid out before their metrics load
+	}
+	app.pendingLoad, app.pendingPages = true, 20
+	app.prefetchVisiblePages()
+	if app.metricLoader == nil {
+		t.Fatal("metric loader still waits for a tile no visible page can give")
+	}
+	app.metricLoader.Close()
+}
+
 func TestPrefetchAtHighZoomRequestsBoundedTiles(t *testing.T) {
 	app := testPrefetchApp(3, 40) // a 100x200pt page becomes 4000x8000px
 	app.prefetchVisiblePages()

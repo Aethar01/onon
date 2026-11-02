@@ -249,6 +249,11 @@ func (a *App) prefetchVisiblePages() {
 	for _, c := range visible {
 		a.requestTile(c.key, c.rect, 0)
 	}
+	if len(visible) == 0 {
+		// The loader waits for a first tile, which pages laid out before
+		// their metrics load cannot give.
+		a.startPendingMetricLoader()
+	}
 	a.requestCanvasRenders()
 	if a.hasPendingVisibleRender() {
 		a.preemptNonVisibleRender(onScreen)

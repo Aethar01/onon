@@ -1,10 +1,14 @@
 package viewer
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"onon/internal/config"
+	"onon/internal/testpdf"
 )
 
 func TestDocumentSessionPollIsNonBlocking(t *testing.T) {
@@ -142,4 +146,57 @@ func TestDocumentChangesWaitWhileAutoReloadIsOff(t *testing.T) {
 		t.Fatalf("change handled with auto_reload off: %q", app.message)
 	}
 	waitForDocumentChange(t, &app.document) // still pending
+}
+
+func TestOpenResumesSavedPage(t *testing.T) {
+	pages := func(n int) [][]string {
+		out := make([][]string, n)
+		for i := range out {
+			out[i] = []string{fmt.Sprintf("page %d", i+1)}
+		}
+		return out
+	}
+	first, second := testpdf.WritePages(t, pages(6)...), testpdf.WritePages(t, pages(6)...)
+	runtime, err := config.Open(filepath.Join(t.TempDir(), "missing.lua"), first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(runtime.Close)
+	app, err := New(first, runtime, 0, nil, NewOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(app.Close)
+	app.winW, app.winH = 1000, 800
+	if err := app.openInitialDocument(); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.SetDocumentSession(config.AbsoluteDocumentPath(second), viewState{page: 3, zoom: 1, anchor: viewportAnchor{page: 3, valid: true}}.documentSession()); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.Open(second); err != nil {
+		t.Fatal(err)
+	}
+	if app.page != 3 || !app.pageMetrics[3].loaded {
+		t.Fatalf("opened at page %d (metrics loaded %t), want saved page 4", app.page+1, app.pageMetrics[3].loaded)
+	}
+
+	// An explicit page goes there, in the document's saved view.
+	app.zoom = 2
+	if err := app.Open("file://" + first + "#page=3"); err != nil {
+		t.Fatal(err)
+	}
+	if app.page != 2 || app.zoom != 1 {
+		t.Fatalf("opened #page=3 at page %d zoom %v, want page 3 in the saved view", app.page+1, app.zoom)
+	}
+
+	// Reopening the open document resumes where it is, not where it was.
+	app.gotoPageInput("5")
+	if err := app.Open(first); err != nil {
+		t.Fatal(err)
+	}
+	if app.page != 4 {
+		t.Fatalf("reopened at page %d, want 5", app.page+1)
+	}
 }

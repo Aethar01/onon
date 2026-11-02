@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"onon/internal/config"
@@ -52,6 +53,9 @@ func (a *App) Open(path string) error {
 }
 
 func (a *App) resolveOpenPath(path string) (string, error) {
+	if len(path) >= len("file://") && strings.EqualFold(path[:len("file://")], "file://") {
+		return config.AbsoluteDocumentPath(path), nil // as desktop launchers pass
+	}
 	// A file of the name beside a local document wins over host:path, as
 	// one in the working directory does in FromArg.
 	if a.docPath != "" && !remote.IsURI(a.docPath) && !filepath.IsAbs(path) {
@@ -171,9 +175,15 @@ func (a *App) openDocumentWithPassword(path string, opts openDocumentOptions, pa
 	if pages > 0 && startPage >= pages {
 		startPage = pages - 1
 	}
+	a.saveDocumentSession() // first, so reopening this document resumes where it is
 	savedState, hasSavedState := a.documentSessionViewState(path)
-	if !opts.startPageExplicit && hasSavedState {
+	switch {
+	case opts.startPageExplicit:
+	case hasSavedState:
 		startPage = clampInt(savedState.page, 0, max(0, pages-1))
+	case opts.preserveView != nil:
+		// The page shown, so its metrics are the ones loaded up front.
+		startPage = clampInt(opts.preserveView.page, 0, max(0, pages-1))
 	}
 
 	oldDocumentPayload := a.documentEventPayload()
@@ -182,7 +192,6 @@ func (a *App) openDocumentWithPassword(path string, opts openDocumentOptions, pa
 		a.emitPluginEvent("document_close_pre", oldDocumentPayload)
 	}
 	a.closeViewMode()
-	a.saveDocumentSession()
 	a.closeDocumentResources()
 	if hadDocument && a.runtime != nil {
 		a.emitPluginEvent("document_closed", oldDocumentPayload)
@@ -215,14 +224,14 @@ func (a *App) openDocumentWithPassword(path string, opts openDocumentOptions, pa
 	a.initRenderWorker()
 	a.initSearch()
 	a.recomputeLayout(a.viewportSize())
-	if opts.preserveView != nil {
-		a.restoreViewState(*opts.preserveView)
-		if opts.startPageExplicit {
-			a.alignPageToAnchor(startPage)
-		}
-	} else if !opts.startPageExplicit && hasSavedState {
+	// The document's own saved view wins, then the window's; an explicit
+	// page goes there in it.
+	if hasSavedState {
 		a.restoreViewState(savedState)
-	} else {
+	} else if opts.preserveView != nil {
+		a.restoreViewState(*opts.preserveView)
+	}
+	if opts.startPageExplicit || !hasSavedState && opts.preserveView == nil {
 		a.alignPageToAnchor(startPage)
 	}
 	a.resetRenderScale()
