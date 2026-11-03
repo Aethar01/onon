@@ -77,7 +77,7 @@ func newLuaPluginDocument(L *lua.LState, instance *pluginInstance) *lua.LTable {
 		if !ok {
 			L.RaiseError("plugin %s document.page_text: expected callback", instance.manifest.ID)
 		}
-		host, ok := instance.runtime.host.(DocumentPageTextHost)
+		host, ok := instance.runtime.documentHost().(DocumentPageTextHost)
 		if !ok {
 			L.RaiseError("plugin %s document.page_text: viewer host unavailable", instance.manifest.ID)
 		}
@@ -100,7 +100,7 @@ func newLuaPluginDocument(L *lua.LState, instance *pluginInstance) *lua.LTable {
 		if !ok {
 			L.RaiseError("plugin %s document.page_links: expected callback", instance.manifest.ID)
 		}
-		host, ok := instance.runtime.host.(DocumentPageLinksHost)
+		host, ok := instance.runtime.documentHost().(DocumentPageLinksHost)
 		if !ok {
 			L.RaiseError("plugin %s document.page_links: viewer host unavailable", instance.manifest.ID)
 		}

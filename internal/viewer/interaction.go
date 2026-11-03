@@ -349,15 +349,15 @@ func (a *App) linksForPage(page int) ([]mupdf.Link, error) {
 	return a.linksForPageLocked(page)
 }
 
-func (a *App) linksForPageLocked(page int) ([]mupdf.Link, error) {
-	if links, ok := a.pageLinks[page]; ok {
+func (t *tab) linksForPageLocked(page int) ([]mupdf.Link, error) {
+	if links, ok := t.pageLinks[page]; ok {
 		return links, nil
 	}
-	links, err := a.doc.Links(page)
+	links, err := t.doc.Links(page)
 	if err != nil {
 		return nil, err
 	}
-	a.pageLinks[page] = links
+	t.pageLinks[page] = links
 	return links, nil
 }
 
