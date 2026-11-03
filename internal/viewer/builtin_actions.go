@@ -60,6 +60,7 @@ func init() {
 
 		"outline":      do((*App).toggleOutlineMenu),
 		"keybinds":     do((*App).toggleKeybindMenu),
+		"options_menu": do((*App).toggleOptions),
 		"help":         do((*App).toggleHelp),
 		"follow_link":  do((*App).startLinkHints),
 		"overview":     do((*App).toggleOverview),

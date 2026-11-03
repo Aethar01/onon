@@ -147,6 +147,7 @@ func Menus() []Menu {
 		{Title: "Help", Role: RoleHelp, Items: []Item{
 			{Title: "{app} Help", Action: "help"},
 			{Title: "Key Bindings", Action: "keybinds"},
+			{Title: "Options", Action: "options_menu"},
 		}},
 	}
 }

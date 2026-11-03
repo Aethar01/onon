@@ -118,6 +118,7 @@ func (a *App) helpRows() []uiRow {
 	}
 
 	section("Options")
+	add(helpRowAction, "Edit options…", ":options", "options_menu")
 	names := config.OptionNames()
 	if a.runtime != nil {
 		names = a.runtime.OptionNames()

@@ -45,6 +45,7 @@ var menuItemsWithoutDocument = map[string]bool{
 	"show_recent_files": true,
 	"help":              true,
 	"keybinds":          true,
+	"options_menu":      true,
 	"open_config":       true,
 	"cut":               true,
 	"copy":              true,

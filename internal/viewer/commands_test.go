@@ -321,3 +321,26 @@ func TestRecentFilePartsNameTheFileFirst(t *testing.T) {
 		}
 	}
 }
+
+// :options and its action open the options menu and close it again, and
+// the action leaves onon.options the options in Lua.
+func TestOptionsCommandTogglesTheMenu(t *testing.T) {
+	app := luaUITestApp(t, "")
+	app.config = app.runtime.Config()
+	app.runCommand(":options")
+	if view := app.activeModalUIView(); view == nil || view.id != "options" {
+		t.Fatalf(":options opened %v", view)
+	}
+	app.runCommand(":options")
+	if view := app.activeModalUIView(); view != nil {
+		t.Fatalf("a second :options left %s open", view.id)
+	}
+	app.runAction("options_menu")
+	if view := app.activeModalUIView(); view == nil || view.id != "options" {
+		t.Fatalf("options_menu opened %v", view)
+	}
+	evalLua(t, app, `onon.options.scroll_off = 3; onon.message(tostring(onon.options.scroll_off))`)
+	if app.message != "3" {
+		t.Fatalf("onon.options.scroll_off = %q after setting it", app.message)
+	}
+}
