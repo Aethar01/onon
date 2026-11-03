@@ -96,6 +96,9 @@ func testKeybindApp(t *testing.T) *App {
 	for _, name := range []string{"HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "APPDATA", "LOCALAPPDATA"} {
 		t.Setenv(name, dir)
 	}
+	// Closed before dir is removed, as cleanups run last first: Windows
+	// cannot remove a file still open.
+	t.Cleanup(config.CloseSessionDatabase)
 	rt, err := config.Open(filepath.Join(dir, "config.lua"), "")
 	if err != nil {
 		t.Fatal(err)
