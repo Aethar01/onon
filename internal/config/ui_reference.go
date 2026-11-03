@@ -37,6 +37,7 @@ A row is a string, its text, or a table of these fields. Other fields are the pl
 | ` + "`value`" + ` | string | What ` + "`on_select`" + ` is given as the value: the text unless set, or with ` + "`cells`" + ` the first cell. |
 | ` + "`id`" + ` | string | The row's own name, given to its callbacks. |
 | ` + "`secondary`" + ` | string | Drawn on the right. |
+| ` + "`hint`" + ` | string | Drawn on the right, muted, while the row is selected and has no ` + "`secondary`" + `, such as what Enter on it does. |
 | ` + "`depth`" + ` | integer | Sets the row in a step for each level. |
 | ` + "`disabled`" + ` | boolean | Disables the row. |
 | ` + "`key`" + ` | string | A key binding, drawn in a column before the text. |
@@ -45,6 +46,7 @@ A row is a string, its text, or a table of these fields. Other fields are the pl
 | ` + "`swatch`" + ` | colour | A colour drawn before the text, written as in the elements table. |
 | ` + "`checked`" + ` | boolean | A check box before the text, checked or not; no check box unless set. |
 | ` + "`button`" + ` | boolean | Draws the row as a button, as the keybind menu's Add a key… is. |
+| ` + "`edit`" + ` | boolean or table | Makes choosing the row type into it rather than run ` + "`on_select`" + `: see [Typing](#typing). ` + "`true`" + ` starts from its ` + "`secondary`" + ` text; a table may give the ` + "`text`" + ` to start from, a ` + "`hint`" + ` at what to type and a ` + "`placeholder`" + ` shown while nothing is. |
 | ` + "`cells`" + ` | string[] | Its text in the view's ` + "`columns`" + `, searched as its text is. |
 
 #### Drawing a view
@@ -91,6 +93,7 @@ Everything a canvas draws out of sight, below or above what shows of the body, i
 
 - ` + "`prompt = \"Open\"`" + ` puts a text field in the header, labelled with it, whose text is the query: typing filters a list without /, and Enter chooses the selected row, or runs ` + "`on_submit`" + ` if the view has one.
 - ` + "`canvas:input`" + ` draws a text field. The first drawn has the typing until Tab, Shift-Tab or a click moves it; Tab and Shift-Tab move through the prompt, fields, buttons and check boxes in the order they are drawn. ` + "`view:field(id)`" + ` and ` + "`view:set_field(id, text)`" + ` read and write a field's text, before the view opens too, and ` + "`view:fields()`" + ` gives them all, as an ` + "`on_submit`" + ` reading a form wants.
+- A row with ` + "`edit`" + ` is typed into in place: Enter or a click on it, or ` + "`view:edit_row(index)`" + `, turns its secondary text into the text being typed, all of it selected, with the hint after the row's text while there is room. ` + "`on_input`" + ` and ` + "`on_submit`" + ` hear it by the row's ` + "`id`" + `, or its value without one; Enter keeps the text, and Escape drops it, with no callback. While it is typed into, the keys edit it rather than move through the list. onon's print dialog and options menu type their values this way.
 - Fields and prompts edit as onon's own prompt does, with the same keys, a press placing the cursor, a drag selecting, and copy, cut and paste with the clipboard actions. Text an input method is composing shows underlined at the cursor. In a field of more than one line, Enter starts a new line, Ctrl- or Cmd-Enter submits, and the arrows, Home and End move by line.
 - A menu has the keys while it is open. A panel takes them when clicked, if it has fields, buttons, check boxes, a prompt or ` + "`on_key`" + `, or from ` + "`view:focus()`" + `, until Escape, a click elsewhere, or ` + "`view:blur()`" + `; ` + "`view:focused()`" + ` says whether it has them.
 
@@ -101,15 +104,15 @@ Everything a canvas draws out of sight, below or above what shows of the body, i
 | ` + "`on_select(index, value, text, id, row)`" + ` | When a row is chosen. ` + "`index`" + ` and ` + "`id`" + ` are the row's in the rows as set, however filtered, and ` + "`row`" + ` is the row as given, string or table. |
 | ` + "`on_selection_changed(index, value, text, id, row)`" + ` | When a key, the pointer or the query moves the selection, not when the view opens or ` + "`set_selected`" + ` moves it, as for a live preview. |
 | ` + "`on_query_changed(query)`" + ` | When the user changes the search query or prompt, not when ` + "`set_query`" + ` does. |
-| ` + "`on_input(text, id)`" + ` | When the user changes a field's text. |
-| ` + "`on_submit(text, id)`" + ` | On Enter in a field, or in the prompt, whose ` + "`id`" + ` is nil. |
+| ` + "`on_input(text, id)`" + ` | When the user changes a field's text, or a row's being typed into. |
+| ` + "`on_submit(text, id)`" + ` | On Enter in a field, a row being typed into, or the prompt, whose ` + "`id`" + ` is nil. |
 | ` + "`on_click(id)`" + ` | When a button or check box is clicked. |
 | ` + "`on_key(key)`" + ` | For each key pressed while the view has the keys and is not being typed in, named as ` + "`bind`" + ` names it, before the view's own keys; returning true takes the key. |
 | ` + "`on_action(action)`" + ` | For the action bound to a key pressed while the view has the keys, before the view runs it; returning true takes the action. |
 | ` + "`on_mouse(event)`" + ` | For the pointer over the view, and after a press on it until the release; returning true keeps the view from handling it. ` + "`event.type`" + ` is ` + "`press`" + `, ` + "`release`" + `, ` + "`move`" + `, ` + "`leave`" + ` or ` + "`wheel`" + `; ` + "`event.x`" + ` and ` + "`event.y`" + ` are logical pixels from the top left of what the body draws, scrolled; ` + "`event.region`" + ` is the id of the region there; a press or release has ` + "`button`" + ` (` + "`left`" + `, ` + "`middle`" + `, ` + "`right`" + `, ` + "`x1`" + ` or ` + "`x2`" + `) and a press ` + "`clicks`" + `; a wheel has ` + "`dx`" + ` and ` + "`dy`" + `, positive to the right and down. A press on a text field, button or check box goes to it instead. |
 | ` + "`on_close()`" + ` | When the view closes: by ` + "`view:close()`" + ` or, for a menu, the user, another menu replacing it, or the document closing. |
 
-View methods are ` + "`show()`" + `, ` + "`close()`" + `, ` + "`visible()`" + `, ` + "`redraw()`" + `, ` + "`size()`" + `, ` + "`focus()`" + `, ` + "`blur()`" + `, ` + "`focused()`" + `, ` + "`set_title(title)`" + `, ` + "`set_rows(rows)`" + `, ` + "`set_selected(index)`" + `, ` + "`set_scroll(scroll)`" + `, ` + "`set_query(query)`" + `, ` + "`field(id)`" + `, ` + "`fields()`" + `, ` + "`set_field(id, text)`" + `, ` + "`selected()`" + `, ` + "`scroll()`" + `, and ` + "`query()`" + `. Selection indices are 1-based, with 0 meaning no selection. A drawn body's scroll is in logical pixels, a list's in rows. Once a view closes, its methods read the state it closed with, as ` + "`on_close`" + ` does, until it is shown again from its spec.
+View methods are ` + "`show()`" + `, ` + "`close()`" + `, ` + "`visible()`" + `, ` + "`redraw()`" + `, ` + "`size()`" + `, ` + "`focus()`" + `, ` + "`blur()`" + `, ` + "`focused()`" + `, ` + "`set_title(title)`" + `, ` + "`set_rows(rows)`" + `, ` + "`set_selected(index)`" + `, ` + "`set_scroll(scroll)`" + `, ` + "`set_query(query)`" + `, ` + "`field(id)`" + `, ` + "`fields()`" + `, ` + "`set_field(id, text)`" + `, ` + "`edit_row(index)`" + `, ` + "`selected()`" + `, ` + "`scroll()`" + `, and ` + "`query()`" + `. Selection indices are 1-based, with 0 meaning no selection. A drawn body's scroll is in logical pixels, a list's in rows. Once a view closes, its methods read the state it closed with, as ` + "`on_close`" + ` does, until it is shown again from its spec.
 
 ` + "```lua" + `
 -- A sidebar of page thumbnails, docked left and resizable; clicking one

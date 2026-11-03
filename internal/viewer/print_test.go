@@ -27,17 +27,52 @@ func TestPrintDialogEditsSettings(t *testing.T) {
 	if app.printSettings.sides != "two-sided-long-edge" || row("sides").secondary != "long edge" {
 		t.Fatalf("sides = %q", app.printSettings.sides)
 	}
-	app.activeUIView().onSelect(app, row("copies"))
-	app.input.Set("3")
-	app.commitInputMode()
-	if app.printSettings.copies != 3 || row("copies").secondary != "3" {
+	view := app.activeUIView()
+	view.onSelect(app, row("copies"))
+	if app.mode != modeNormal || app.activeUIView() != view {
+		t.Fatalf("editing copies left the dialog: mode %v", app.mode)
+	}
+	app.typeUIText("3") // replaces the 1 selected
+	app.viewKey(view, keyDown(sdl.KeycodeReturn, 0))
+	if app.printSettings.copies != 3 || row("copies").secondary != "3" || view.rowEdit != nil {
 		t.Fatalf("copies = %d", app.printSettings.copies)
 	}
-	app.activeUIView().onSelect(app, row("pages"))
-	app.input.Set("1-2, 4")
-	app.commitInputMode()
+	view.onSelect(app, row("pages"))
+	app.typeUIText("1-2, 4")
+	app.viewKey(view, keyDown(sdl.KeycodeReturn, 0))
 	if app.printSettings.pages != "1-2,4" {
 		t.Fatalf("pages = %q", app.printSettings.pages)
+	}
+}
+
+// Pages are typed into their row: the keys type rather than move through
+// the list, the Print row says what they will print as they are typed,
+// and Escape puts them back as they were.
+func TestPrintDialogTypesPagesInTheirRow(t *testing.T) {
+	app := testStyleApp("bar")
+	app.applyConfigState(config.Default()) // j moves through lists
+	app.docPath, app.docName = "/tmp/doc.pdf", "doc.pdf"
+	app.printSettings.printer = "Office"
+	app.showPrintDialog(printPagesRow)
+	view := app.activeUIView()
+	app.activateUIView(view)
+	if view.rowEdit == nil || view.rowEdit.row != printPagesRow {
+		t.Fatalf("Enter on Pages did not edit its row")
+	}
+	app.viewKey(view, keyDown(sdl.KeycodeJ, 0))
+	if view.selected != printPagesRow {
+		t.Fatalf("j moved the selection to %d while typing", view.selected)
+	}
+	app.typeUIText("2-3")
+	if note := view.rows[len(view.rows)-1].secondary; note != "2 of 9 pages" {
+		t.Fatalf("print row says %q while typing", note)
+	}
+	app.viewKey(view, keyDown(sdl.KeycodeEscape, 0))
+	if view.rowEdit != nil || app.activeUIView() != view || app.printSettings.pages != "" {
+		t.Fatalf("Escape: edit %v, pages %q", view.rowEdit, app.printSettings.pages)
+	}
+	if note := view.rows[len(view.rows)-1].secondary; note != "9 of 9 pages" {
+		t.Fatalf("print row says %q after Escape", note)
 	}
 }
 

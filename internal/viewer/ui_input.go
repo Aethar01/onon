@@ -147,9 +147,14 @@ func (a *App) editUIText(target uiEdit, edit func(*textInput)) {
 	if target.input.Value == before {
 		return
 	}
-	if target.id == "" {
+	switch edit := target.view.rowEdit; {
+	case target.id == "":
 		a.setUIViewQuery(target.view, target.input.Value)
-	} else if target.view.onInput != nil {
+	case target.id == rowEditField:
+		if edit != nil && edit.change != nil {
+			edit.change(a, target.input.Value)
+		}
+	case target.view.onInput != nil:
 		target.view.onInput(a, target.id, target.input.Value)
 	}
 }

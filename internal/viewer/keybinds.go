@@ -79,7 +79,9 @@ func (a *App) openActionKeys(action string) {
 }
 
 // keybindMenuKey captures keys while capturing, Escape cancelling, and
-// otherwise deletes the selected key with Delete or Backspace.
+// otherwise deletes the selected key with Delete or Backspace. Delete or
+// Backspace pressed first in place of a key deletes it too, rather than
+// binding it: to bind one of them, add it as a new key.
 func (a *App) keybindMenuKey(key keys.Key, repeat bool) bool {
 	m := &a.keybindMenu
 	if m.capturing {
@@ -92,18 +94,25 @@ func (a *App) keybindMenuKey(key keys.Key, repeat bool) bool {
 			a.refreshKeybindRows()
 			return true
 		}
+		if isDeleteKey(token) && m.captureKey != "" && len(m.captured) == 0 {
+			m.capturing = false
+			a.unbindKey(m.captureKey)
+			return true
+		}
 		m.captured = append(m.captured, token)
 		m.capturedAt = time.Now()
 		a.wakeAfter(time.Duration(a.config.SequenceTimeoutMS) * time.Millisecond)
 		a.refreshKeybindRows()
 		return true
 	}
-	if token := key.String(); !repeat && (token == "<Del>" || token == "<BS>") {
+	if token := key.String(); !repeat && isDeleteKey(token) {
 		a.deleteSelectedKeybind()
 		return true
 	}
 	return false
 }
+
+func isDeleteKey(token string) bool { return token == "<Del>" || token == "<BS>" }
 
 // keybindMenuAction closes the editor, the action's keys and the list
 // both, on its own toggle.
@@ -183,15 +192,15 @@ func (a *App) refreshKeybindRows() {
 		m.keys = bound[m.action]
 		rows := []uiRow{{index: 0, text: addKeyLabel, button: true}}
 		for i, key := range m.keys {
-			rows = append(rows, uiRow{index: i + 1, text: key, value: key})
+			rows = append(rows, uiRow{index: i + 1, text: key, value: key, hint: "Enter rebinds, Delete removes"})
 		}
 		if m.capturing {
 			// The row being bound says so.
-			i := 0
+			i, prompt := 0, "press keys, Esc cancels"
 			if m.captureKey != "" {
-				i = slices.Index(m.keys, m.captureKey) + 1
+				i, prompt = slices.Index(m.keys, m.captureKey)+1, "press keys, Delete removes, Esc cancels"
 			}
-			rows[i].secondary = "press keys, Esc cancels"
+			rows[i].secondary = prompt
 			if len(m.captured) > 0 {
 				rows[i].secondary = strings.Join(m.captured, " ") + " …"
 			}
@@ -220,8 +229,14 @@ func (a *App) finishKeybindCapture(now time.Time) {
 }
 
 func (a *App) deleteSelectedKeybind() {
-	key, ok := a.selectedKey()
-	if a.runtime == nil || !ok {
+	if key, ok := a.selectedKey(); ok {
+		a.unbindKey(key)
+	}
+}
+
+// unbindKey unbinds key, from the keybind menu, saying so.
+func (a *App) unbindKey(key string) {
+	if a.runtime == nil {
 		return
 	}
 	if err := a.runtime.UnbindKey(key); err != nil {

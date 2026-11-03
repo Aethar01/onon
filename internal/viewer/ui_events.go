@@ -22,6 +22,11 @@ func (a *App) viewKey(view *uiView, e *sdl.KeyboardEvent) {
 		return
 	}
 	token := key.String()
+	if view.rowEdit != nil {
+		a.rowEditKey(view, key, token)
+		a.pendingRedraw = true
+		return
+	}
 	if (len(view.focusOrder) > 0 || view.prompt != "") && a.handleUIControlKey(view, token) || a.handleUIEditKey(view, key, token) {
 		return
 	}
@@ -143,14 +148,20 @@ func (a *App) scrollUIViewBy(view *uiView, delta int) {
 }
 
 func (a *App) activateUIView(view *uiView) {
-	if view == nil || view.onSelect == nil {
+	if view == nil {
 		return
 	}
 	for _, row := range view.visibleRows() {
-		if row.index == view.selected && !row.disabled {
-			view.onSelect(a, row)
-			return
+		if row.index != view.selected || row.disabled {
+			continue
 		}
+		switch {
+		case row.edit != nil:
+			a.editRowText(view, row)
+		case view.onSelect != nil:
+			view.onSelect(a, row)
+		}
+		return
 	}
 }
 

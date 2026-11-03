@@ -1034,3 +1034,65 @@ onon.ui.create({ modal = false, width = 50, height = 20, attach = { x = 100, y =
 		t.Fatalf("view above a box: %+v", r)
 	}
 }
+
+// A row with edit is typed into in place of its secondary text: Enter on
+// it starts, on_input hears each edit and on_submit the text kept, by the
+// row's id, and Escape drops it unheard. view:edit_row starts one too.
+func TestLuaUIRowsTypedIntoInPlace(t *testing.T) {
+	app := luaUITestApp(t, "")
+	app.fontFace = basicfont.Face7x13
+	evalLua(t, app, `
+heard = {}
+view = onon.ui.create({
+  title = "Settings",
+  rows = {
+    { id = "name", text = "Name", secondary = "al", edit = { hint = "your name", placeholder = "nobody" } },
+    { text = "Width", secondary = "80", edit = true },
+    { text = "Plain", hint = "Enter picks it" },
+  },
+  on_select = function(_, value) table.insert(heard, "select " .. value) end,
+  on_input = function(text, id) table.insert(heard, "input " .. id .. "=" .. text) end,
+  on_submit = function(text, id) table.insert(heard, "submit " .. id .. "=" .. text) end,
+})
+view:show()`)
+	heard := func() string {
+		evalLua(t, app, `onon.message(table.concat(heard, "; "))`)
+		return app.message
+	}
+	view := app.activeUIView()
+	if view.rows[2].hint != "Enter picks it" {
+		t.Fatalf("hint = %q", view.rows[2].hint)
+	}
+	app.activateUIView(view)
+	if view.rowEdit == nil || view.rowEdit.hint != "your name" || view.rowEdit.placeholder != "nobody" {
+		t.Fatalf("Enter on an editable row: edit %+v", view.rowEdit)
+	}
+	app.typeUIText("ice") // replaces al, selected
+	app.viewKey(view, keyDown(sdl.KeycodeReturn, 0))
+	if got := heard(); got != "input name=ice; submit name=ice" {
+		t.Fatalf("heard %q", got)
+	}
+	if _, kept := app.UIFields(view.id)[rowEditField]; kept {
+		t.Fatal("view:fields() has the row's text")
+	}
+
+	evalLua(t, app, `heard = {}; view:edit_row(2)`)
+	if view.rowEdit == nil || view.selected != 1 {
+		t.Fatalf("edit_row(2): edit %+v, selected %d", view.rowEdit, view.selected)
+	}
+	if text, _ := view.rowEditText(); text != "80" {
+		t.Fatalf("edit = true starts from %q, want the secondary text", text)
+	}
+	app.typeUIText("9")
+	app.viewKey(view, keyDown(sdl.KeycodeEscape, 0))
+	if got := heard(); got != "input Width=9" || view.rowEdit != nil || app.activeUIView() != view {
+		t.Fatalf("Escape: heard %q, edit %+v", got, view.rowEdit)
+	}
+
+	evalLua(t, app, `heard = {}; view:edit_row(3)`)
+	view.selected = 2
+	app.activateUIView(view)
+	if got := heard(); got != "select Plain" || view.rowEdit != nil {
+		t.Fatalf("a row without edit: heard %q, edit %+v", got, view.rowEdit)
+	}
+}

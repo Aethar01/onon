@@ -476,6 +476,13 @@ func newLuaView(L *lua.LState, rt *Runtime, overlay UIOverlay) *lua.LTable {
 		}
 		return 0
 	}))
+	L.SetField(view, "edit_row", L.NewFunction(func(L *lua.LState) int {
+		index := L.CheckInt(2)
+		if shown() {
+			rt.host.EditUIRow(overlay.ID, index)
+		}
+		return 0
+	}))
 	L.SetField(view, "focus", L.NewFunction(func(L *lua.LState) int {
 		if shown() {
 			rt.host.FocusUI(overlay.ID, true)
@@ -631,10 +638,25 @@ func luaTableUIRows(L *lua.LState, value lua.LValue) []UIListRow {
 			Marker:    lua.LVAsString(spec.RawGetString("marker")),
 			Heading:   lua.LVAsBool(spec.RawGetString("heading")),
 			Button:    lua.LVAsBool(spec.RawGetString("button")),
+			Hint:      lua.LVAsString(spec.RawGetString("hint")),
 			Lua:       item,
 		}
 		if checked := spec.RawGetString("checked"); checked != lua.LNil {
 			row.Checkbox, row.Checked = true, lua.LVAsBool(checked)
+		}
+		switch edit := spec.RawGetString("edit").(type) {
+		case lua.LBool:
+			if edit {
+				row.Edit = &UIRowEdit{Text: row.Secondary}
+			}
+		case *lua.LTable:
+			row.Edit = &UIRowEdit{Text: row.Secondary, Hint: lua.LVAsString(edit.RawGetString("hint")), Placeholder: lua.LVAsString(edit.RawGetString("placeholder"))}
+			if text, ok := edit.RawGetString("text").(lua.LString); ok {
+				row.Edit.Text = string(text)
+			}
+		case *lua.LNilType:
+		default:
+			L.RaiseError("ui rows: row %d edit must be true or a table", i)
 		}
 		if cells, ok := spec.RawGetString("cells").(*lua.LTable); ok {
 			for j := 1; j <= cells.Len(); j++ {
