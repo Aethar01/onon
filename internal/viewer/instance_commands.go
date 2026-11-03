@@ -30,9 +30,13 @@ func (a *App) EnableSingleInstance() {
 	for _, t := range a.tabList() {
 		a.withTab(t, a.rebindInstanceServer)
 	}
+	g := a.windowGroup()
+	if g.server != nil {
+		return // the process listens already
+	}
 	address, err := instance.WindowAddressFor(os.Getpid())
 	if err == nil {
-		a.windowServer, err = instance.Listen(address)
+		g.server, err = instance.Listen(address)
 	}
 	if err != nil {
 		a.logf("not listening for new tabs: %v", err)
@@ -44,10 +48,11 @@ func (a *App) EnableSingleInstance() {
 // noteLastWindow records this window as the one focused last, which
 // --tab opens documents in.
 func (a *App) noteLastWindow() {
-	if a.windowServer == nil {
+	server := a.windowGroup().server
+	if server == nil {
 		return
 	}
-	last := instance.LastWindow{Address: a.windowServer.Address(), Args: a.launchArgs}
+	last := instance.LastWindow{Address: server.Address(), Args: a.launchArgs}
 	if err := instance.NoteLastWindow(last); err != nil {
 		a.logf("cannot record the last window: %v", err)
 	}
@@ -95,8 +100,9 @@ func (a *App) rebindInstanceServer() {
 
 // CloseInstanceServer releases every tab's address at shutdown.
 func (a *App) CloseInstanceServer() {
-	a.windowServer.Close()
-	a.windowServer = nil
+	g := a.windowGroup()
+	g.server.Close()
+	g.server = nil
 	for _, t := range a.tabList() {
 		if t.instanceServer != nil {
 			t.instanceServer.Close()
@@ -112,7 +118,8 @@ func (a *App) CloseInstanceServer() {
 // which is what makes it safe to touch viewer state directly. It reports
 // whether anything changed.
 func (a *App) pollInstanceCommands() bool {
-	changed := a.pollWindowCommands()
+	// The process's own address asks the focused window.
+	changed := a == a.windowGroup().focused && a.pollWindowCommands()
 	for _, t := range slices.Clone(a.tabList()) {
 		for t.instanceServer != nil {
 			var delivery instance.Delivery
@@ -144,17 +151,20 @@ func (a *App) pollInstanceCommands() bool {
 // rather than of a document: opening one in a new tab, and running a
 // command in the tab that shows it.
 func (a *App) pollWindowCommands() bool {
-	if a.windowServer == nil {
+	server := a.windowGroup().server
+	if server == nil {
 		return false
 	}
 	changed := false
 	for {
 		select {
-		case delivery := <-a.windowServer.Deliveries():
+		case delivery := <-server.Deliveries():
 			var err error
 			switch request := delivery.Request; request.Command {
 			case "open-tab":
 				err = a.applyInstanceOpenTab(request)
+			case "open-document":
+				err = a.applyInstanceOpenDocument(request)
 			case "run":
 				err = a.applyInstanceRun(request.Text)
 			default:
@@ -188,6 +198,24 @@ func (a *App) applyInstanceOpenTab(request instance.Request) error {
 		return nil
 	}
 	return a.applyInstanceJump(jump)
+}
+
+// applyInstanceOpenDocument opens a document as one the system sends is,
+// where open_documents says, and goes to the page asked for there.
+func (a *App) applyInstanceOpenDocument(request instance.Request) error {
+	a.handleDroppedFile(request.Path, 0)
+	w := a.windowGroup().focused
+	w.raiseWindow()
+	if request.Page <= 0 {
+		w.pendingRedraw = true
+		return nil
+	}
+	jump := instanceJump{page: request.Page, x: request.X, y: request.Y, hasPoint: request.HasPoint}
+	if w.pageCount == 0 {
+		w.pendingInstanceJump = &jump
+		return nil
+	}
+	return w.applyInstanceJump(jump)
 }
 
 func (a *App) applyInstanceRequest(request instance.Request) error {

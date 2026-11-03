@@ -361,15 +361,22 @@ func (a *App) moveTab(to int) {
 	a.pendingRedraw = true
 }
 
-// confirmQuit reports whether quitting may go ahead: at once when no tab
-// has unsaved edits, otherwise on the second attempt, after a warning.
+// confirmQuit reports whether closing the window may go ahead: at once
+// when no tab has unsaved edits, otherwise on the second attempt, after a
+// warning.
 func (a *App) confirmQuit(action string) bool {
-	if len(a.tabList()) <= 1 {
+	return a.confirmTabs(a.tabList(), action)
+}
+
+// confirmTabs reports whether closing tabs may go ahead, as confirmQuit
+// does for the window's.
+func (a *App) confirmTabs(tabs []*tab, action string) bool {
+	if len(tabs) == 1 && tabs[0] == a.tab {
 		return a.confirmDiscard(action)
 	}
 	unwarned := 0
 	unsaved := 0
-	for _, t := range a.tabList() {
+	for _, t := range tabs {
 		if t.unsaved {
 			unsaved++
 			if !t.discardWarned {
@@ -380,7 +387,7 @@ func (a *App) confirmQuit(action string) bool {
 	if unwarned == 0 {
 		return true
 	}
-	for _, t := range a.tabList() {
+	for _, t := range tabs {
 		if t.unsaved {
 			t.discardWarned = true
 		}

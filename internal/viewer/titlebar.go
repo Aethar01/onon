@@ -306,7 +306,7 @@ func (a *App) pressTitleBarButton(b titleButton, down bool) bool {
 			sdl.MaximizeWindow(a.window)
 		}
 	case titleButtonClose:
-		a.quit = a.confirmDiscard("closing")
+		a.quit = a.confirmQuit("closing")
 	}
 	return true
 }

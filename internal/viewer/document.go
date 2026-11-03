@@ -44,8 +44,8 @@ func (a *App) Open(path string) error {
 	state := a.captureViewState().atDocumentStart()
 	// The configuration may depend on the document, so it is read again
 	// for the one opened, but only while it is the only one open: other
-	// tabs would change under it.
-	opts := openDocumentOptions{reloadConfig: len(a.tabs) <= 1, preserveView: &state}
+	// tabs and windows would change under it.
+	opts := openDocumentOptions{reloadConfig: a.windowGroup().documentsOpen() <= 1, preserveView: &state}
 	if page > 0 {
 		opts.startPage, opts.startPageExplicit = page-1, true // #page=N
 	}

@@ -237,6 +237,14 @@ func (a *App) applyConfigState(cfg config.Config) {
 // changes it or the option is assigned (named in assigned); the UI font and
 // rendered tiles are kept unless their own settings change.
 func (a *App) applyConfig(cfg config.Config, assigned map[string]bool) {
+	for _, w := range a.windowGroup().windows {
+		w.applyWindowConfig(cfg, assigned)
+	}
+}
+
+// applyWindowConfig applies a changed config to one window, as applyConfig
+// does to every window.
+func (a *App) applyWindowConfig(cfg config.Config, assigned map[string]bool) {
 	prev := a.config
 	a.config = cfg
 	a.configGeneration++
@@ -530,14 +538,18 @@ var commandAliases = map[string]string{
 func init() {
 	commandHandlers = map[string]func(*App, string){
 		// :q closes the tab, and the window with its last tab, as in Vim.
-		"quit":        func(a *App, _ string) { a.closeTab(a.tabIndex(), false, ":q") },
-		"quit!":       func(a *App, _ string) { a.closeTab(a.tabIndex(), true, ":q!") },
-		"quitall":     func(a *App, _ string) { a.quit = a.confirmQuit(":qa") },
-		"quitall!":    func(a *App, _ string) { a.quit = true },
+		"quit":    func(a *App, _ string) { a.closeTab(a.tabIndex(), false, ":q") },
+		"quit!":   func(a *App, _ string) { a.closeTab(a.tabIndex(), true, ":q!") },
+		"quitall": func(a *App, _ string) { a.windowGroup().quitAll(":qa") },
+		"quitall!": func(a *App, _ string) {
+			for _, w := range a.windowGroup().windows {
+				w.quit = true
+			}
+		},
 		"write":       func(a *App, args string) { a.writeDocument(args, false) },
 		"write!":      func(a *App, args string) { a.writeDocument(args, true) },
 		"writeall":    func(a *App, _ string) { a.writeAll() },
-		"wqall":       func(a *App, _ string) { a.writeAll(); a.quit = a.confirmQuit(":wqa") },
+		"wqall":       func(a *App, _ string) { a.writeAll(); a.windowGroup().quitAll(":wqa") },
 		"tabnew":      (*App).runTabNewCommand,
 		"tabnext":     func(a *App, args string) { a.runTabGotoCommand(args, 1) },
 		"tabprevious": func(a *App, args string) { a.runTabGotoCommand(args, -1) },
@@ -685,7 +697,9 @@ func unescapeCommandArg(arg string) string {
 func (a *App) reloadConfig() {
 	oldActive := a.activeUIView()
 	err := a.runtime.Reload()
-	a.removeStaleLuaViews(a.runtime.Generation())
+	for _, w := range a.windowGroup().windows {
+		w.removeStaleLuaViews(a.runtime.Generation())
+	}
 	if err != nil {
 		if oldActive != nil && a.views.views[oldActive.id] == oldActive {
 			a.showUIView(oldActive)

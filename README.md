@@ -199,7 +199,10 @@ viewer command as typed after `:`, including commands registered by plugins,
 and exits non-zero if the command is unrecognised.
 
 With no window showing the document, `--unique` opens one and applies any
-`--goto` and `--command` as it starts. `--tab` also shows the tab that has the
+`--goto` and `--command` as it starts. On macOS one onon process opens every window, so the
+system can gather them into tabs: a document named on the command line goes
+to the running onon, as one Finder sends does, and `open_documents` says
+where it opens. `--tab` also shows the tab that has the
 document open, and otherwise opens it in a new tab of the window focused last,
 started with the same `--config`, `--no-config` and `--no-plugins`; with no
 document it opens an empty tab there. A different document is a different

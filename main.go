@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"strings"
 
 	_ "embed"
@@ -74,6 +75,9 @@ func run() error {
 
 	var docPath string
 	var restoreTabs config.WindowTabs
+	// named is whether the document was named, on the command line or by
+	// the system, rather than remembered from the last session.
+	named := flag.NArg() > 0
 	// An argument that may be a scheme from config.lua, such as arxiv:id,
 	// waits until the configuration that would register it is loaded.
 	var schemeArg string
@@ -82,6 +86,7 @@ func run() error {
 		// arguments. The window shows one document, so the first wins.
 		if launched := viewer.LaunchDocuments(verbose); len(launched) > 0 {
 			docPath = config.AbsoluteDocumentPath(launched[0])
+			named = true
 		} else if newTab {
 			// An empty tab, to choose a document in.
 		} else if tabs, ok := config.LastWindowTabs(); ok {
@@ -129,10 +134,21 @@ func run() error {
 				}
 			}
 		}
-		if !newTab {
+		// On macOS one process opens every window, so that the system can
+		// gather them into tabs: a document named on the command line goes
+		// to the running onon, as one Finder sends does.
+		request := "open-tab"
+		switch {
+		case newTab:
+		case runtime.GOOS == "darwin" && named:
+			if handled, err := handOffToRunningInstance(docPath, target, command); handled || err != nil {
+				return handled, err
+			}
+			request = "open-document"
+		default:
 			return false, nil
 		}
-		handled, err := handOffToLastWindow(docPath, target, command)
+		handled, err := handOffToLastWindow(request, docPath, target, command)
 		if handled && verbose {
 			log.Printf("opened %q in a new tab of the running window", remote.Display(docPath))
 		}
@@ -216,10 +232,12 @@ func handOffToRunningInstance(docPath string, target *instance.Request, command 
 	return true, nil
 }
 
-// handOffToLastWindow asks the window focused last to open docPath in a
-// new tab, or an empty tab with none, and run command there. A window whose
+// handOffToLastWindow asks the window focused last to open docPath, with
+// the request named by kind: in a new tab, or an empty tab with none, for
+// "open-tab"; as a document the system sends for "open-document". It then
+// runs command there. A window whose
 // process loaded another configuration, from other flags, is not asked.
-func handOffToLastWindow(docPath string, target *instance.Request, command string) (bool, error) {
+func handOffToLastWindow(kind, docPath string, target *instance.Request, command string) (bool, error) {
 	last, ok := instance.ReadLastWindow()
 	if !ok || !last.SameArgs(launchArgs()) {
 		return false, nil
@@ -227,7 +245,7 @@ func handOffToLastWindow(docPath string, target *instance.Request, command strin
 	if _, err := instance.Send(last.Address, instance.Request{Command: "ping"}); err != nil {
 		return false, nil
 	}
-	request := instance.Request{Command: "open-tab", Path: docPath}
+	request := instance.Request{Command: kind, Path: docPath}
 	if target != nil {
 		request.Page, request.X, request.Y, request.HasPoint = target.Page, target.X, target.Y, target.HasPoint
 	}

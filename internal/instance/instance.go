@@ -28,9 +28,10 @@ const replyTimeout = 10 * time.Second
 
 // Request is one command for a running instance.
 type Request struct {
-	// Command is "open", "open-tab", "run", or "ping". "open-tab" goes to
-	// a window's address, to open Path in a new tab there, or with no Path
-	// an empty one.
+	// Command is "open", "open-tab", "open-document", "run", or "ping".
+	// "open-tab" goes to a window's address, to open Path in a new tab
+	// there, or with no Path an empty one; "open-document" opens it as a
+	// document the system sends is.
 	Command string `json:"command"`
 	// Path is the document to open, absolute.
 	Path string `json:"path,omitempty"`

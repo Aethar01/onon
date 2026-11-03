@@ -543,7 +543,6 @@ func (s *sdlState) Close() {
 		sdl.DestroyWindow(s.window)
 		s.window = nil
 	}
-	sdl.Quit()
 }
 
 func fillRect(renderer *sdl.Renderer, rect sdl.FRect, clr color.RGBA) error {

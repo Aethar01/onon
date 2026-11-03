@@ -117,15 +117,18 @@ func (a *App) runTabMoveCommand(args string) {
 	}
 }
 
-// writeAll saves every tab that has unsaved edits, as :wa does.
+// writeAll saves every tab of every window that has unsaved edits, as :wa
+// does.
 func (a *App) writeAll() {
 	wrote := 0
-	for _, t := range a.tabList() {
-		if !t.unsaved {
-			continue
+	for _, w := range a.windowGroup().windows {
+		for _, t := range w.tabList() {
+			if !t.unsaved {
+				continue
+			}
+			w.withTab(t, func() { w.writeDocument("", false) })
+			wrote++
 		}
-		a.withTab(t, func() { a.writeDocument("", false) })
-		wrote++
 	}
 	switch {
 	case wrote == 0:
@@ -135,12 +138,14 @@ func (a *App) writeAll() {
 	}
 }
 
-// unsavedTabs counts the tabs with unsaved edits.
+// unsavedTabs counts the tabs of every window with unsaved edits.
 func (a *App) unsavedTabs() int {
 	n := 0
-	for _, t := range a.tabList() {
-		if t.unsaved {
-			n++
+	for _, w := range a.windowGroup().windows {
+		for _, t := range w.tabList() {
+			if t.unsaved {
+				n++
+			}
 		}
 	}
 	return n

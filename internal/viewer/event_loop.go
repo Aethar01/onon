@@ -32,24 +32,40 @@ func initSDL() error {
 	return nil
 }
 
+// Run opens the window and runs the event loop until every window of the
+// process has closed.
 func (a *App) Run() error {
 	a.logf("init SDL")
 	if err := initSDL(); err != nil {
 		return err
 	}
 	sdl.SetHint("SDL_RENDER_SCALE_QUALITY", "2")
+	g := a.windowGroup()
+	g.waker = newLoopWaker()
+	if err := a.openWindow(); err != nil {
+		sdl.Quit()
+		return err
+	}
+	a.installMenuBar()
+	if a.runtime != nil {
+		a.emitPluginEvent("app_ready", a.documentEventPayload())
+		a.flushPendingInstanceCommand()
+	}
+	return g.run()
+}
+
+// openWindow creates the window and its renderer and opens its document.
+func (a *App) openWindow() error {
 	window := sdl.CreateWindow("onon", 1400, 900, sdl.WindowResizable|sdl.WindowHighPixelDensity)
 	if window == nil {
-		sdl.Quit()
 		return fmt.Errorf("SDL window creation failed: %s", sdl.GetError())
 	}
 	renderer, rendererNote := createRenderer(window, a.config.Renderer)
 	if renderer == nil {
 		sdl.DestroyWindow(window)
-		sdl.Quit()
 		return fmt.Errorf("SDL renderer creation failed: %s", sdl.GetError())
 	}
-	nativeApp = a
+	a.windowGroup().focus(a)
 	a.configureNativeWindow(window)
 	// Frames are presented in step with the display, so animations move
 	// once per refresh rather than when a timer happens to fire.
@@ -61,8 +77,7 @@ func (a *App) Run() error {
 	a.renderer = renderer
 	a.updateDisplayFrame()
 	a.loadUIFont() // again, now the display scale is known
-	a.waker = newLoopWaker()
-	a.installMenuBar()
+	a.waker = a.windowGroup().waker
 	// Only Linux needs the window icon set. macOS takes the app icon from the
 	// bundle and Windows from the exe's icon resource, and setting one here
 	// would replace them: the Dock's adaptive icon, or the .ico's small sizes.
@@ -96,68 +111,39 @@ func (a *App) Run() error {
 	a.recomputeLayout(a.viewportSize())
 	a.pendingRedraw = true
 	a.syncTextInput()
-	if a.runtime != nil {
-		a.emitPluginEvent("app_ready", a.documentEventPayload())
-		a.flushPendingInstanceCommand()
+	return nil
+}
+
+// tick does a window's share of a turn of the event loop: animations,
+// what its workers and other processes sent, and drawing.
+func (a *App) tick() error {
+	a.refreshStaleSelection()
+	a.advanceSmoothScroll()
+	a.advanceSmoothZoom()
+	a.advanceAutoscroll()
+	a.advanceTitleBar()
+	if a.pollInstanceCommands() {
+		a.pendingRedraw = true
 	}
-	defer a.stopTextInput()
-	defer a.cancelSmoothScroll()
-	defer a.cancelSmoothZoom()
-	for !a.quit {
-		var event sdl.Event
-		for sdl.PollEvent(&event) {
-			if err := a.handleSDLEvent(&event); err != nil {
-				return err
-			}
-		}
-		a.refreshStaleSelection()
-		a.advanceSmoothScroll()
-		a.advanceSmoothZoom()
-		a.advanceAutoscroll()
-		a.advanceTitleBar()
-		if a.runtime != nil {
-			if a.runtime.PollPluginOperations() {
-				a.applyRuntimeChanges("plugin operation")
-				a.pendingRedraw = true
-			}
-		}
-		if a.pollInstanceCommands() {
-			a.pendingRedraw = true
-		}
-		if a.pollSystemActions() {
-			a.pendingRedraw = true
-		}
-		a.pollRenderUpdates()
-		a.pollMetricUpdates()
-		a.flushPendingInstanceJump()
-		a.pollSearchUpdates()
-		a.pollRemoteTask()
-		a.pollBackgroundSaves()
-		a.pollRemotePrompts()
-		a.pollDocumentUpdate()
-		a.expireSequence()
-		a.finishKeybindCapture(time.Now())
-		a.revealLinkPreview()
-		a.pollPrintResult()
-		a.pollUpdateCheck()
-		a.prefetchVisiblePages()
-		a.adjustRenderBaseScaleForExtremeZoom(a.scale)
-		a.emitViewStateEvents()
-		if a.pendingRedraw {
-			if err := a.drawFrame(); err != nil {
-				return err
-			}
-		}
-		if !a.quit {
-			var event sdl.Event
-			if sdl.WaitEventTimeout(&event, int32(a.eventWaitTimeoutMS())) {
-				if err := a.handleSDLEvent(&event); err != nil {
-					return err
-				}
-			}
-		}
+	a.pollRenderUpdates()
+	a.pollMetricUpdates()
+	a.flushPendingInstanceJump()
+	a.pollSearchUpdates()
+	a.pollRemoteTask()
+	a.pollBackgroundSaves()
+	a.pollRemotePrompts()
+	a.pollDocumentUpdate()
+	a.expireSequence()
+	a.finishKeybindCapture(time.Now())
+	a.revealLinkPreview()
+	a.pollPrintResult()
+	a.pollUpdateCheck()
+	a.prefetchVisiblePages()
+	a.adjustRenderBaseScaleForExtremeZoom(a.scale)
+	a.emitViewStateEvents()
+	if a.pendingRedraw {
+		return a.drawFrame()
 	}
-	a.logf("viewer exiting")
 	return nil
 }
 
@@ -267,7 +253,13 @@ func (a *App) handleSDLEvent(event *sdl.Event) error {
 	redraw := true
 	switch event.Type() {
 	case sdl.EventQuit:
-		a.quit = a.confirmDiscard("closing")
+		a.windowGroup().quitAll("closing")
+		redraw = false
+	case sdl.EventWindowCloseRequested:
+		// With one window, SDL then asks to quit, which confirms.
+		if len(a.windowGroup().windows) > 1 {
+			a.quit = a.confirmQuit("closing")
+		}
 		redraw = false
 	case sdl.EventWindowExposed:
 		redraw = true

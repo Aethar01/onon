@@ -41,11 +41,30 @@ type NewOptions struct {
 }
 
 func New(docPath string, runtime *config.Runtime, startPage int, iconBytes []byte, opts NewOptions) (*App, error) {
-	cfg := runtime.Config()
 	if startPage < 0 {
 		startPage = 0
 	}
-	first := newTab(startPage)
+	app := newApp(runtime, iconBytes, opts)
+	app.logf("create viewer doc=%q startPage=%d", remote.Display(docPath), startPage+1)
+	app.page = startPage
+	remote.SetPrompter(app.askRemote)
+	runtime.AttachHost(app)
+	runtime.SetWake(app.wakeLoop)
+	if docPath != "" {
+		app.initialDocPath = docPath
+		app.initialStartPage = startPage
+		app.initialPageSet = opts.StartPageExplicit
+		app.initialTabs = opts.RestoreTabs
+	}
+	app.recomputeLayout(1400, 900-app.statusReservedHeight())
+	return app, nil
+}
+
+// newApp makes a window, with one empty tab, set up as runtime's
+// configuration asks.
+func newApp(runtime *config.Runtime, iconBytes []byte, opts NewOptions) *App {
+	cfg := runtime.Config()
+	first := newTab(0)
 	first.zoom = cfg.MinZoom
 	first.cache = tileCache{byteLimit: pageCacheByteLimit(cfg)}
 	app := &App{
@@ -54,7 +73,7 @@ func New(docPath string, runtime *config.Runtime, startPage int, iconBytes []byt
 		launchArgs:  opts.LaunchArgs,
 		tab:         first,
 		tabs:        []*tab{first},
-		windowState: windowState{pageStep: 64},
+		windowState: windowState{pageStep: 64, remotePrompts: make(chan *remotePrompt, 4)},
 		sdlState: sdlState{
 			iconBytes: iconBytes,
 		},
@@ -63,25 +82,9 @@ func New(docPath string, runtime *config.Runtime, startPage int, iconBytes []byt
 			sequenceLookup: map[string]string{},
 		},
 	}
-	app.logf("create viewer doc=%q startPage=%d", remote.Display(docPath), startPage+1)
-	app.remotePrompts = make(chan *remotePrompt, 4)
-	remote.SetPrompter(app.askRemote)
-	runtime.AttachHost(app)
-	runtime.SetWake(app.wakeLoop)
 	app.applyConfigState(cfg)
 	app.message = cfg.NormalMessage
-	if docPath != "" {
-		app.initialDocPath = docPath
-		app.initialStartPage = startPage
-		app.initialPageSet = opts.StartPageExplicit
-		app.initialTabs = opts.RestoreTabs
-	}
-	app.recomputeLayout(1400, 900-app.statusReservedHeight())
-	if app.doc != nil {
-		app.ensureRenderBaseScale()
-		app.alignPageToAnchor(startPage)
-	}
-	return app, nil
+	return app
 }
 
 func (a *App) logf(format string, args ...any) {
@@ -114,18 +117,38 @@ func (a *App) showWindowDocument() {
 	}
 }
 
+// Close closes every window of the process still open, and the process's
+// share of the viewer: the shutdown event, and SDL.
 func (a *App) Close() {
-	if a.window != nil {
-		a.rememberTabs() // only a window that was shown, not one a test made
+	g := a.windowGroup()
+	windows := g.windows
+	if len(windows) == 0 {
+		windows = []*App{a} // the last window, which run leaves to Close
 	}
-	for _, t := range a.tabList() {
-		a.withTab(t, a.closeTabDocument)
+	if last := windows[len(windows)-1]; last.window != nil {
+		last.rememberTabs() // only a window that was shown, not one a test made
 	}
+	for _, w := range windows {
+		w.closeWindow()
+	}
+	g.windows = nil
+	g.server.Close()
+	g.server = nil
 	if a.remotePrompts != nil {
 		remote.SetPrompter(nil)
 	}
 	if a.runtime != nil {
 		a.emitPluginEvent("shutdown", map[string]any{})
+	}
+	if a.window != nil || a.renderer != nil || g.waker != nil {
+		sdl.Quit()
+	}
+}
+
+// closeWindow closes a window's tabs, and the window itself.
+func (a *App) closeWindow() {
+	for _, t := range a.tabList() {
+		a.withTab(t, a.closeTabDocument)
 	}
 	a.stopTextInput()
 	a.sdlState.Close()

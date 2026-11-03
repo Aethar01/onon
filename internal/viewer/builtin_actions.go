@@ -106,7 +106,7 @@ func init() {
 		"new_tab":           do((*App).newEmptyTab),
 		"close_tab":         do(func(a *App) { a.closeTab(a.tabIndex(), false, "close_tab") }),
 		"tabs_menu":         do((*App).toggleTabsMenu),
-		"quit":              do(func(a *App) { a.quit = a.confirmQuit("quit") }),
+		"quit":              do(func(a *App) { a.windowGroup().quitAll("quit") }),
 	}
 }
 

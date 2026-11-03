@@ -249,6 +249,9 @@ func TestHandleDroppedFileOpensWhereOpenDocumentsSays(t *testing.T) {
 		return nil
 	}
 	t.Cleanup(func() { startProcess = (*exec.Cmd).Start })
+	inProcess := inProcessWindows
+	inProcessWindows = false // as on Linux and Windows
+	t.Cleanup(func() { inProcessWindows = inProcess })
 	path := filepath.Join(t.TempDir(), "requested.pdf")
 	tests := []struct {
 		name      string
