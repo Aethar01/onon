@@ -1,6 +1,7 @@
 package viewer
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"slices"
@@ -26,7 +27,9 @@ func (a *App) raiseWindow() {
 // switching files hands the old address back and claims the new one.
 func (a *App) EnableSingleInstance() {
 	a.singleInstance = true
-	a.rebindInstanceServer()
+	for _, t := range a.tabList() {
+		a.withTab(t, a.rebindInstanceServer)
+	}
 	address, err := instance.WindowAddressFor(os.Getpid())
 	if err == nil {
 		a.windowServer, err = instance.Listen(address)
@@ -60,8 +63,8 @@ func (a *App) rebindInstanceServer() {
 	// Work out what this document needs before touching the current listener,
 	// so an unchanged document keeps the address it already holds.
 	wanted := ""
-	if a.docPath != "" {
-		address, err := instance.AddressFor(a.docPath)
+	if path := cmp.Or(a.docPath, a.pendingPath); path != "" {
+		address, err := instance.AddressFor(path)
 		if err != nil {
 			a.logf("single instance unavailable: %v", err)
 		} else {

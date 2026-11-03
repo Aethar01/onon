@@ -122,7 +122,7 @@ func renderReference(luaRefs []config.LuaReferenceEntry, luaDocs map[string]stri
 	b.WriteString("- `onon.theme`: the theme; see [Theme](#theme). Read or assign whole, or one field at a time.\n")
 	b.WriteString("- `onon.themes`: each built-in theme as a fresh table, such as `onon.themes.birch`.\n")
 	b.WriteString("- `onon.ui.create`'s spec and rows: see [UI views](#ui-views).\n")
-	b.WriteString("- `onon.cache`, `onon.ui`, and `onon.plugin`: functions are listed above.\n")
+	b.WriteString("- `onon.cache`, `onon.tabs`, `onon.ui`, and `onon.plugin`: functions are listed above.\n")
 	renderLuaTables(&b)
 	b.WriteString("\n### Status bar\n\n")
 	b.WriteString("Show or hide the status bar with `onon.options.status_bar_visible`. Its look comes from the theme: `status_bar_style` places it along the bottom or floating as pills, `status_bar_padding` sets its horizontal spacing and `font.size` its text size, and the `status`, `status_left` and `status_right` elements style it further. The `status_bar_left` and `status_bar_right` options are templates with these substitutions:\n\n")

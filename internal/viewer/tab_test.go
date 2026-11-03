@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -412,5 +413,73 @@ func TestTabBarSqueezesTabsAndKeepsTheShownOneInView(t *testing.T) {
 		if r.W < min(natural, app.px(tabMinWidth))-0.5 {
 			t.Fatalf("a tab %v wide, under the least %v", r.W, min(natural, app.px(tabMinWidth)))
 		}
+	}
+}
+
+func TestRestoredTabsOpenWhenFirstShown(t *testing.T) {
+	a, b, c := testPages(t, 2), testPages(t, 2), testPages(t, 2)
+	paths := []string{config.AbsoluteDocumentPath(a), config.AbsoluteDocumentPath(b), config.AbsoluteDocumentPath(c)}
+	runtime, err := config.Open(filepath.Join(t.TempDir(), "missing.lua"), b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(runtime.Close)
+	app, err := New(paths[1], runtime, 0, nil, NewOptions{RestoreTabs: config.WindowTabs{Paths: paths, Active: 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(app.Close)
+	app.winW, app.winH = 1000, 800
+	if err := app.openInitialDocument(); err != nil {
+		t.Fatal(err)
+	}
+	if len(app.tabs) != 3 || app.tabIndex() != 1 || app.docPath != paths[1] {
+		t.Fatalf("restored %s, want three tabs with the second shown", tabNames(app))
+	}
+	if app.tabs[0].doc != nil || app.tabs[2].doc != nil {
+		t.Fatal("a tab in the background was opened before it was shown")
+	}
+	if app.tabShowing(c) != 2 {
+		t.Fatal("the third tab does not answer for its document before it opens")
+	}
+	app.selectTab(0)
+	if app.doc == nil || app.docPath != paths[0] {
+		t.Fatalf("showing the first tab left %q open", app.docPath)
+	}
+
+	app.rememberTabs()
+	w, ok := config.LastWindowTabs()
+	if !ok || w.Active != 0 || !slices.Equal(w.Paths, paths) {
+		t.Fatalf("remembered %+v, want %q with the first shown", w, paths)
+	}
+}
+
+func TestLuaTabsAPI(t *testing.T) {
+	first, second := testPages(t, 3), testPages(t, 2)
+	app := tabsApp(t, first)
+	eval := func(code string) {
+		t.Helper()
+		if _, err := app.runtime.Eval(code); err != nil {
+			t.Fatal(err)
+		}
+	}
+	eval(fmt.Sprintf("onon.tabs.open(%q)", second))
+	if len(app.tabs) != 2 || app.tabIndex() != 1 {
+		t.Fatalf("onon.tabs.open gave %s", tabNames(app))
+	}
+	eval(`
+local tabs = onon.tabs.list()
+assert(#tabs == 2, "two tabs")
+assert(tabs[1].index == 1 and tabs[1].page_count == 3 and not tabs[1].active)
+assert(tabs[2].active and tabs[2].page == 1 and tabs[2].page_count == 2)
+assert(onon.tabs.current() == 2)
+assert(not pcall(onon.tabs.select, 3), "selecting a tab that is not there fails")
+onon.tabs.select(1)`)
+	if app.tabIndex() != 0 {
+		t.Fatalf("onon.tabs.select(1) left %s", tabNames(app))
+	}
+	eval(`onon.tabs.close(2)`)
+	if len(app.tabs) != 1 {
+		t.Fatalf("onon.tabs.close(2) left %s", tabNames(app))
 	}
 }

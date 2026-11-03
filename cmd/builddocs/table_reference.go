@@ -29,7 +29,7 @@ type luaTableGroup struct {
 var luaTableGroups = []luaTableGroup{
 	{
 		name:  "Document and platform",
-		intro: "`onon.platform`, `onon.document` and its functions, and a plugin's `document`, give these. Coordinates are in unrotated PDF points from the page's top left.",
+		intro: "`onon.platform`, `onon.document` and its functions, `onon.tabs`, and a plugin's `document`, give these. Coordinates are in unrotated PDF points from the page's top left.",
 		tables: []luaTable{
 			{"Platform", "`onon.platform`, also `require(\"onon.platform\")`. Directories are absolute when the system gives one, and empty when it does not.", []luaField{
 				{"os", "string", "`linux`, `macos` or `windows`."},
@@ -51,6 +51,15 @@ var luaTableGroups = []luaTableGroup{
 				{"outline()", "function", "Returns its outline: a list of [Outline entry](#outline-entry) tables, empty when it has none."},
 				{"page_info(page)", "function", "Returns [Page info](#page-info) for a 1-based page; an out-of-range page raises an error."},
 				{"selection()", "function", "Returns the current [Selection](#selection)."},
+			}},
+			{"Tab", "One of the window's tabs, as `onon.tabs.list()` gives them.", []luaField{
+				{"index", "integer", "Its 1-based position, as `onon.tabs.select` and `onon.tabs.close` take."},
+				{"path", "string", "The path or URL of its document; empty for an empty tab."},
+				{"name", "string", "The name it shows."},
+				{"page", "integer", "The 1-based page it shows; 0 before its document opens."},
+				{"page_count", "integer", "Its document's number of pages; 0 before it opens."},
+				{"modified", "boolean", "Whether it has unsaved edits."},
+				{"active", "boolean", "Whether it is the tab shown."},
 			}},
 			{"Rectangle", "An area of a page.", []luaField{
 				{"x0", "number", "Left edge."},
@@ -289,6 +298,7 @@ var luaTableGroups = []luaTableGroup{
 var luaTableLocations = map[string]string{
 	"Platform":           "`onon.platform`",
 	"Document":           "`onon.document`",
+	"Tab":                "`onon.tabs.list()`",
 	"Rectangle":          "page bounds and selection geometry",
 	"Document metadata":  "`onon.document.metadata()`",
 	"Outline entry":      "`onon.document.outline()`",

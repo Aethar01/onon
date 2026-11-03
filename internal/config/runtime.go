@@ -479,10 +479,10 @@ func (r *Runtime) doLua(fn func() error) (err error) {
 			return
 		}
 		if panicked || err != nil {
-			r.deferredOpen = ""
+			r.deferred = nil
 			return
 		}
-		err = r.flushDeferredOpen()
+		err = r.flushDeferred()
 	}()
 	err = fn()
 	panicked = false
@@ -490,27 +490,39 @@ func (r *Runtime) doLua(fn func() error) (err error) {
 }
 
 func (r *Runtime) open(path string) error {
+	return r.callHost("open", func(host Host) error { return host.Open(path) })
+}
+
+// callHost calls the viewer, or while Lua is running, once it returns; an
+// error then is reported as name's.
+func (r *Runtime) callHost(name string, call func(Host) error) error {
 	if r.host == nil {
 		return fmt.Errorf("viewer host unavailable")
 	}
 	if r.luaCallDepth > 0 {
-		r.deferredOpen = path
+		r.deferred = append(r.deferred, func() error {
+			if r.host == nil {
+				return fmt.Errorf("%s: viewer host unavailable", name)
+			}
+			if err := call(r.host); err != nil {
+				return fmt.Errorf("%s: %w", name, err)
+			}
+			return nil
+		})
 		return nil
 	}
-	return r.host.Open(path)
+	return call(r.host)
 }
 
-func (r *Runtime) flushDeferredOpen() error {
-	if r.deferredOpen == "" {
-		return nil
-	}
-	path := r.deferredOpen
-	r.deferredOpen = ""
-	if r.host == nil {
-		return fmt.Errorf("open: viewer host unavailable")
-	}
-	if err := r.host.Open(path); err != nil {
-		return fmt.Errorf("open: %w", err)
+// flushDeferred makes the viewer calls Lua made while it ran, stopping at
+// the first that fails.
+func (r *Runtime) flushDeferred() error {
+	calls := r.deferred
+	r.deferred = nil
+	for _, call := range calls {
+		if err := call(); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -294,6 +294,7 @@ type windowState struct {
 	initialDocPath   string
 	initialStartPage int
 	initialPageSet   bool
+	initialTabs      config.WindowTabs
 	// remotePrompts brings questions from ssh and web servers to the event
 	// loop; remotePrompt is the one being asked.
 	remotePrompts chan *remotePrompt

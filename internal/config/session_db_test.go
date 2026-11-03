@@ -137,3 +137,22 @@ func TestPromptHistoryKeepsNewestDistinctEntries(t *testing.T) {
 		t.Fatalf("command history = %q", got)
 	}
 }
+
+func TestLastWindowTabsRoundTrip(t *testing.T) {
+	setTestDataDir(t)
+	want := WindowTabs{Paths: []string{"/tmp/one.pdf", "sftp://host/two.pdf", "/tmp/three.pdf"}, Active: 1}
+	if err := SetLastWindowTabs(want); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := LastWindowTabs()
+	if !ok || got.Active != 1 || len(got.Paths) != 3 || got.Paths[1] != want.Paths[1] {
+		t.Fatalf("LastWindowTabs = %+v, %t, want %+v", got, ok, want)
+	}
+	// A window closing with one tab leaves nothing to restore.
+	if err := SetLastWindowTabs(WindowTabs{Paths: []string{"/tmp/one.pdf"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := LastWindowTabs(); ok {
+		t.Fatalf("LastWindowTabs = %+v after a window with one tab", got)
+	}
+}

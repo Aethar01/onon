@@ -35,6 +35,9 @@ type NewOptions struct {
 	// LaunchArgs are the flags a new window's process inherits, such as
 	// --config.
 	LaunchArgs []string
+	// RestoreTabs are the tabs to open around the document, as the window
+	// had them when it last closed.
+	RestoreTabs config.WindowTabs
 }
 
 func New(docPath string, runtime *config.Runtime, startPage int, iconBytes []byte, opts NewOptions) (*App, error) {
@@ -71,6 +74,7 @@ func New(docPath string, runtime *config.Runtime, startPage int, iconBytes []byt
 		app.initialDocPath = docPath
 		app.initialStartPage = startPage
 		app.initialPageSet = opts.StartPageExplicit
+		app.initialTabs = opts.RestoreTabs
 	}
 	app.recomputeLayout(1400, 900-app.statusReservedHeight())
 	if app.doc != nil {
@@ -111,6 +115,9 @@ func (a *App) showWindowDocument() {
 }
 
 func (a *App) Close() {
+	if a.window != nil {
+		a.rememberTabs() // only a window that was shown, not one a test made
+	}
 	for _, t := range a.tabList() {
 		a.withTab(t, a.closeTabDocument)
 	}

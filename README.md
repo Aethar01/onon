@@ -175,6 +175,11 @@ The commands follow Vim's: `:tabnext [N]`, `:tabprevious`, `:tabfirst`,
 <command>` and `:tabs`, which lists the tabs to choose one. `:q` closes the tab,
 `:qa` quits, `:wa` saves every tab and `:wqa` saves them and quits.
 
+Started with no document named, onon opens the tabs the window last closed
+with, showing the same one; the others open their documents when first
+shown. `restore_tabs = false` opens only that one. In Lua, `onon.tabs` lists,
+opens, shows and closes tabs, and plugins hear `tab_changed`.
+
 ### Single instance
 
 Instances are per document. Each tab is reachable by anything that opens the

@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"time"
 
+	"onon/internal/config"
 	"onon/internal/remote"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
@@ -197,6 +198,8 @@ func (a *App) openInitialDocument() error {
 		a.message = err.Error()
 		a.pendingRedraw = true
 	}
+	a.restoreTabs(a.initialTabs)
+	a.initialTabs = config.WindowTabs{}
 	return nil
 }
 

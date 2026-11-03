@@ -668,6 +668,7 @@ var configOptions = map[string]optionDesc{
 	"overview_thumb_width":   intOption("Width in pixels the page overview aims to show each page at, which sets how many columns fit.", func(c *Config) int { return c.OverviewThumbWidth }, func(c *Config, v int) { c.OverviewThumbWidth = max(1, v) }),
 	"overview_max_columns":   intOption("Most columns the page overview shows, whether fitted to the window or set with zoom_out.", func(c *Config) int { return c.OverviewMaxColumns }, func(c *Config, v int) { c.OverviewMaxColumns = max(1, v) }),
 	"overview_gap":           intOption("Gap in pixels between the page overview's cells.", func(c *Config) int { return c.OverviewGap }, func(c *Config, v int) { c.OverviewGap = max(0, v) }),
+	"restore_tabs":           boolOption("Open the tabs the window had when onon last closed with several, when it starts with no document named, each loaded when first shown.", func(c *Config) bool { return c.RestoreTabs }, func(c *Config, v bool) { c.RestoreTabs = v }),
 	"recent_files_max":       intOption("Maximum recent files retained and displayed.", func(c *Config) int { return c.RecentFilesMax }, func(c *Config, v int) { c.RecentFilesMax = max(0, v) }),
 	"scroll_step":            intOption("Keyboard and mouse scroll distance in pixels.", func(c *Config) int { return c.ScrollStep }, func(c *Config, v int) { c.ScrollStep = v }),
 	"page_gap": intOption("Vertical gap between pages; aliases page_gap_vertical.", func(c *Config) int { return c.PageGap }, func(c *Config, v int) {

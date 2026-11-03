@@ -73,6 +73,7 @@ func run() error {
 	}
 
 	var docPath string
+	var restoreTabs config.WindowTabs
 	// An argument that may be a scheme from config.lua, such as arxiv:id,
 	// waits until the configuration that would register it is loaded.
 	var schemeArg string
@@ -83,6 +84,15 @@ func run() error {
 			docPath = config.AbsoluteDocumentPath(launched[0])
 		} else if newTab {
 			// An empty tab, to choose a document in.
+		} else if tabs, ok := config.LastWindowTabs(); ok {
+			// The window that closed last had several tabs; restore_tabs,
+			// once the configuration is loaded, says whether to open them
+			// all. The one it showed opens either way.
+			restoreTabs = tabs
+			docPath = tabs.Paths[tabs.Active]
+			if session, ok := config.GetDocumentSession(docPath); !pageSet && ok {
+				startPage = session.Page + 1
+			}
 		} else if recent := config.RecentFiles(1); len(recent) > 0 {
 			docPath = recent[0]
 			if session, ok := config.GetDocumentSession(docPath); !pageSet && ok {
@@ -160,7 +170,7 @@ func run() error {
 	defer config.CloseSessionDatabase() // after the viewer saves its session
 	defer remote.Close()                // ends any SSH connections
 
-	app, err := viewer.New(docPath, runtime, startPage-1, iconBMP, viewer.NewOptions{Verbose: verbose, StartPageExplicit: pageSet, LaunchArgs: launchArgs()})
+	app, err := viewer.New(docPath, runtime, startPage-1, iconBMP, viewer.NewOptions{Verbose: verbose, StartPageExplicit: pageSet, LaunchArgs: launchArgs(), RestoreTabs: restoreTabs})
 	if err != nil {
 		return fmt.Errorf("start viewer: %w", err)
 	}

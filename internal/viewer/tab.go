@@ -1,6 +1,7 @@
 package viewer
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -31,6 +32,9 @@ type tab struct {
 	// catches up with changes when it is shown again.
 	appliedConfig config.Config
 	configSeen    int
+	// pendingPath is the document a tab restored from the last session
+	// opens when it is first shown; until then it has no document.
+	pendingPath string
 }
 
 // newTab returns a tab with no document, starting at page.
@@ -50,6 +54,8 @@ func (t *tab) tabName() string {
 	switch {
 	case t.docName != "":
 		return t.docName
+	case t.pendingPath != "":
+		return config.DocumentName(t.pendingPath)
 	case t.remoteTask != nil:
 		return remote.Name(t.remoteTask.uri)
 	}
@@ -76,7 +82,8 @@ func (a *App) tabShowing(path string) int {
 	}
 	key := instance.Key(config.AbsoluteDocumentPath(path))
 	return slices.IndexFunc(a.tabList(), func(t *tab) bool {
-		return t.docPath != "" && instance.Key(t.docPath) == key
+		path := cmp.Or(t.docPath, t.pendingPath)
+		return path != "" && instance.Key(path) == key
 	})
 }
 
@@ -143,7 +150,7 @@ func (a *App) openInTab(path string, page int) error {
 // tabIsEmpty reports whether the tab shown has no document and is not
 // waiting for one.
 func (a *App) tabIsEmpty() bool {
-	return a.doc == nil && a.docPath == "" && a.remoteTask == nil
+	return a.doc == nil && a.docPath == "" && a.pendingPath == "" && a.remoteTask == nil
 }
 
 // showTabFor shows the tab that has path open, at page when page is above
@@ -235,6 +242,7 @@ func (a *App) enterTab(previous int) {
 	}
 	a.setWindowTitle()
 	a.pendingRedraw = true
+	a.loadPendingTab()
 	if a.runtime != nil {
 		payload := a.documentEventPayload()
 		payload["index"] = a.tabIndex() + 1
@@ -440,4 +448,89 @@ func (a *App) pollBackgroundSaves() {
 			a.withTab(t, a.pollRemoteTask)
 		}
 	}
+}
+
+// loadPendingTab opens the document of a tab restored from the last
+// session, now that it is shown.
+func (a *App) loadPendingTab() {
+	path := a.pendingPath
+	if path == "" {
+		return
+	}
+	a.pendingPath = ""
+	if err := a.openInTab(path, 0); err != nil {
+		a.message = err.Error()
+	}
+}
+
+// restoreTabs adds the tabs the window had when it last closed, around
+// the tab shown, which has the one that was shown then open. Each opens
+// its document when first shown.
+func (a *App) restoreTabs(w config.WindowTabs) {
+	if !a.config.RestoreTabs || len(w.Paths) < 2 || w.Active < 0 || w.Active >= len(w.Paths) {
+		return
+	}
+	shown := a.tab
+	tabs := make([]*tab, 0, len(w.Paths))
+	for i, path := range w.Paths {
+		if i == w.Active {
+			tabs = append(tabs, shown)
+			continue
+		}
+		if a.tabShowing(path) >= 0 || slices.ContainsFunc(tabs, func(t *tab) bool { return t.pendingPath == path }) {
+			continue
+		}
+		t := a.emptyTab()
+		t.pendingPath = path
+		a.withTab(t, a.rebindInstanceServer) // --unique finds it before it loads
+		tabs = append(tabs, t)
+	}
+	a.tabs = tabs
+	a.relayoutWithViewportAnchor(nil) // below the tab bar
+}
+
+// rememberTabs records the window's tabs as it closes, for restoreTabs.
+func (a *App) rememberTabs() {
+	if !a.config.SessionDatabase {
+		return
+	}
+	w := config.WindowTabs{}
+	for _, t := range a.tabList() {
+		path := cmp.Or(t.docPath, t.pendingPath)
+		if path == "" {
+			continue
+		}
+		if t == a.tab {
+			w.Active = len(w.Paths)
+		}
+		w.Paths = append(w.Paths, path)
+	}
+	if err := config.SetLastWindowTabs(w); err != nil {
+		a.logf("cannot record the tabs: %v", err)
+	}
+}
+
+// Tabs describes the window's tabs, for onon.tabs.
+func (a *App) Tabs() []config.TabInfo {
+	tabs := a.tabList()
+	infos := make([]config.TabInfo, len(tabs))
+	for i, t := range tabs {
+		infos[i] = config.TabInfo{
+			Path: cmp.Or(t.docPath, t.pendingPath), Name: t.tabName(), PageCount: t.pageCount,
+			Modified: t.unsaved, Active: t == a.tab,
+		}
+		if t.pageCount > 0 {
+			infos[i].Page = t.page + 1
+		}
+	}
+	return infos
+}
+
+// SelectTab shows the tab at index, for onon.tabs.select.
+func (a *App) SelectTab(index int) error {
+	if index < 0 || index >= len(a.tabList()) {
+		return fmt.Errorf("no tab %d", index+1)
+	}
+	a.selectTab(index)
+	return nil
 }

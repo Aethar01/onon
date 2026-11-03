@@ -2,6 +2,7 @@ package config
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -158,6 +159,42 @@ func RecordRecentFile(path string, maxEntries int) error {
 		)
 	`, maxEntries)
 	return err
+}
+
+// WindowTabs is a window's tabs as it closed: the documents open in them,
+// in order, and the index of the one shown.
+type WindowTabs struct {
+	Paths  []string `json:"paths"`
+	Active int      `json:"active"`
+}
+
+const windowTabsSetting = "window_tabs"
+
+// SetLastWindowTabs records the tabs of the window that closed last, or
+// forgets them when it had only one, which the recent files open again.
+func SetLastWindowTabs(w WindowTabs) error {
+	if len(w.Paths) < 2 {
+		return setSetting(windowTabsSetting, "")
+	}
+	data, err := json.Marshal(w)
+	if err != nil {
+		return err
+	}
+	return setSetting(windowTabsSetting, string(data))
+}
+
+// LastWindowTabs returns the tabs SetLastWindowTabs recorded, if any.
+func LastWindowTabs() (WindowTabs, bool) {
+	value, err := getSetting(windowTabsSetting)
+	if err != nil || value == "" {
+		return WindowTabs{}, false
+	}
+	var w WindowTabs
+	if json.Unmarshal([]byte(value), &w) != nil || len(w.Paths) < 2 {
+		return WindowTabs{}, false
+	}
+	w.Active = min(max(w.Active, 0), len(w.Paths)-1)
+	return w, true
 }
 
 func RecentFiles(limit int) []string {

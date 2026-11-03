@@ -90,6 +90,7 @@ func newLuaModule(L *lua.LState, rt *Runtime, cfg *Config) *lua.LTable {
 	mod := L.NewTable()
 	L.SetField(mod, "document", newLuaDocumentTable(L, rt))
 	L.SetField(mod, "cache", newLuaCacheTable(L, rt))
+	L.SetField(mod, "tabs", newLuaTabsTable(L, rt))
 	L.SetField(mod, "ui", newLuaViewAPI(L, rt))
 	L.SetField(mod, "plugin", newLuaPluginAPI(L, rt))
 	L.SetField(mod, "platform", NewLuaPlatformModule(L))

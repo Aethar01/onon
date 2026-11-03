@@ -65,6 +65,7 @@ func Default() Config {
 		OutlineHeightPercent:  80,
 		CompletionMaxItems:    10,
 		RecentFilesMax:        20,
+		RestoreTabs:           true,
 		AutoReload:            true,
 		AutoReloadDelayMS:     200,
 		LinkPreviewDelayMS:    400,

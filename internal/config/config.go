@@ -70,6 +70,7 @@ type Config struct {
 	OutlineHeightPercent  int
 	CompletionMaxItems    int
 	RecentFilesMax        int
+	RestoreTabs           bool
 	AutoReload            bool
 	AutoReloadDelayMS     int
 	LinkPreviewDelayMS    int
@@ -79,14 +80,16 @@ type Config struct {
 
 type Runtime struct {
 	luaGeneration
-	explicitPath     string
-	docPath          string
-	docName          string
-	docMeta          documentMeta
-	host             Host
-	uiSeq            int
-	luaCallDepth     int
-	deferredOpen     string
+	explicitPath string
+	docPath      string
+	docName      string
+	docMeta      documentMeta
+	host         Host
+	uiSeq        int
+	luaCallDepth int
+	// deferred are viewer calls Lua made, such as onon.open, run once the
+	// Lua that made them returns, as they may replace the Lua state.
+	deferred         []func() error
 	assigned         map[string]bool // built-in options assigned since ConsumeDirty
 	verbose          bool
 	pluginPaths      []string
