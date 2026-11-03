@@ -281,6 +281,13 @@ func uiOverlayFromLuaSpec(L *lua.LState, rt *Runtime, spec *lua.LTable) UIOverla
 	default:
 		L.RaiseError("ui.create: at is a point, { x = number, y = number [, page = page number] }")
 	}
+	switch attach := spec.RawGetString("attach").(type) {
+	case *lua.LNilType:
+	case *lua.LTable:
+		overlay.Attach = luaUIAttach(L, attach)
+	default:
+		L.RaiseError("ui.create: %s", uiAttachUsage)
+	}
 	if columns, ok := spec.RawGetString("columns").(*lua.LTable); ok {
 		for i := 1; i <= columns.Len(); i++ {
 			col, ok := columns.RawGetInt(i).(*lua.LTable)
@@ -788,4 +795,54 @@ func (r *Runtime) setOption(name string, value lua.LValue) error {
 	}
 	r.dirty = true
 	return nil
+}
+
+const uiAttachUsage = "attach is { view = view } for a view's selected row, or { x =, y =, w =, h = [, page =] } for a box, with side = right, left, below or above if given"
+
+// luaUIAttach reads ui.create's attach: another view, beside its
+// selected row, or a box in the window or on a page.
+func luaUIAttach(L *lua.LState, t *lua.LTable) *UIAttach {
+	att := &UIAttach{}
+	switch side := t.RawGetString("side").(type) {
+	case *lua.LNilType:
+	case lua.LString:
+		att.Side = string(side)
+		if !slices.Contains(UIAttachSides, att.Side) {
+			L.RaiseError("ui.create: unknown attach side %q; use one of %s", att.Side, strings.Join(UIAttachSides, ", "))
+		}
+	default:
+		L.RaiseError("ui.create: %s", uiAttachUsage)
+	}
+	switch view := t.RawGetString("view").(type) {
+	case *lua.LNilType:
+	case *lua.LTable: // a view ui.create made
+		id, ok := view.RawGetString("id").(lua.LString)
+		if !ok {
+			L.RaiseError("ui.create: %s", uiAttachUsage)
+		}
+		att.View = string(id)
+		return att
+	default:
+		L.RaiseError("ui.create: %s", uiAttachUsage)
+	}
+	var nums [4]float64
+	for i, name := range []string{"x", "y", "w", "h"} {
+		n, ok := t.RawGetString(name).(lua.LNumber)
+		if !ok {
+			L.RaiseError("ui.create: %s", uiAttachUsage)
+		}
+		nums[i] = float64(n)
+	}
+	att.Box = UIBox{X: nums[0], Y: nums[1], W: nums[2], H: nums[3]}
+	switch page := t.RawGetString("page").(type) {
+	case *lua.LNilType:
+	case lua.LNumber:
+		if page < 1 {
+			L.RaiseError("ui.create: %s", uiAttachUsage)
+		}
+		att.Box.Page = int(page)
+	default:
+		L.RaiseError("ui.create: %s", uiAttachUsage)
+	}
+	return att
 }

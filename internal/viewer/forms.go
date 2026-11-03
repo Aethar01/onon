@@ -1,6 +1,9 @@
 package viewer
 
-import "onon/internal/mupdf"
+import (
+	"onon/internal/config"
+	"onon/internal/mupdf"
+)
 
 // Clicking a form field edits it: text fields open a prompt with the value,
 // check boxes and radio buttons toggle, and choice fields open a list.
@@ -56,6 +59,8 @@ func (a *App) pickFormChoice(page int, w mupdf.Widget) {
 		}
 	}
 	a.showRowList("form-choice", "Choose", rows, 40, 50, func(view *uiView) {
+		b := w.Bounds // a dropdown under the field
+		view.place = view.place.belowBox(config.UIBox{Page: page + 1, X: float64(b.X0), Y: float64(b.Y0), W: float64(b.X1 - b.X0), H: float64(b.Y1 - b.Y0)})
 		view.selected = selected
 		view.onSelect = func(a *App, row uiRow) {
 			a.closeUIView(view, false)

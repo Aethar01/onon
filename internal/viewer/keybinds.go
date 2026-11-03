@@ -14,7 +14,7 @@ import (
 const addKeyLabel = "Add a key…"
 
 // The keybind menu lists every action with the keys bound to it. Choosing
-// one opens its keys over the list, under a button for a new one:
+// one opens its keys beside it, under a button for a new one:
 // choosing a key captures the keys to bind in its place, and the button
 // the keys of a new binding.
 type keybindMenuState struct {
@@ -61,12 +61,13 @@ func (a *App) newKeybindView() *uiView {
 	}
 }
 
-// openActionKeys opens the keys of action over the list of actions.
+// openActionKeys opens the keys of action beside its row in the list of
+// actions.
 func (a *App) openActionKeys(action string) {
 	m := &a.keybindMenu
 	m.action, m.capturing, m.captured = action, false, nil
 	m.keysView = &uiView{
-		id: "core:keybind-keys", owner: "core", modal: true, stack: true, element: config.ElementPanel, place: menuPlace(50, 50),
+		id: "core:keybind-keys", owner: "core", modal: true, stack: true, element: config.ElementPanel, place: menuPlace(50, 50).besideRow(m.view),
 		header:   func(a *App, _ *uiView, _ int) string { return "Keys for " + a.keybindMenu.action },
 		keyHook:  func(a *App, key keys.Key, repeat bool) bool { return a.keybindMenuKey(key, repeat) },
 		onAction: func(a *App, _ *uiView, action string) bool { return a.keybindMenuAction(action) },

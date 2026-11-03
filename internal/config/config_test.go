@@ -1356,15 +1356,19 @@ func TestUIViewSpec(t *testing.T) {
 		t.Fatalf("row = %+v", row)
 	}
 	for code, want := range map[string]string{
-		`onon.ui.create({ anchor = "middle" })`:              "unknown anchor",
-		`onon.ui.create({ width = 0 })`:                      "width must be logical pixels",
-		`onon.ui.create({ height = "101%" })`:                "height must be logical pixels",
-		`onon.ui.create({ anchor = { x = 1 } })`:             "anchor names a place",
-		`onon.ui.create({ at = { x = 1 } })`:                 "at is a point",
-		`onon.ui.create({ at = "top" })`:                     "at is a point",
-		`onon.ui.create({ dock = "middle" })`:                "unknown dock",
-		`onon.ui.create({ on_key = "x" })`:                   "on_key must be a function",
-		`onon.ui.create({ rows = { { swatch = "nope" } } })`: "swatch",
+		`onon.ui.create({ anchor = "middle" })`:                                    "unknown anchor",
+		`onon.ui.create({ width = 0 })`:                                            "width must be logical pixels",
+		`onon.ui.create({ height = "101%" })`:                                      "height must be logical pixels",
+		`onon.ui.create({ anchor = { x = 1 } })`:                                   "anchor names a place",
+		`onon.ui.create({ at = { x = 1 } })`:                                       "at is a point",
+		`onon.ui.create({ at = "top" })`:                                           "at is a point",
+		`onon.ui.create({ dock = "middle" })`:                                      "unknown dock",
+		`onon.ui.create({ attach = "menu" })`:                                      "attach is",
+		`onon.ui.create({ attach = { x = 1 } })`:                                   "attach is",
+		`onon.ui.create({ attach = { x = 1, y = 1, w = 1, h = 1, side = "up" } })`: "unknown attach side",
+		`onon.ui.create({ attach = { view = "a" } })`:                              "attach is",
+		`onon.ui.create({ on_key = "x" })`:                                         "on_key must be a function",
+		`onon.ui.create({ rows = { { swatch = "nope" } } })`:                       "swatch",
 	} {
 		if _, err := rt.Eval(code); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: error %v, want %q", code, err, want)

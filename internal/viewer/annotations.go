@@ -68,6 +68,7 @@ func (a *App) openAnnotationMenu(e *sdl.MouseButtonEvent) bool {
 	}
 	rows := []uiRow{{index: 0, text: "Delete", value: "delete"}, {index: 1, text: "Change colour…", value: "colour"}}
 	a.showRowList("annotation-menu", target.Type, rows, 25, 20, func(view *uiView) {
+		view.place = view.place.atPointer(a.windowPoint(e.X, e.Y))
 		view.searchable = false
 		view.onSelect = func(a *App, row uiRow) {
 			switch row.value {

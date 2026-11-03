@@ -10,17 +10,33 @@ import (
 	"golang.org/x/image/font"
 )
 
-// viewPlacement is where a view sits: its size, and an anchor, a point it
-// is pinned to, or a side of the window it is docked to.
+// viewPlacement is where a view sits: its size, and one of an anchor in
+// the window, a point it is pinned to, a box it is attached to, or a side
+// of the window it is docked to. The methods below set which, each
+// clearing the others, so a view is placed one way only.
 type viewPlacement struct {
 	width, height config.UISize
-	anchor        string
-	at            *config.UIPoint
-	dock          string
+	// anchor is where in the window the view sits, or, with at, which
+	// part of it sits at that point. An attached view falls back to it
+	// when what it is attached to is not shown.
+	anchor string
+	at     *config.UIPoint
+	attach *attachment
+	dock   string
 	// fit narrows a list to what its rows take, its width being the most
 	// and least, if set, the least.
 	fit   bool
 	least config.UISize
+}
+
+// attachment is what an attached view sits against, the selected row of
+// a menu or a box, and the side of it it sits on first. Without room
+// there it takes the other side, and without room on either the side
+// with more, kept in the document's part of the window.
+type attachment struct {
+	row  *uiView
+	box  config.UIBox
+	side string // right, left, below or above
 }
 
 // percentPlace is a view of the given percentages of the window, centred,
@@ -41,8 +57,65 @@ func menuPlace(width, height int) viewPlacement {
 	return p
 }
 
+// inWindow sits the view at anchor in the document's part of the window:
+// center, or an edge or corner such as top or bottom_right.
+func (p viewPlacement) inWindow(anchor string) viewPlacement {
+	p.anchor, p.at, p.attach, p.dock = anchor, nil, nil, ""
+	return p
+}
+
+// atPoint pins the part of the view corner names, such as top_left or
+// center, to pt.
+func (p viewPlacement) atPoint(pt config.UIPoint, corner string) viewPlacement {
+	p.anchor, p.at, p.attach, p.dock = corner, &pt, nil, ""
+	return p
+}
+
+// besideRow sits the view on the right of menu, its first row level with
+// menu's selected row, as a submenu does; centred while menu is not shown.
+func (p viewPlacement) besideRow(menu *uiView) viewPlacement {
+	return p.attachTo(attachment{row: menu, side: "right"})
+}
+
+// belowBox sits the view below box, its left edge with box's, as a
+// dropdown does; centred while box is on a page not shown.
+func (p viewPlacement) belowBox(box config.UIBox) viewPlacement {
+	return p.attachTo(attachment{box: box, side: "below"})
+}
+
+// atPointer sits the view's top left at pt, a point in the window, as a
+// context menu does, or as near as it fits.
+func (p viewPlacement) atPointer(pt config.UIPoint) viewPlacement {
+	return p.belowBox(config.UIBox{X: pt.X, Y: pt.Y})
+}
+
+func (p viewPlacement) attachTo(att attachment) viewPlacement {
+	if p.anchor == "" {
+		p.anchor = "center"
+	}
+	p.at, p.attach, p.dock = nil, &att, ""
+	return p
+}
+
+// onSide is p attached as it is, on side first.
+func (p viewPlacement) onSide(side string) viewPlacement {
+	if p.attach != nil {
+		att := *p.attach
+		att.side = side
+		p.attach = &att
+	}
+	return p
+}
+
+// windowPoint is the window point at output pixels x, y.
+func (a *App) windowPoint(x, y float32) config.UIPoint {
+	scale := float64(a.px(1))
+	return config.UIPoint{X: float64(x) / scale, Y: float64(y) / scale}
+}
+
 // placeMenu places one of onon's own menus where the menus option puts it,
-// over its own place.
+// over its own place. Beside puts one opened over another beside the row
+// it was opened from.
 func (a *App) placeMenu(view *uiView) {
 	if view.owner != "core" || len(a.config.Menus) == 0 {
 		return
@@ -64,8 +137,13 @@ func (a *App) placeMenu(view *uiView) {
 	if p.Height.Value > 0 {
 		view.place.height = p.Height
 	}
-	if p.Anchor != "" {
-		view.place.anchor = p.Anchor
+	switch under := a.views.active; {
+	case p.Anchor == config.MenuBeside:
+		if view.stack && under != nil && under != view && under.visible {
+			view.place = view.place.besideRow(under)
+		}
+	case p.Anchor != "":
+		view.place = view.place.inWindow(p.Anchor)
 	}
 }
 
@@ -200,8 +278,8 @@ func (a *App) viewGeometry(view *uiView) (sdl.FRect, int) {
 	// A view's geometry is asked for many times a frame and an event, and
 	// changes only with what the key holds; one pinned to a page moves
 	// with it, so it is worked out each time.
-	if at := view.place.at; at != nil && at.Page > 0 {
-		return a.placeView(view)
+	if at := view.place.at; (at != nil && at.Page > 0) || view.place.attach != nil {
+		return a.placeView(view) // an attached view moves with what it is attached to
 	}
 	key := viewGeometryKey{
 		winW: a.winW, winH: a.winH, status: a.statusVisible(), styles: a.styles, font: a.fontFace, scale: a.uiScale,
@@ -282,11 +360,102 @@ func (a *App) placeView(view *uiView) (sdl.FRect, int) {
 	if p.at != nil {
 		return a.pinnedRect(*p.at, p.anchor, w, h), rows
 	}
+	if p.attach != nil {
+		if rect, ok := a.attachedRect(*p.attach, area, head, w, h); ok {
+			return rect, rows
+		}
+	}
 	x, y := anchorIn(area, p.anchor, w, full, gap)
 	if strings.HasPrefix(p.anchor, "bottom") {
 		y += full - h // its bottom kept at the edge
 	}
 	return sdl.FRect{X: float32(x), Y: float32(y), W: float32(w), H: float32(h)}, rows
+}
+
+// attachedRect is the frame of a view w by h, head tall above its rows,
+// attached as att says, kept in area: on att's side of what it is
+// attached to, a gap from it, or the other side, or whichever side has
+// more room. Beside a row its first row is level with the row; beside or
+// below a box, its edges are with the box's. It is false while what it is
+// attached to is not shown.
+func (a *App) attachedRect(att attachment, area sdl.FRect, head, w, h int) (sdl.FRect, bool) {
+	box, ok := a.attachmentBox(att)
+	if !ok {
+		return sdl.FRect{}, false
+	}
+	gap := float64(a.px(6))
+	if box.W == 0 && box.H == 0 {
+		gap = 0 // at a point, such as the pointer
+	}
+	fw, fh := float64(w), float64(h)
+	left, top := float64(area.X), float64(area.Y)
+	right, bottom := left+float64(area.W), top+float64(area.H)
+	x, y := box.X, box.Y
+	switch att.side {
+	case "right", "left":
+		if att.row != nil {
+			y -= float64(head)
+		}
+		after, before := box.X+box.W+gap, box.X-gap-fw
+		x = pickSide(att.side == "right", after, before, right-after, box.X-gap-left, fw)
+	default: // below, above
+		after, before := box.Y+box.H+gap, box.Y-gap-fh
+		y = pickSide(att.side != "above", after, before, bottom-after, box.Y-gap-top, fh)
+	}
+	x = clampFloat(x, left, math.Max(left, right-fw))
+	y = clampFloat(y, top, math.Max(top, bottom-fh))
+	return sdl.FRect{X: float32(math.Round(x)), Y: float32(math.Round(y)), W: float32(w), H: float32(h)}, true
+}
+
+// pickSide is where a view size long sits along one axis: at after, past
+// what it is attached to, or at before, short of it, room being how much
+// each side has; afterFirst tries after first.
+func pickSide(afterFirst bool, after, before, roomAfter, roomBefore, size float64) float64 {
+	fitsAfter, fitsBefore := roomAfter >= size, roomBefore >= size
+	switch {
+	case afterFirst && fitsAfter, !afterFirst && !fitsBefore && fitsAfter:
+		return after
+	case fitsBefore:
+		return before
+	case roomAfter >= roomBefore:
+		return after
+	default:
+		return before
+	}
+}
+
+// screenBox is a box in output pixels.
+type screenBox struct{ X, Y, W, H float64 }
+
+// attachmentBox is the box, in output pixels, a view attached as att
+// says sits against: the selected row of its menu across the menu's
+// width, or its box in the window or on its page.
+func (a *App) attachmentBox(att attachment) (box screenBox, ok bool) {
+	if menu := att.row; menu != nil {
+		if !menu.visible {
+			return box, false
+		}
+		frame, _ := menu.frameGeometry(a)
+		rowHeight := float64(a.modalListRowHeight())
+		box.X, box.W, box.H = float64(frame.X), float64(frame.W), rowHeight
+		box.Y = float64(frame.Y) + float64(a.uiViewHeadHeight(menu))
+		for i, row := range menu.visibleRows() {
+			if row.index == menu.selected {
+				box.Y += (float64(i) - menu.offset) * rowHeight
+				break
+			}
+		}
+		return box, true
+	}
+	b := att.box
+	x0, y0, ok0 := a.uiPointOnScreen(config.UIPoint{Page: b.Page, X: b.X, Y: b.Y})
+	x1, y1, ok1 := a.uiPointOnScreen(config.UIPoint{Page: b.Page, X: b.X + b.W, Y: b.Y + b.H})
+	if !ok0 || !ok1 {
+		return box, false
+	}
+	box.X, box.Y = math.Min(x0, x1), math.Min(y0, y1)
+	box.W, box.H = math.Abs(x1-x0), math.Abs(y1-y0)
+	return box, true
 }
 
 // anchorIn is where a box w by h anchored at anchor sits in area, gap

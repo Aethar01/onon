@@ -1102,7 +1102,8 @@ func (a *App) showRowList(id, title string, rows []uiRow, widthPercent, heightPe
 }
 
 // showRowListOver opens a menu of rows, as showRowList does, over the menu
-// open, which closing it returns to with its selection as it was.
+// open and beside its selected row, which closing it returns to with its
+// selection as it was.
 func (a *App) showRowListOver(id, title string, rows []uiRow, widthPercent, heightPercent int, setup func(*uiView)) *uiView {
 	return a.openRowList(id, title, rows, widthPercent, heightPercent, true, setup)
 }
@@ -1111,6 +1112,9 @@ func (a *App) openRowList(id, title string, rows []uiRow, widthPercent, heightPe
 	view := &uiView{
 		id: id, owner: "core", title: title, rows: rows, selected: min(0, len(rows)-1),
 		searchable: true, modal: true, stack: stack, element: config.ElementPanel, place: menuPlace(widthPercent, heightPercent),
+	}
+	if under := a.activeModalUIView(); stack && under != nil {
+		view.place = view.place.besideRow(under) // as a submenu of the row chosen
 	}
 	setup(view)
 	a.showUIView(view)

@@ -163,7 +163,7 @@ func (a *App) createLuaView(spec config.UIOverlay) *uiView {
 		stack:      spec.Modal && spec.Stack,
 		headless:   spec.Draw != "" && spec.Title == "" && spec.Prompt == "",
 		element:    config.ElementPanel,
-		place:      viewPlacement{width: spec.Width, height: spec.Height, anchor: spec.Anchor, at: spec.At, dock: spec.Dock},
+		place:      a.pluginPlacement(spec),
 		resizable:  spec.Resizable && spec.Dock != "",
 	}
 	if view.id == "" {
@@ -270,4 +270,31 @@ func (a *App) afterLuaViewCallback(source string, err error) {
 	}
 	a.applyRuntimeChanges(source)
 	a.pendingRedraw = true
+}
+
+// pluginPlacement is where a plugin's spec places its view: attached,
+// docked, attached, pinned to a point, or at its anchor in the window.
+func (a *App) pluginPlacement(spec config.UIOverlay) viewPlacement {
+	p := viewPlacement{width: spec.Width, height: spec.Height, anchor: spec.Anchor}
+	switch att := spec.Attach; {
+	case spec.Dock != "": // docking outranks the rest, as it always has
+		p.dock = spec.Dock
+		return p
+	case att != nil && att.View != "":
+		menu := a.views.views[att.View]
+		if menu == nil {
+			menu = &uiView{} // not shown: it sits at its anchor
+		}
+		p = p.besideRow(menu)
+	case att != nil:
+		p = p.belowBox(att.Box)
+	case spec.At != nil:
+		return p.atPoint(*spec.At, spec.Anchor)
+	default:
+		return p
+	}
+	if att := spec.Attach; att.Side != "" {
+		p = p.onSide(att.Side)
+	}
+	return p
 }

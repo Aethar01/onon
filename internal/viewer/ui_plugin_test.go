@@ -1006,3 +1006,31 @@ func TestUIViewsReferenceExamplesRun(t *testing.T) {
 		}
 	}
 }
+
+func TestLuaUIAttach(t *testing.T) {
+	app := luaUITestApp(t, "")
+	app.winW, app.winH = 800, 600
+	evalLua(t, app, `
+local list = onon.ui.create({ id = "list", width = 200, height = 300, rows = { "a", "b", "c" }, selected = 2 })
+list:show()
+onon.ui.create({ id = "sub", stack = true, width = 120, height = 40, attach = { view = list }, draw = function() end }):show()
+onon.ui.create({ modal = false, width = 50, height = 20, attach = { x = 100, y = 100, w = 40, h = 10 }, draw = function() end }):show()
+onon.ui.create({ modal = false, width = 50, height = 20, attach = { x = 100, y = 100, w = 40, h = 10, side = "above" }, draw = function() end }):show()`)
+	list, sub := app.views.stack[0], app.views.active
+	parent, _ := list.frameGeometry(app)
+	rect, _ := sub.frameGeometry(app)
+	if rect.X <= parent.X+parent.W {
+		t.Fatalf("attached view at %+v, want right of its view at %+v", rect, parent)
+	}
+	row := float64(parent.Y) + float64(app.uiViewHeadHeight(list)) + float64(app.modalListRowHeight())
+	if first := float64(rect.Y) + float64(app.uiViewHeadHeight(sub)); math.Abs(first-row) > 1 {
+		t.Fatalf("attached view's first row at %v, want level with the selected row at %v", first, row)
+	}
+	gap := app.px(6)
+	if r, _ := app.views.panels[0].frameGeometry(app); r != (sdl.FRect{X: 100, Y: 110 + gap, W: 50, H: 20}) {
+		t.Fatalf("view below a box: %+v", r)
+	}
+	if r, _ := app.views.panels[1].frameGeometry(app); r != (sdl.FRect{X: 100, Y: 100 - gap - 20, W: 50, H: 20}) {
+		t.Fatalf("view above a box: %+v", r)
+	}
+}
