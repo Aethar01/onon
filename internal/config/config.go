@@ -273,12 +273,23 @@ type UIListRow struct {
 	Heading   bool   // a section title, which cannot be chosen
 	Swatch    *Color // a colour sample drawn before the text
 	Button    bool   // drawn as a button
+	Hint      string // shown on the right while the row is selected and has no secondary text
 	// Checkbox draws a check box before the text, checked with Checked.
 	Checkbox, Checked bool
 	// Cells are the row's text in its view's columns.
 	Cells []string
+	// Edit, if set, has choosing the row type into it in place of its
+	// secondary text, rather than run on_select.
+	Edit *UIRowEdit
 	// Lua is the row as the plugin gave it, handed back to callbacks.
 	Lua lua.LValue
+}
+
+// UIRowEdit is how a row is typed into: the text it starts from, a hint
+// at what to type, shown beside it while there is room, and what shows
+// while nothing is typed.
+type UIRowEdit struct {
+	Text, Hint, Placeholder string
 }
 
 // UIViewState is a view's state as it closed: its fields' text, its
@@ -341,6 +352,8 @@ type Host interface {
 	// UIField and SetUIField get and set the text of a view's text field.
 	UIField(id, field string) string
 	SetUIField(id, field, text string)
+	// EditUIRow starts typing into a view's row, index 1-based.
+	EditUIRow(id string, index int)
 	// FocusUI gives a view the keys, or with focus false takes them back.
 	FocusUI(id string, focus bool)
 	UIFocused(id string) bool

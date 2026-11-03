@@ -236,6 +236,23 @@ func TestKeybindEditorDeletesAKey(t *testing.T) {
 	}
 }
 
+// Delete pressed in place of a key, after choosing it, deletes it rather
+// than binding Delete.
+func TestKeybindEditorDeletesAKeyBeingRebound(t *testing.T) {
+	app := testKeybindApp(t)
+	keys := chooseAction(t, app, "copy")
+	gone := app.keybindMenu.keys[0]
+	keys.selected = 1
+	app.activateUIView(keys)
+	app.viewKey(keys, keyDown(sdl.KeycodeBackspace, 0))
+	if _, kept := app.config.KeyBindings[gone]; kept || app.keybindMenu.capturing {
+		t.Fatalf("%s still bound (capturing %v) after Backspace in its place", gone, app.keybindMenu.capturing)
+	}
+	if _, bound := app.config.KeyBindings["<BS>"]; bound {
+		t.Fatalf("Backspace was bound in place of %s", gone)
+	}
+}
+
 // freshKey is a key to capture that none of keys is.
 func freshKey(keys ...string) (sdl.Keycode, string) {
 	for _, k := range []struct {

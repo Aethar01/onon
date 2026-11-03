@@ -58,8 +58,26 @@ func (a *App) findPrinters() {
 }
 
 func (a *App) showPrintDialog(selected int) {
-	s := &a.printSettings
-	s.copies = max(1, s.copies)
+	a.printSettings.copies = max(1, a.printSettings.copies)
+	a.showRowList("print", "Print "+a.docName, a.printRows(nil), 50, 40, func(view *uiView) {
+		view.searchable = false
+		view.selected = selected
+		view.onSelect = func(a *App, row uiRow) { a.choosePrintRow(view, row) }
+	})
+}
+
+// refreshPrintDialog brings the open dialog's rows up to date, leaving its
+// selection and a row being typed into as they are.
+func (a *App) refreshPrintDialog() {
+	if view := a.views.views["print"]; view != nil && view.visible {
+		a.setUIViewRows(view, a.printRows(view))
+	}
+}
+
+// printRows is the dialog's rows: its settings, as typed so far into a
+// row of view being edited, then the button that prints them.
+func (a *App) printRows(view *uiView) []uiRow {
+	s := a.printSettingsTyped(view)
 	sides := "off"
 	for _, side := range printSides {
 		if side.value == s.sides {
@@ -77,7 +95,7 @@ func (a *App) showPrintDialog(selected int) {
 	if pages == "" {
 		pages = "all"
 	}
-	note, _ := a.printNote()
+	note, _ := printNote(s, a.pageCount)
 	rows := []uiRow{
 		{text: "Printer", secondary: printer, value: "printer"},
 		{text: "Pages", secondary: pages, value: "pages"},
@@ -88,47 +106,81 @@ func (a *App) showPrintDialog(selected int) {
 	for i := range rows {
 		rows[i].index = i
 	}
-	a.showRowList("print", "Print "+a.docName, rows, 50, 40, func(view *uiView) {
-		view.searchable = false
-		view.selected = selected
-		view.onSelect = func(a *App, row uiRow) { a.choosePrintRow(row) }
-	})
+	return rows
 }
 
-// printNote says what the dialog's settings will print, such as 4 of 614
-// pages, or what is wrong with them, and whether they can be printed.
+// printSettingsTyped is the dialog's settings with the text typed so far
+// into its row being edited, if view has one, in place of that setting.
+func (a *App) printSettingsTyped(view *uiView) printSettings {
+	s := a.printSettings
+	text, ok := view.rowEditText()
+	if !ok {
+		return s
+	}
+	switch view.rowEdit.row {
+	case printPagesRow:
+		s.pages = strings.ReplaceAll(text, " ", "")
+	case printCopiesRow:
+		if n, err := strconv.Atoi(strings.TrimSpace(text)); err == nil && n >= 1 {
+			s.copies = n
+		}
+	}
+	return s
+}
+
+// The rows of the print dialog typed into.
+const (
+	printPagesRow  = 1
+	printCopiesRow = 2
+)
+
+// printNote is the dialog's note on the button: what the dialog's settings
+// will print, such as 4 of 614 pages, or what is wrong with them, and
+// whether they can be printed.
 func (a *App) printNote() (string, bool) {
-	s := &a.printSettings
-	pages, err := parsePageRanges(s.pages, a.pageCount)
+	return printNote(a.printSettings, a.pageCount)
+}
+
+func printNote(s printSettings, pageCount int) (string, bool) {
+	pages, err := parsePageRanges(s.pages, pageCount)
 	if err != nil {
 		return err.Error(), false
 	}
-	note := fmt.Sprintf("%d of %d pages", len(pages), a.pageCount)
+	note := fmt.Sprintf("%d of %d pages", len(pages), pageCount)
 	if s.copies > 1 {
 		note += fmt.Sprintf(", %d copies", s.copies)
 	}
 	return note, true
 }
 
-// choosePrintRow edits the setting on a dialog row, returning to the dialog
-// with that row selected, or prints, if the settings can be printed.
-func (a *App) choosePrintRow(row uiRow) {
+// choosePrintRow edits the setting on a row of the dialog, the pages and
+// copies typed into the row itself, or prints, if the settings can be
+// printed.
+func (a *App) choosePrintRow(view *uiView, row uiRow) {
 	s := &a.printSettings
-	back := func() { a.showPrintDialog(row.index) }
+	refresh := func(a *App, _ string) { a.refreshPrintDialog() }
 	switch row.value {
 	case "printer":
-		a.pickPrinter(a.printers.names, back)
+		a.pickPrinter(a.printers.names, a.refreshPrintDialog)
 	case "pages":
-		a.askPrompt("Pages (e.g. 1-3,5; blank for all)", s.pages, func(v string) {
-			s.pages = strings.ReplaceAll(v, " ", "")
-			back()
+		a.editRow(view, row.index, s.pages, uiRowEdit{
+			hint: "such as 1-3,5", placeholder: "all", change: refresh, cancel: (*App).refreshPrintDialog,
+			done: func(a *App, text string) {
+				s.pages = strings.ReplaceAll(text, " ", "")
+				a.refreshPrintDialog()
+			},
 		})
 	case "copies":
-		a.askPrompt("Copies", strconv.Itoa(s.copies), func(v string) {
-			if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n >= 1 {
-				s.copies = n
-			}
-			back()
+		a.editRow(view, row.index, strconv.Itoa(max(1, s.copies)), uiRowEdit{
+			change: refresh, cancel: (*App).refreshPrintDialog,
+			done: func(a *App, text string) {
+				if n, err := strconv.Atoi(strings.TrimSpace(text)); err == nil && n >= 1 {
+					s.copies = n
+				} else {
+					a.message = fmt.Sprintf("copies must be a whole number from 1, not %q", text)
+				}
+				a.refreshPrintDialog()
+			},
 		})
 	case "sides":
 		for i, side := range printSides {
@@ -137,7 +189,7 @@ func (a *App) choosePrintRow(row uiRow) {
 				break
 			}
 		}
-		back()
+		a.refreshPrintDialog()
 	case "print":
 		if note, ok := a.printNote(); !ok {
 			a.message = note
@@ -252,9 +304,7 @@ func (a *App) pollPrintResult() {
 		if a.printSettings.printer == "" {
 			a.printSettings.printer = found.defaultName
 		}
-		if view := a.activeUIView(); view != nil && view.id == "print" {
-			a.showPrintDialog(view.selected)
-		}
+		a.refreshPrintDialog()
 		a.pendingRedraw = true
 	default:
 	}

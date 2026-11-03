@@ -33,7 +33,9 @@ func (a *App) UIFields(id string) map[string]string {
 	fields := map[string]string{}
 	if view := a.views.views[id]; view != nil {
 		for name, f := range view.fields {
-			fields[name] = f.input.Value
+			if name != rowEditField { // a row's, not one the plugin drew
+				fields[name] = f.input.Value
+			}
 		}
 	}
 	return fields

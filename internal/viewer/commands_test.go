@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"onon/internal/config"
+
+	"github.com/jupiterrider/purego-sdl3/sdl"
 )
 
 func TestRunCommandValidationPaths(t *testing.T) {
@@ -298,11 +300,20 @@ func TestOptionsListSwitchesAndSetsOptions(t *testing.T) {
 		t.Fatalf("Enter on copy_on_select: %s to %s, view %v, selected %d", before, after, app.activeModalUIView(), view.selected)
 	}
 
-	row = find("fit_mode")
+	// Another's value is typed in its row.
+	row = find("scroll_off")
 	view.selected = row.index
 	app.activateUIView(view)
-	if app.activeModalUIView() != nil || app.mode != modeCommand || app.input.Value != "set fit_mode="+row.secondary {
-		t.Fatalf("Enter on fit_mode: mode %v, input %q", app.mode, app.input.Value)
+	if view.rowEdit == nil || app.mode != modeNormal || app.activeModalUIView() != view {
+		t.Fatalf("Enter on scroll_off: edit %v, mode %v", view.rowEdit, app.mode)
+	}
+	if got, _ := view.rowEditText(); got != row.secondary {
+		t.Fatalf("scroll_off's row starts from %q, want %q", got, row.secondary)
+	}
+	app.typeUIText("7")
+	app.viewKey(view, keyDown(sdl.KeycodeReturn, 0))
+	if got, _ := app.runtime.OptionValue("scroll_off"); got != "7" || find("scroll_off").secondary != "7" || view.rowEdit != nil {
+		t.Fatalf("scroll_off = %q, row says %q", got, find("scroll_off").secondary)
 	}
 }
 

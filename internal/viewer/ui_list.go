@@ -31,8 +31,10 @@ type uiRow struct {
 	swatch    *config.Color // a colour sample drawn before the text
 	checkbox  bool          // a check box drawn before the text, checked with checked
 	checked   bool
-	cells     []string   // the text in each of the view's columns
-	lua       lua.LValue // the row a plugin gave, handed back to its callbacks
+	hint      string            // shown muted on the right while the row is selected and has no secondary
+	edit      *config.UIRowEdit // choosing the row types into it; see editRow
+	cells     []string          // the text in each of the view's columns
+	lua       lua.LValue        // the row a plugin gave, handed back to its callbacks
 	// highlight is the part of text, from byte to byte, drawn in the
 	// accent colour, as a search match is; empty for none.
 	highlight [2]int
@@ -137,6 +139,8 @@ type uiView struct {
 	focusOrder     []string
 	focus          string
 	pressedControl string
+	// rowEdit is the row being typed into, if one is.
+	rowEdit *uiRowEdit
 	// columns lay out rows' cells as a table.
 	columns []uiColumn
 
@@ -503,7 +507,9 @@ func (a *App) staleLuaView(view *uiView) bool {
 func (a *App) closingState(view *uiView) config.UIViewState {
 	state := config.UIViewState{Fields: map[string]string{}, Selected: view.selected + 1, Query: view.query}
 	for id, f := range view.fields {
-		state.Fields[id] = f.input.Value
+		if id != rowEditField {
+			state.Fields[id] = f.input.Value
+		}
 	}
 	state.Scroll = a.UIScrollOf(view)
 	state.W, state.H = a.viewSize(view)
@@ -553,6 +559,9 @@ func (a *App) setUIViewRows(view *uiView, rows []uiRow) {
 		return
 	}
 	view.rows = rows
+	if edit := view.rowEdit; edit != nil && !slices.ContainsFunc(rows, func(r uiRow) bool { return r.index == edit.row && !r.disabled }) {
+		a.finishRowEdit(view, false) // its row is gone
+	}
 	if len(rows) == 0 {
 		view.selected = -1
 		view.scroll = 0
@@ -793,6 +802,9 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 				element = config.ElementButton
 			}
 			st := a.style(element)
+			if item.button && element == config.ElementRowSelected {
+				st = a.selectedButtonStyle(st)
+			}
 			box := a.viewRowBox(view, rect, y, rowHeight)
 			if element == config.ElementButton {
 				// a framed box within the row
@@ -843,7 +855,20 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 			}
 			// The detail on the right takes what the text leaves it, and
 			// at least 45% of a row too narrow for both.
+			if edit := view.rowEdit; edit != nil && edit.row == item.index {
+				// The row's value is the text being typed.
+				label := truncateText(face, text, textEnd-textX)
+				if err := a.drawRowText(renderer, item, label, textX, baseline, face, &st); err != nil {
+					return err
+				}
+				labelEnd := textX + measureText(face, label)
+				a.drawRowEdit(renderer, view, &st, face, labelEnd+a.ipx(12), textEnd, baseline)
+				continue
+			}
 			secondary := item.secondary
+			if secondary == "" && item.index == view.selected {
+				secondary = item.hint
+			}
 			if secondary != "" {
 				room := textEnd - textX - measureText(face, text) - a.ipx(12)
 				secondary = a.truncateModalListText(secondary, max(room, int(rect.W*0.45)))
@@ -869,6 +894,18 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 		return nil
 	})
 	return err
+}
+
+// selectedButtonStyle is a selected button row's style: the selected row's
+// band, with the button's weight and, unless the theme colours selected
+// text itself, its colour, so a button stays one when selected.
+func (a *App) selectedButtonStyle(selected config.Style) config.Style {
+	button := a.style(config.ElementButton)
+	selected.Bold = button.Bold
+	if !a.config.Theme.Elements[config.ElementRowSelected].Text.Set {
+		selected.Text = button.Text
+	}
+	return selected
 }
 
 // drawRowText draws a row's text, shown as truncated, its highlight in the
@@ -1070,7 +1107,7 @@ func uiRowsFromConfig(rows []config.UIListRow) []uiRow {
 		result[i] = uiRow{
 			index: i, id: row.ID, text: row.Text, value: row.Value, secondary: row.Secondary, depth: max(0, row.Depth),
 			disabled: row.Disabled || row.Heading, key: row.Key, marker: row.Marker, heading: row.Heading, swatch: row.Swatch, lua: row.Lua,
-			button: row.Button, checkbox: row.Checkbox, checked: row.Checked, cells: row.Cells,
+			button: row.Button, checkbox: row.Checkbox, checked: row.Checked, cells: row.Cells, edit: row.Edit, hint: row.Hint,
 		}
 	}
 	return result

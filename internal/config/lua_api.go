@@ -940,8 +940,8 @@ func luaCacheClear(rt *Runtime) lua.LGFunction {
 // dock, resizable, draw, and the callbacks on_select, on_selection_changed,
 // on_query_changed, on_input, on_submit, on_click, on_key, on_action,
 // on_mouse, and on_close. Rows may be strings or row tables with text,
-// value, id, secondary, depth, disabled, key, marker, heading, swatch,
-// checked, button, and cells fields. See UI views below.
+// value, id, secondary, hint, depth, disabled, key, marker, heading, swatch,
+// checked, button, edit, and cells fields. See UI views below.
 //
 // # Returns
 //

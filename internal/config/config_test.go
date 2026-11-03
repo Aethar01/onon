@@ -20,6 +20,7 @@ type stubHost struct {
 	ui               UIOverlay
 	uiVisible        bool
 	uiClosed         bool
+	editedRow        int
 	page             int
 	pages            int
 	message          string
@@ -104,6 +105,7 @@ func (h *stubHost) UIFields(id string) map[string]string    { return h.ui.Fields
 func (h *stubHost) RedrawUI(id string)                      {}
 func (h *stubHost) UIField(id, field string) string         { return h.ui.Fields[field] }
 func (h *stubHost) SetUIField(id, field, text string)       { h.ui.Fields[field] = text }
+func (h *stubHost) EditUIRow(id string, index int)          { h.editedRow = index }
 func (h *stubHost) FocusUI(id string, focus bool)           {}
 func (h *stubHost) UIFocused(id string) bool                { return false }
 func (h *stubHost) UIViewSize(id string) (float64, float64) { return 0, 0 }

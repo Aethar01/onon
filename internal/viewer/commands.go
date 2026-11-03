@@ -760,17 +760,20 @@ func (a *App) runSet(input string) {
 }
 
 // showOptions lists the options with their values. Enter on one that is
-// true or false switches it, and on another opens the command prompt to
-// set it, its value given.
+// true or false switches it, and on another types its value in its row.
 func (a *App) showOptions() {
 	a.showRowList("options", "Options", a.optionRows(), 70, 70, func(view *uiView) {
-		view.onSelect = func(a *App, row uiRow) {
-			if row.secondary != "true" && row.secondary != "false" {
-				a.closeAllUI()
-				a.mode = modeCommand
-				a.input.Set("set " + row.value + "=" + row.secondary)
-				return
+		view.onSubmit = func(a *App, name, value string) {
+			if err := a.runtime.SetOption(name, value); err != nil {
+				a.message = err.Error()
+			} else {
+				a.applyRuntimeChanges("set")
+				current, _ := a.runtime.OptionValue(name)
+				a.message = name + "=" + current
 			}
+			a.setUIViewRows(view, a.optionRows())
+		}
+		view.onSelect = func(a *App, row uiRow) {
 			if err := a.toggleOption(row.value); err != nil {
 				a.message = err.Error()
 				return
@@ -788,7 +791,11 @@ func (a *App) optionRows() []uiRow {
 	rows := make([]uiRow, 0, len(names))
 	for i, name := range names {
 		value, _ := a.runtime.OptionValue(name)
-		rows = append(rows, uiRow{index: i, text: name, value: name, secondary: value})
+		row := uiRow{index: i, text: name, value: name, secondary: value}
+		if value != "true" && value != "false" {
+			row.edit = &config.UIRowEdit{Text: value}
+		}
+		rows = append(rows, row)
 	}
 	return rows
 }
