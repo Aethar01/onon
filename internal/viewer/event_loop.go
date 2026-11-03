@@ -131,6 +131,7 @@ func (a *App) Run() error {
 		a.flushPendingInstanceJump()
 		a.pollSearchUpdates()
 		a.pollRemoteTask()
+		a.pollBackgroundSaves()
 		a.pollRemotePrompts()
 		a.pollDocumentUpdate()
 		a.expireSequence()
@@ -467,19 +468,23 @@ func pinchEventScale(event *sdl.Event) float32 {
 
 // handleDroppedFile opens a file dropped on the window, or one the system asked
 // a running onon to open: on macOS, Finder and `open` send that to this process
-// as a drop on no window. With open_in_new_window, that one gets a window of its
-// own, as it would on other platforms, unless this window is still empty.
+// as a drop on no window. open_documents says where it opens: in a new tab, a
+// new window, or in place of the document shown. A window with no document
+// takes it whichever is set.
 func (a *App) handleDroppedFile(path string, windowID sdl.WindowID) {
 	if path == "" {
 		return
 	}
-	if windowID == 0 && a.config.OpenInNewWindow && a.docPath != "" {
-		if err := a.openInNewWindow(path); err != nil {
-			a.message = err.Error()
-		}
-		return
+	var err error
+	switch {
+	case a.tabIsEmpty() && len(a.tabList()) == 1, a.config.OpenDocuments == "replace":
+		err = a.Open(path)
+	case a.config.OpenDocuments == "window":
+		err = a.openInNewWindow(path)
+	default:
+		err = a.OpenTab(path)
 	}
-	if err := a.Open(path); err != nil {
+	if err != nil {
 		a.message = err.Error()
 	}
 }

@@ -87,7 +87,7 @@ func (a *App) logf(format string, args ...any) {
 }
 
 func (a *App) setWindowTitle() {
-	if a.window == nil {
+	if a.window == nil || a.background {
 		return
 	}
 	a.showWindowDocument()
@@ -101,7 +101,7 @@ func (a *App) setWindowTitle() {
 // showWindowDocument tells the system which file the window shows and
 // whether it has unsaved edits, on systems that show them.
 func (a *App) showWindowDocument() {
-	if a.window != nil {
+	if a.window != nil && !a.background {
 		file := a.docPath
 		if remote.IsURI(file) {
 			file = "" // no local file for the proxy icon
@@ -111,24 +111,11 @@ func (a *App) showWindowDocument() {
 }
 
 func (a *App) Close() {
-	a.cancelRemoteTask()
+	for _, t := range a.tabList() {
+		a.withTab(t, a.closeTabDocument)
+	}
 	if a.remotePrompts != nil {
 		remote.SetPrompter(nil)
-	}
-	hadDocument := a.doc != nil
-	payload := a.documentEventPayload()
-	if hadDocument && a.runtime != nil {
-		a.emitPluginEvent("document_close_pre", payload)
-	}
-	a.saveDocumentSession()
-	a.document.Close()
-	a.closeDocumentResources()
-	if a.releaseCopy != nil {
-		a.releaseCopy()
-		a.releaseCopy = nil
-	}
-	if hadDocument && a.runtime != nil {
-		a.emitPluginEvent("document_closed", payload)
 	}
 	if a.runtime != nil {
 		a.emitPluginEvent("shutdown", map[string]any{})

@@ -58,7 +58,7 @@ func Default() Config {
 		AutoscrollSpeedFactor: 1,
 		AutoscrollMaxSpeed:    20000,
 		SessionDatabase:       true,
-		OpenInNewWindow:       true,
+		OpenDocuments:         "tab",
 		AntiAliasing:          8,
 		OutlineInitialDepth:   1,
 		OutlineWidthPercent:   70,

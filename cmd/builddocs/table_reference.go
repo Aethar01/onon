@@ -270,6 +270,12 @@ var luaTableGroups = []luaTableGroup{
 				{"previous_scale", "number", "The zoom before."},
 				{"percent", "number", "The zoom now as a percentage."},
 			}},
+			{"Tab event", "`tab_changed`, when the window shows another tab.", []luaField{
+				{"document", "table", "`path`, `name`, and `page_count` of the document the tab now shown has open; `path` is empty when it has none."},
+				{"generation", "integer", "A number that changes whenever a document is opened or reloaded."},
+				{"index", "integer", "The 1-based position of the tab now shown."},
+				{"previous", "integer", "The 1-based position of the tab shown before, or 0 when that tab was closed."},
+			}},
 			{"Option event", "`option_changed`, after Lua code changes options.", []luaField{
 				{"source", "string", "What ran the code that changed them: the event's name for an event callback, `ui_select`, `ui_click` and so on for a view's callback, or `action`, `command`, `set`, `theme` or `plugin operation`."},
 			}},
@@ -316,6 +322,7 @@ var luaTableLocations = map[string]string{
 	"Selection event":    "`selection_changed` callback",
 	"Page event":         "`page_changed` callback",
 	"Zoom event":         "`zoom_changed` callback",
+	"Tab event":          "`tab_changed` callback",
 	"Option event":       "`option_changed` callback",
 }
 

@@ -299,6 +299,12 @@ type windowState struct {
 	pageStep      float64
 	winW          int
 	winH          int
+	// background is set while withTab shows the viewer a tab other than
+	// the one on screen, so it leaves the window alone.
+	background bool
+	// configGeneration counts the configurations applied, so a tab shown
+	// again knows whether it missed one.
+	configGeneration int
 }
 
 // editState counts a document's edits, so undo and redo know whether it

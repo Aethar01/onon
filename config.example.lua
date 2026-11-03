@@ -24,11 +24,11 @@ onon.options.link_preview_delay_ms = 400 -- Milliseconds to hover an internal li
 onon.options.link_schemes = {"http", "https", "mailto"} -- URI schemes that document links may open externally; other links only show their target.
 onon.options.loading_indicator = true -- Animate a loading indicator on pages still rendering for the first time.
 onon.options.max_zoom = 8 -- Maximum manual zoom scale.
-onon.options.menus = {} -- Where onon's own menus sit, by name, such as { outline = { anchor = "left", width = "40%" } }: each takes width and height, the most of the window it takes, in logical pixels or a percentage, and anchor, as views do, or beside, for a menu opened over another, beside the row it was opened from, as keybind_keys and printers are unless set. Menus: annotation, choice, colors, help, keybind_keys, keybinds, matches, options, outline, print, printers, recent, themes.
+onon.options.menus = {} -- Where onon's own menus sit, by name, such as { outline = { anchor = "left", width = "40%" } }: each takes width and height, the most of the window it takes, in logical pixels or a percentage, and anchor, as views do, or beside, for a menu opened over another, beside the row it was opened from, as keybind_keys and printers are unless set. Menus: annotation, choice, colors, help, keybind_keys, keybinds, matches, options, outline, print, printers, recent, tabs, themes.
 onon.options.min_zoom = 0.5 -- Minimum manual zoom scale.
 onon.options.mouse_text_select = true -- Enable text selection with the left mouse button.
 onon.options.mupdf_store_mb = 256 -- MuPDF cache for fonts and decoded images in MiB; applies to newly opened documents.
-onon.options.open_in_new_window = true -- On macOS, open a document Finder or `open` sends to a running onon in a new window rather than the current one.
+onon.options.open_documents = "tab" -- Where a document the system sends a running onon, such as from Finder or `open`, or one dropped on the window, opens: tab, in a new tab; window, in a new window; or replace, in place of the document shown. A window with no document takes it whichever is set.
 onon.options.outline_height_percent = 80 -- Outline overlay height as a percentage of the window.
 onon.options.outline_initial_depth = 1 -- Outline levels expanded when the outline opens.
 onon.options.outline_width_percent = 70 -- Most of the window the outline overlay takes, as a percentage of its width; the outline is narrower when its entries are.
@@ -36,7 +36,6 @@ onon.options.overview_gap = 16 -- Gap in pixels between the page overview's cell
 onon.options.overview_max_columns = 12 -- Most columns the page overview shows, whether fitted to the window or set with zoom_out.
 onon.options.overview_thumb_width = 220 -- Width in pixels the page overview aims to show each page at, which sets how many columns fit.
 onon.options.page_cache_memory_mb = 512 -- Maximum memory in MiB for cached page renders; 0 disables the limit.
-onon.options.page_cache_size = 0 -- Deprecated and ignored; the cache is bounded by page_cache_memory_mb.
 onon.options.page_gap = 0 -- Vertical gap between pages; aliases page_gap_vertical.
 onon.options.page_gap_horizontal = 0 -- Horizontal gap between pages in a spread.
 onon.options.page_gap_vertical = 0 -- Vertical gap between page rows.
@@ -185,6 +184,12 @@ onon.bind("<C-p>", onon.print)
 onon.bind("<F1>", onon.help)
 onon.bind("g?", onon.help)
 onon.bind("<Space>", onon.pan)
+onon.bind("gt", onon.next_tab)
+onon.bind("<C-Tab>", onon.next_tab)
+onon.bind("<C-PgDn>", onon.next_tab)
+onon.bind("gT", onon.prev_tab)
+onon.bind("<C-S-Tab>", onon.prev_tab)
+onon.bind("<C-PgUp>", onon.prev_tab)
 onon.bind("q", onon.quit)
 
 -- Also bound on macOS.
@@ -211,8 +216,11 @@ if onon.platform.os == "macos" then
   onon.bind("<D-o>", onon.open_file_picker)
   onon.bind("<D-s>", onon.save)
   onon.bind("<D-p>", onon.print)
+  onon.bind("<D-S-]>", onon.next_tab)
+  onon.bind("<D-S-[>", onon.prev_tab)
+  onon.bind("<D-t>", onon.new_tab)
+  onon.bind("<D-w>", onon.close_tab)
   onon.bind("<D-q>", onon.quit)
-  onon.bind("<D-w>", onon.quit)
 end
 
 -- Also bound on Windows.
@@ -235,8 +243,9 @@ if onon.platform.os == "windows" then
   onon.bind("<C-S-z>", onon.redo)
   onon.bind("<A-Right>", onon.jump_forward)
   onon.bind("<A-Left>", onon.jump_backward)
+  onon.bind("<C-t>", onon.new_tab)
+  onon.bind("<C-w>", onon.close_tab)
   onon.bind("<C-q>", onon.quit)
-  onon.bind("<C-w>", onon.quit)
 end
 
 -- Also bound on Linux.
@@ -259,8 +268,9 @@ if onon.platform.os == "linux" then
   onon.bind("<C-S-z>", onon.redo)
   onon.bind("<A-Right>", onon.jump_forward)
   onon.bind("<A-Left>", onon.jump_backward)
+  onon.bind("<C-t>", onon.new_tab)
+  onon.bind("<C-w>", onon.close_tab)
   onon.bind("<C-q>", onon.quit)
-  onon.bind("<C-w>", onon.quit)
 end
 
 -- Default mouse bindings.

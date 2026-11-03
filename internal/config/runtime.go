@@ -146,6 +146,20 @@ func (r *Runtime) SetDocument(path string, pageCount ...int) error {
 	return nil
 }
 
+// SetActiveDocument makes path, with pages pages, the document onon.document
+// describes, without reloading the configuration as SetDocument does: the
+// viewer calls it when another tab is shown, or a document opens in a new
+// one.
+func (r *Runtime) SetActiveDocument(path string, pages int) {
+	path = AbsoluteDocumentPath(path)
+	r.docPath = path
+	r.docName = DocumentName(path)
+	r.docMeta = loadDocumentMeta(path)
+	r.docMeta.pageCount = pages
+	r.docMeta.hasPages = path != ""
+	r.updateLuaDocument()
+}
+
 func (r *Runtime) SetPageCount(pages int) {
 	r.docMeta.pageCount = pages
 	r.docMeta.hasPages = true

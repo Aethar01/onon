@@ -38,6 +38,11 @@ func AddressFor(docPath string) (string, error) {
 	return filepath.Join(dir, documentKey(docPath)+".sock"), nil
 }
 
+// Key identifies a document as instances do, so two spellings of one file,
+// through a symlink or in another case where the system ignores case, have
+// the same key.
+func Key(docPath string) string { return documentKey(docPath) }
+
 // documentKey identifies a document across processes. Symlinks are resolved so
 // two names for one file share an instance; an unresolvable path is used as
 // given, which at worst means a separate instance. A remote URI is already

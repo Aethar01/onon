@@ -14,11 +14,11 @@ import (
 )
 
 func TestShowCompletionAcceptsUniqueCommand(t *testing.T) {
-	a := &App{tab: &tab{}, inputState: inputState{mode: modeCommand, input: textInput{Value: "qui", Cursor: 3}}, config: config.Default()}
+	a := &App{tab: &tab{}, inputState: inputState{mode: modeCommand, input: textInput{Value: "versi", Cursor: 5}}, config: config.Default()}
 	a.showCompletion()
 
-	if a.input.Value != "quit" {
-		t.Fatalf("expected quit completion, got %q", a.input.Value)
+	if a.input.Value != "version" {
+		t.Fatalf("expected version completion, got %q", a.input.Value)
 	}
 	if a.completion.view != nil && a.completion.view.visible {
 		t.Fatal("expected unique completion to close menu")

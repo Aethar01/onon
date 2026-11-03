@@ -1,6 +1,15 @@
 package viewer
 
-import "onon/internal/mupdf"
+import (
+	"fmt"
+	"slices"
+	"strings"
+
+	"onon/internal/config"
+	"onon/internal/instance"
+	"onon/internal/mupdf"
+	"onon/internal/remote"
+)
 
 // tab is one document open in a window: the document itself, how it is
 // viewed, its edits and its session. The window shows one tab at a time,
@@ -17,6 +26,11 @@ type tab struct {
 	search    searchState
 	jumpBack  []jumpPosition
 	jumpAhead []jumpPosition
+	// appliedConfig is the configuration last applied to the tab, as of
+	// the window's configGeneration configSeen; a tab in the background
+	// catches up with changes when it is shown again.
+	appliedConfig config.Config
+	configSeen    int
 }
 
 // newTab returns a tab with no document, starting at page.
@@ -27,6 +41,401 @@ func newTab(page int) *tab {
 			pageLinks: map[int][]mupdf.Link{},
 		},
 		viewStateFields: viewStateFields{scale: 1},
-		renderService:   renderService{minRenderBaseScale: 0.25},
+		renderService:   renderService{minRenderBaseScale: defaultMinRenderBaseScale},
+	}
+}
+
+// tabName is what the tab bar and the tabs menu call t.
+func (t *tab) tabName() string {
+	switch {
+	case t.docName != "":
+		return t.docName
+	case t.remoteTask != nil:
+		return remote.Name(t.remoteTask.uri)
+	}
+	return "New Tab"
+}
+
+// withTab runs fn with t in place of the tab shown, for work on a tab in
+// the background. fn must not show another tab.
+func (a *App) withTab(t *tab, fn func()) {
+	if t == a.tab {
+		fn()
+		return
+	}
+	shown, background := a.tab, a.background
+	a.tab, a.background = t, t != shown
+	defer func() { a.tab, a.background = shown, background }()
+	fn()
+}
+
+// tabShowing returns the index of the tab showing path, or -1.
+func (a *App) tabShowing(path string) int {
+	if path == "" {
+		return -1
+	}
+	key := instance.Key(config.AbsoluteDocumentPath(path))
+	return slices.IndexFunc(a.tabList(), func(t *tab) bool {
+		return t.docPath != "" && instance.Key(t.docPath) == key
+	})
+}
+
+// tabIndex is the index of the tab shown.
+func (a *App) tabIndex() int { return slices.Index(a.tabList(), a.tab) }
+
+// emptyTab makes a tab with nothing open, set up as the configuration
+// asks, ready for openDocument.
+func (a *App) emptyTab() *tab {
+	t := newTab(0)
+	t.zoom = a.clampZoom(1)
+	t.cache.byteLimit = pageCacheByteLimit(a.config)
+	t.appliedConfig, t.configSeen = a.config, a.configGeneration
+	a.withTab(t, func() { a.applyConfigState(a.config) })
+	return t
+}
+
+// insertTab adds t after the tab shown and shows it.
+func (a *App) insertTab(t *tab) {
+	at := a.tabIndex() + 1
+	a.tabs = slices.Insert(a.tabList(), at, t)
+	a.selectTab(at)
+}
+
+// OpenTab opens path in a new tab after the one shown, as the :tabnew
+// command and onon.tabs.open do, or shows the tab that already has it open.
+func (a *App) OpenTab(path string) error {
+	if path == "" {
+		a.newEmptyTab()
+		return nil
+	}
+	path, page, err := a.resolveDocumentArg(path)
+	if err != nil {
+		return err
+	}
+	if a.showTabFor(path, page) {
+		return nil
+	}
+	if a.tabIsEmpty() {
+		return a.openInTab(path, page)
+	}
+	previous := a.tab
+	t := a.emptyTab()
+	a.insertTab(t)
+	if err := a.openInTab(path, page); err != nil {
+		if t.doc == nil && t.remoteTask == nil {
+			a.removeTab(t, previous) // nothing opened: no tab to keep
+		}
+		return err
+	}
+	return nil
+}
+
+// openInTab opens path in the tab shown, which has no document, at page
+// when page is above 0.
+func (a *App) openInTab(path string, page int) error {
+	opts := openDocumentOptions{}
+	if page > 0 {
+		opts.startPage, opts.startPageExplicit = page-1, true
+	}
+	return a.openDocument(path, opts)
+}
+
+// tabIsEmpty reports whether the tab shown has no document and is not
+// waiting for one.
+func (a *App) tabIsEmpty() bool {
+	return a.doc == nil && a.docPath == "" && a.remoteTask == nil
+}
+
+// showTabFor shows the tab that has path open, at page when page is above
+// 0, reporting whether there is one.
+func (a *App) showTabFor(path string, page int) bool {
+	i := a.tabShowing(path)
+	if i < 0 {
+		return false
+	}
+	a.selectTab(i)
+	if page > 0 {
+		if a.pageCount == 0 {
+			a.pendingInstanceJump = &instanceJump{page: page}
+		} else if err := a.GotoPage(page); err != nil {
+			a.message = err.Error()
+		}
+	}
+	return true
+}
+
+// newEmptyTab opens a tab with no document, and the recent-files menu to
+// choose one from, or the file picker when there are no recent files.
+func (a *App) newEmptyTab() {
+	if !a.tabIsEmpty() {
+		a.insertTab(a.emptyTab())
+	}
+	if a.config.SessionDatabase && len(config.RecentFiles(1)) > 0 {
+		a.showRecentFiles()
+		return
+	}
+	if err := a.openFilePicker(); err != nil {
+		a.message = err.Error()
+	}
+}
+
+// selectTab shows the tab at index i.
+func (a *App) selectTab(i int) {
+	if i < 0 || i >= len(a.tabList()) || a.tabList()[i] == a.tab {
+		return
+	}
+	previous := a.tabIndex()
+	a.leaveTab()
+	a.tab = a.tabList()[i]
+	a.enterTab(previous)
+}
+
+// cycleTab shows the tab delta tabs on from the one shown, wrapping around.
+func (a *App) cycleTab(delta int) {
+	n := len(a.tabList())
+	if n < 2 {
+		return
+	}
+	a.selectTab(((a.tabIndex()+delta)%n + n) % n)
+}
+
+// leaveTab puts away what the window shows of the tab shown before
+// another is: menus and prompts, modes and gestures in progress, and the
+// tiles that are not on screen.
+func (a *App) leaveTab() {
+	if a.tab == nil {
+		return
+	}
+	a.closeViewMode()
+	a.closeAllUI()
+	a.cancelSmoothZoom()
+	a.cancelSmoothScroll()
+	a.stopPan()
+	a.stopAutoscroll()
+	a.hints = nil
+	a.closeLinkPreview()
+	a.links = linkInputState{}
+	a.sequence = nil
+	a.pendingCount = ""
+	a.pendingMark = ""
+	a.cache.keepProtected()
+}
+
+// enterTab shows the tab that has just become a.tab, previous being the
+// index of the one shown before, or -1.
+func (a *App) enterTab(previous int) {
+	if a.configSeen != a.configGeneration {
+		a.applyTabConfig(a.appliedConfig, a.config, nil)
+	}
+	a.followSystemColors()
+	a.canvas.thumbs, a.canvas.tiles, a.canvas.asked = nil, nil, nil
+	a.relayoutWithViewportAnchor(nil)
+	if a.runtime != nil {
+		a.runtime.SetActiveDocument(a.docPath, a.pageCount)
+	}
+	a.setWindowTitle()
+	a.pendingRedraw = true
+	if a.runtime != nil {
+		payload := a.documentEventPayload()
+		payload["index"] = a.tabIndex() + 1
+		payload["previous"] = previous + 1
+		a.emitPluginEvent("tab_changed", payload)
+	}
+}
+
+// CloseTab closes the tab at index i, after a warning when it has unsaved
+// edits unless force is set, reporting whether it closed. Closing the last
+// tab closes the window.
+func (a *App) CloseTab(i int, force bool) bool { return a.closeTab(i, force, ":tabclose") }
+
+// closeTab closes the tab at index i as CloseTab does, its warning naming
+// action as what to repeat to discard the edits.
+func (a *App) closeTab(i int, force bool, action string) bool {
+	if i < 0 || i >= len(a.tabList()) {
+		return false
+	}
+	t := a.tabList()[i]
+	if !force && t.unsaved {
+		if t != a.tab {
+			a.selectTab(i) // to show what would be lost
+		}
+		if !a.confirmDiscard(action) {
+			return false
+		}
+	}
+	if len(a.tabList()) == 1 {
+		a.quit = true // the window closes, and Close closes the tab
+		return true
+	}
+	next := a.tab
+	if t == a.tab {
+		next = a.tabList()[min(i+1, len(a.tabList())-1)]
+		if next == t {
+			next = a.tabList()[i-1]
+		}
+	}
+	a.removeTab(t, next)
+	return true
+}
+
+// removeTab closes t's document and drops it, showing next if t was shown.
+func (a *App) removeTab(t, next *tab) {
+	shown := t == a.tab
+	if shown {
+		a.leaveTab()
+	}
+	a.withTab(t, a.closeTabDocument)
+	a.tabs = slices.DeleteFunc(a.tabList(), func(other *tab) bool { return other == t })
+	if shown {
+		a.tab = next
+		a.enterTab(-1)
+	}
+	a.pendingRedraw = true
+}
+
+// closeTabDocument closes the document of the tab shown for good, saving
+// its session, as when its tab or the window closes.
+func (a *App) closeTabDocument() {
+	a.cancelRemoteTask()
+	hadDocument := a.doc != nil
+	payload := a.documentEventPayload()
+	if hadDocument && a.runtime != nil {
+		a.emitPluginEvent("document_close_pre", payload)
+	}
+	a.saveDocumentSession()
+	a.document.Close()
+	a.closeDocumentResources()
+	if a.releaseCopy != nil {
+		a.releaseCopy()
+		a.releaseCopy = nil
+	}
+	if a.instanceServer != nil {
+		a.instanceServer.Close()
+		a.instanceServer = nil
+		a.instanceAddress = ""
+	}
+	if hadDocument && a.runtime != nil {
+		a.emitPluginEvent("document_closed", payload)
+	}
+}
+
+// closeOtherTabs closes every tab but the one shown, keeping those with
+// unsaved edits unless force is set.
+func (a *App) closeOtherTabs(force bool) {
+	kept := 0
+	for _, t := range slices.Clone(a.tabList()) {
+		if t == a.tab {
+			continue
+		}
+		if t.unsaved && !force {
+			kept++
+			continue
+		}
+		a.removeTab(t, a.tab)
+	}
+	if kept > 0 {
+		a.message = fmt.Sprintf("%s unsaved changes: :tabonly! discards them", countTabs(kept, "has", "have"))
+	}
+}
+
+// moveTab moves the tab shown to index to, clamped to the tabs.
+func (a *App) moveTab(to int) {
+	from := a.tabIndex()
+	to = clampInt(to, 0, len(a.tabList())-1)
+	if from == to {
+		return
+	}
+	t := a.tab
+	a.tabs = slices.Delete(a.tabList(), from, from+1)
+	a.tabs = slices.Insert(a.tabList(), to, t)
+	a.pendingRedraw = true
+}
+
+// confirmQuit reports whether quitting may go ahead: at once when no tab
+// has unsaved edits, otherwise on the second attempt, after a warning.
+func (a *App) confirmQuit(action string) bool {
+	if len(a.tabList()) <= 1 {
+		return a.confirmDiscard(action)
+	}
+	unwarned := 0
+	unsaved := 0
+	for _, t := range a.tabList() {
+		if t.unsaved {
+			unsaved++
+			if !t.discardWarned {
+				unwarned++
+			}
+		}
+	}
+	if unwarned == 0 {
+		return true
+	}
+	for _, t := range a.tabList() {
+		if t.unsaved {
+			t.discardWarned = true
+		}
+	}
+	a.message = fmt.Sprintf("%s unsaved changes: :wa saves them, %s again discards them", countTabs(unsaved, "has", "have"), action)
+	return false
+}
+
+// countTabs says how many tabs, with the verb that agrees with them.
+func countTabs(n int, one, many string) string {
+	if n == 1 {
+		return "1 tab " + one
+	}
+	return fmt.Sprintf("%d tabs %s", n, many)
+}
+
+// forEachTab runs fn on every tab in turn, each shown to fn as a.tab,
+// stopping at the first error.
+func (a *App) forEachTab(fn func() error) error {
+	for _, t := range slices.Clone(a.tabList()) {
+		var err error
+		a.withTab(t, func() { err = fn() })
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// tabDo runs a command in every tab, as :tabdo does, showing each while
+// it runs and ending on the last.
+func (a *App) tabDo(command string) {
+	if strings.TrimSpace(command) == "" {
+		a.message = "usage: :tabdo <command>"
+		return
+	}
+	for _, t := range slices.Clone(a.tabList()) {
+		i := slices.Index(a.tabList(), t)
+		if i < 0 {
+			continue // an earlier command closed it
+		}
+		a.selectTab(i)
+		a.runCommand(command)
+		if a.quit {
+			return
+		}
+	}
+}
+
+// tabList returns the window's tabs: tabs, or the tab shown alone for an
+// App made without a list, as tests make them.
+func (a *App) tabList() []*tab {
+	if len(a.tabs) == 0 && a.tab != nil {
+		a.tabs = []*tab{a.tab}
+	}
+	return a.tabs
+}
+
+// pollBackgroundSaves finishes saves to remote hosts that tabs in the
+// background started, as :wa does, so their edits count as saved. Other
+// remote work waits for its tab to be shown, as it changes the window.
+func (a *App) pollBackgroundSaves() {
+	for _, t := range a.tabList() {
+		if t != a.tab && t.remoteTask != nil && t.remoteTask.kind == remoteSave {
+			a.withTab(t, a.pollRemoteTask)
+		}
 	}
 }

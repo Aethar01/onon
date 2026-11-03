@@ -2,6 +2,7 @@ package viewer
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"onon/internal/instance"
@@ -67,26 +68,37 @@ func (a *App) rebindInstanceServer() {
 	a.logf("listening for instance commands on %q", address)
 }
 
-// CloseInstanceServer releases the address at shutdown.
+// CloseInstanceServer releases every tab's address at shutdown.
 func (a *App) CloseInstanceServer() {
-	if a.instanceServer != nil {
-		a.instanceServer.Close()
-		a.instanceServer = nil
-		a.instanceAddress = ""
+	for _, t := range a.tabList() {
+		if t.instanceServer != nil {
+			t.instanceServer.Close()
+			t.instanceServer = nil
+			t.instanceAddress = ""
+		}
 	}
 }
 
-// pollInstanceCommands applies anything another process asked for. It runs on
-// the main thread from the event loop, which is what makes it safe to touch
-// viewer state directly. It reports whether anything changed.
+// pollInstanceCommands applies anything another process asked for. Each
+// tab listens for its own document, so a request shows the tab it reached
+// before it is applied. It runs on the main thread from the event loop,
+// which is what makes it safe to touch viewer state directly. It reports
+// whether anything changed.
 func (a *App) pollInstanceCommands() bool {
-	if a.instanceServer == nil {
-		return false
-	}
 	changed := false
-	for {
-		select {
-		case delivery := <-a.instanceServer.Deliveries():
+	for _, t := range slices.Clone(a.tabList()) {
+		for t.instanceServer != nil {
+			var delivery instance.Delivery
+			select {
+			case delivery = <-t.instanceServer.Deliveries():
+			default:
+			}
+			if delivery.Request.Command == "" {
+				break
+			}
+			if i := slices.Index(a.tabList(), t); i >= 0 {
+				a.selectTab(i)
+			}
 			err := a.applyInstanceRequest(delivery.Request)
 			delivery.Reply(err)
 			if err != nil {
@@ -96,10 +108,9 @@ func (a *App) pollInstanceCommands() bool {
 					remote.Display(delivery.Request.Path), delivery.Request.Page)
 			}
 			changed = true
-		default:
-			return changed
 		}
 	}
+	return changed
 }
 
 func (a *App) applyInstanceRequest(request instance.Request) error {

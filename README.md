@@ -155,10 +155,30 @@ onon.register_scheme("papers", function(name) return "davs://cloud.example.com/d
 
 Then `onon arxiv:2401.12345` or `:open papers:smith2024` opens it. A local file of the same name wins.
 
+### Tabs
+
+A window holds several documents as tabs, each with its own view, edits and
+session; the tab bar shows while more than one is open. `:tabnew file.pdf`
+opens one, and `:tabnew` alone opens an empty tab with the recent files to
+choose from. A file dropped on the window, or sent by Finder or `open`, opens in
+a new tab; `open_documents` sets `window` or `replace` instead.
+
+| Keys | Action |
+|---|---|
+| `gt`, `Ctrl+Tab`, `Ctrl+PgDn` (macOS also `Cmd+Shift+]`) | Next tab |
+| `gT`, `Ctrl+Shift+Tab`, `Ctrl+PgUp` (macOS also `Cmd+Shift+[`) | Previous tab |
+| `Ctrl+T` (macOS `Cmd+T`) | New tab |
+| `Ctrl+W` (macOS `Cmd+W`) | Close the tab, and the window with its last |
+
+The commands follow Vim's: `:tabnext [N]`, `:tabprevious`, `:tabfirst`,
+`:tablast`, `:tabclose [N]`, `:tabonly`, `:tabmove [N|+N|-N]`, `:tabdo
+<command>` and `:tabs`, which lists the tabs to choose one. `:q` closes the tab,
+`:qa` quits, `:wa` saves every tab and `:wqa` saves them and quits.
+
 ### Single instance
 
-Instances are per document. Each window is reachable by anything that opens the
-same file.
+Instances are per document. Each tab is reachable by anything that opens the
+same file, which brings that tab forward.
 
 ```bash
 onon --unique file.pdf                  # reuse the window showing file.pdf
@@ -175,7 +195,7 @@ and exits non-zero if the command is unrecognised.
 With no window showing the document, `--unique` opens one and applies any
 `--goto` and `--command` as it starts. A different document is a different
 instance, so two files give two windows. The address follows the document: a
-window that switches files becomes reachable under the new one.
+tab that switches files becomes reachable under the new one.
 
 Sockets live under `$XDG_RUNTIME_DIR/onon` on Linux, the per-user temporary
 directory on macOS, and `%LOCALAPPDATA%\onon` on Windows. They are mode 0600

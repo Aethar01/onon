@@ -242,7 +242,7 @@ func TestHandleDroppedFileQueuesOpenWithoutRuntime(t *testing.T) {
 	}
 }
 
-func TestHandleDroppedFileOpensSystemRequestsInNewWindow(t *testing.T) {
+func TestHandleDroppedFileOpensWhereOpenDocumentsSays(t *testing.T) {
 	var started [][]string
 	startProcess = func(cmd *exec.Cmd) error {
 		started = append(started, cmd.Args[1:])
@@ -253,20 +253,20 @@ func TestHandleDroppedFileOpensSystemRequestsInNewWindow(t *testing.T) {
 	tests := []struct {
 		name      string
 		windowID  sdl.WindowID
-		option    bool
+		option    string
 		docPath   string
 		newWindow bool
 	}{
-		{"system request", 0, true, "/shown.pdf", true},
-		{"drop on the window", 1, true, "/shown.pdf", false},
-		{"option off", 0, false, "/shown.pdf", false},
-		{"empty window", 0, true, "", false},
+		{"system request", 0, "window", "/shown.pdf", true},
+		{"drop on the window", 1, "window", "/shown.pdf", true},
+		{"replace", 0, "replace", "/shown.pdf", false},
+		{"empty window", 0, "window", "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			started = nil
 			app := &App{tab: &tab{}, launchArgs: []string{"-config=/c.lua"}}
-			app.config.OpenInNewWindow = tt.option
+			app.config.OpenDocuments = tt.option
 			app.docPath = tt.docPath
 
 			app.handleDroppedFile(path, tt.windowID)

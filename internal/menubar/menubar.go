@@ -80,6 +80,7 @@ func Menus() []Menu {
 			{Title: "Quit {app}", Action: "quit", Key: "<D-q>"},
 		}},
 		{Title: "File", Items: []Item{
+			{Title: "New Tab", Action: "new_tab"},
 			{Title: "Open…", Action: "open_file_picker"},
 			{Title: "Open Recent", Role: RoleRecentDocuments},
 			{Title: "Recent Files…", Action: "show_recent_files"},
@@ -138,9 +139,13 @@ func Menus() []Menu {
 			{Title: "Follow Link…", Action: "follow_link"},
 		}},
 		{Title: "Window", Role: RoleWindow, Items: []Item{
-			{Title: "Close", Action: "quit", Key: "<D-w>"},
+			{Title: "Close Tab", Action: "close_tab", Key: "<D-w>"},
 			{Title: "Minimize", Role: RoleMinimize},
 			{Title: "Zoom", Role: RoleZoom},
+			Separator,
+			{Title: "Show Previous Tab", Action: "prev_tab"},
+			{Title: "Show Next Tab", Action: "next_tab"},
+			{Title: "Tabs…", Action: "tabs_menu"},
 			Separator,
 			{Title: "Bring All to Front", Role: RoleFront},
 		}},

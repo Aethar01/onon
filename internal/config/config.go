@@ -63,7 +63,7 @@ type Config struct {
 	AutoscrollSpeedFactor float64
 	AutoscrollMaxSpeed    float64
 	SessionDatabase       bool
-	OpenInNewWindow       bool
+	OpenDocuments         string // tab, window or replace
 	AntiAliasing          int
 	OutlineInitialDepth   int
 	OutlineWidthPercent   int
@@ -181,7 +181,7 @@ var (
 	MenuViews = map[string]string{
 		"annotation": "annotation-menu", "choice": "form-choice", "colors": "color-picker", "help": "help",
 		"keybind_keys": "core:keybind-keys", "keybinds": "core:keybinds", "matches": "matches", "options": "options",
-		"outline": "core:outline", "print": "print", "printers": "printers", "recent": "recent-files", "themes": "themes",
+		"outline": "core:outline", "print": "print", "printers": "printers", "recent": "recent-files", "tabs": "tabs", "themes": "themes",
 	}
 	MenuNames = slices.Sorted(maps.Keys(MenuViews))
 )

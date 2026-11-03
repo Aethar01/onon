@@ -638,7 +638,8 @@ var configOptions = map[string]optionDesc{
 	"smooth_scroll":          inputSourcesOption("smooth_scroll", "Animate scrolling for selected inputs; assignments update only specified mouse, trackpad, and keyboard fields.", SmoothInputAll, func(c *Config) SmoothInputSources { return c.SmoothScrollSources }, func(c *Config, v SmoothInputSources) { c.SmoothScrollSources = v }),
 	"smooth_zoom":            inputSourcesOption("smooth_zoom", "Animate zooming for selected inputs; assignments update only specified mouse, trackpad, and keyboard fields.", SmoothInputAll, func(c *Config) SmoothInputSources { return c.SmoothZoomSources }, func(c *Config, v SmoothInputSources) { c.SmoothZoomSources = v }),
 	"invert_scroll":          inputSourcesOption("invert_scroll", "Invert horizontal and vertical wheel scrolling for selected inputs; true or false sets both, and a table updates only the mouse and trackpad fields it names.", SmoothInputWheel, func(c *Config) SmoothInputSources { return c.InvertScrollSources }, func(c *Config, v SmoothInputSources) { c.InvertScrollSources = v }),
-	"open_in_new_window":     boolOption("On macOS, open a document Finder or `open` sends to a running onon in a new window rather than the current one.", func(c *Config) bool { return c.OpenInNewWindow }, func(c *Config, v bool) { c.OpenInNewWindow = v }),
+	"open_documents":         stringOption("Where a document the system sends a running onon, such as from Finder or `open`, or one dropped on the window, opens: tab, in a new tab; window, in a new window; or replace, in place of the document shown. A window with no document takes it whichever is set.", func(c *Config) string { return c.OpenDocuments }, func(c *Config, v string) { c.OpenDocuments = NormalizeOpenDocuments(v) }),
+	"open_in_new_window":     boolOption("Deprecated; use open_documents, true being \"window\" and false \"replace\".", func(c *Config) bool { return c.OpenDocuments == "window" }, func(c *Config, v bool) { c.OpenDocuments = map[bool]string{true: "window", false: "replace"}[v] }),
 	"session_database":       boolOption("Persist per-document view state, marks, and recent files.", func(c *Config) bool { return c.SessionDatabase }, func(c *Config, v bool) { c.SessionDatabase = v }),
 	"alt_colors_keep_images": boolOption("Keep raster images in their own colors in alternate-color mode.", func(c *Config) bool { return c.AltColorsKeepImages }, func(c *Config, v bool) { c.AltColorsKeepImages = v }),
 	"trim_margins":           boolOption("Lay pages out by their content, trimming blank margins.", func(c *Config) bool { return c.TrimMargins }, func(c *Config, v bool) { c.TrimMargins = v }),
@@ -754,6 +755,16 @@ func NormalizeFitMode(s string) string {
 		return s
 	}
 	return "page"
+}
+
+// NormalizeOpenDocuments reads where documents sent to onon open: tab,
+// window or replace, tab for anything else.
+func NormalizeOpenDocuments(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "window" || s == "replace" {
+		return s
+	}
+	return "tab"
 }
 
 func NormalizeRenderMode(s string) string {

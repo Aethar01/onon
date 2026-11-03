@@ -158,7 +158,8 @@ func (a *App) commandCompletions() ([]completionItem, int, int) {
 	}
 	argEnd := nextSpaceRune(a.input.Value, argStart)
 	arg := sliceRunes(a.input.Value, argStart, a.input.Cursor)
-	if cmd == "open" {
+	switch cmd {
+	case "open", "tabnew", "tabe", "tabedit":
 		return a.openPathCompletions(arg), argStart, argEnd
 	}
 	if cmd == "theme" && a.runtime != nil {

@@ -128,6 +128,16 @@ func (c *tileCache) clear() {
 	}
 }
 
+// keepProtected removes every tile not on screen, as when a tab goes to
+// the background.
+func (c *tileCache) keepProtected() {
+	for key := range c.entries {
+		if !c.protected[key] {
+			c.remove(key)
+		}
+	}
+}
+
 // dropStale removes a page's tiles of versions other than version.
 func (c *tileCache) dropStale(page int, version tileVersion) {
 	for key := range c.byPage[page] {

@@ -22,18 +22,15 @@ type openDocumentOptions struct {
 	remote *remote.Info
 }
 
+// Open opens path in place of the document in the tab shown, or shows the
+// tab that already has it open.
 func (a *App) Open(path string) error {
-	if path == "" {
-		return fmt.Errorf("open: empty path")
-	}
-	// A scheme from Lua first, as it may name a URL with a #page=N.
-	path, _, err := a.runtime.ResolveScheme(path)
+	path, page, err := a.resolveDocumentArg(path)
 	if err != nil {
 		return err
 	}
-	path, page := remote.PageFragment(path)
-	if path, err = a.resolveOpenPath(path); err != nil {
-		return err
+	if a.showTabFor(path, page) {
+		return nil
 	}
 	if !a.confirmDiscard("opening it") {
 		return nil
@@ -45,11 +42,30 @@ func (a *App) Open(path string) error {
 		return nil
 	}
 	state := a.captureViewState().atDocumentStart()
-	opts := openDocumentOptions{reloadConfig: true, preserveView: &state}
+	// The configuration may depend on the document, so it is read again
+	// for the one opened, but only while it is the only one open: other
+	// tabs would change under it.
+	opts := openDocumentOptions{reloadConfig: len(a.tabs) <= 1, preserveView: &state}
 	if page > 0 {
 		opts.startPage, opts.startPageExplicit = page-1, true // #page=N
 	}
 	return a.openDocument(path, opts)
+}
+
+// resolveDocumentArg resolves a document to open as Open and OpenTab are
+// given it: through a scheme from Lua, as it may name a URL with a
+// #page=N, which is returned, and then relative to the document shown.
+func (a *App) resolveDocumentArg(path string) (string, int, error) {
+	if path == "" {
+		return "", 0, fmt.Errorf("open: empty path")
+	}
+	path, _, err := a.runtime.ResolveScheme(path)
+	if err != nil {
+		return "", 0, err
+	}
+	path, page := remote.PageFragment(path)
+	path, err = a.resolveOpenPath(path)
+	return path, page, err
 }
 
 func (a *App) resolveOpenPath(path string) (string, error) {
@@ -216,6 +232,8 @@ func (a *App) openDocumentWithPassword(path string, opts openDocumentOptions, pa
 	if opts.reloadConfig {
 		configErr = a.runtime.SetDocument(path, pages)
 		a.removeStaleLuaViews(a.runtime.Generation())
+	} else {
+		a.runtime.SetActiveDocument(path, pages)
 	}
 	a.applyConfigState(a.runtime.Config())
 	a.message = a.config.NormalMessage
