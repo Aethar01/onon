@@ -5,7 +5,7 @@ import (
 )
 
 func TestInputEditingKeepsRuneCursorPositions(t *testing.T) {
-	app := &App{inputState: inputState{input: textInput{Value: "ab", Cursor: 1}}}
+	app := &App{tab: &tab{}, inputState: inputState{input: textInput{Value: "ab", Cursor: 1}}}
 	app.input.InsertRune('界')
 	if app.input.Value != "a界b" || app.input.Cursor != 2 {
 		t.Fatalf("expected rune inserted at cursor, input=%q cursor=%d", app.input.Value, app.input.Cursor)

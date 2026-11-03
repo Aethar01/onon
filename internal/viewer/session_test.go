@@ -98,7 +98,7 @@ func TestDocumentSessionNoChangeWithoutModification(t *testing.T) {
 }
 
 func TestViewStateRoundTrip(t *testing.T) {
-	app := &App{documentState: documentState{page: 3}, viewStateFields: viewStateFields{scrollX: 12, scrollY: 34, zoom: 1.5, fitMode: fitManual, renderMode: renderSingle, dualPage: true, firstPageOffset: false, statusBarShown: true, altColors: true}}
+	app := &App{tab: &tab{documentState: documentState{page: 3}, viewStateFields: viewStateFields{scrollX: 12, scrollY: 34, zoom: 1.5, fitMode: fitManual, renderMode: renderSingle, dualPage: true, firstPageOffset: false, statusBarShown: true, altColors: true}}}
 	state := app.captureViewState()
 
 	if state.page != 3 || state.scrollX != 12 || state.scrollY != 34 || state.zoom != 1.5 || state.fitMode != fitManual || state.renderMode != renderSingle || !state.dualPage || state.firstPageOffset || !state.statusBarShown || !state.altColors {
@@ -119,7 +119,7 @@ func TestViewStateAtDocumentStartPreservesPreferencesOnly(t *testing.T) {
 }
 
 func TestEscCancelsPendingMark(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	app.pendingMark = "set"
 	if !app.handleMarkToken("<Esc>") {
 		t.Fatal("Esc was not handled")
@@ -134,7 +134,7 @@ func TestDocumentChangesWaitWhileAutoReloadIsOff(t *testing.T) {
 	if err := os.WriteFile(path, []byte("one"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	app := &App{}
+	app := &App{tab: &tab{}}
 	app.document.setDelay(time.Millisecond)
 	app.document.record(path)
 	defer app.document.Close()

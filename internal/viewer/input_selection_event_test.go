@@ -10,7 +10,7 @@ import (
 )
 
 func TestShiftArrowSelectionUsesKeyboardEventModifiers(t *testing.T) {
-	app := &App{inputState: inputState{mode: modeCommand}}
+	app := &App{tab: &tab{}, inputState: inputState{mode: modeCommand}}
 	app.input.Set("hello")
 	app.input.SetCursor(3, false)
 
@@ -32,7 +32,7 @@ func TestShiftArrowSelectionUsesKeyboardEventModifiers(t *testing.T) {
 }
 
 func TestCtrlShiftArrowExtendsSelectionByWord(t *testing.T) {
-	app := &App{inputState: inputState{mode: modeCommand}}
+	app := &App{tab: &tab{}, inputState: inputState{mode: modeCommand}}
 	app.input.Set("one two three")
 
 	e := sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: sdl.KeycodeLeft, Mod: sdl.KeymodCtrl | sdl.KeymodShift}
@@ -46,11 +46,11 @@ func TestCtrlShiftArrowExtendsSelectionByWord(t *testing.T) {
 
 func TestMouseDragSelectsStatusBarTextInput(t *testing.T) {
 	app := &App{
-		config:          config.Config{Theme: config.Theme{StatusBarPadding: 8}},
-		viewStateFields: viewStateFields{statusBarShown: true},
-		layoutState:     layoutState{winW: 500, winH: 200},
-		inputState:      inputState{mode: modeCommand},
-		sdlState:        sdlState{fontFace: basicfont.Face7x13},
+		tab:         &tab{viewStateFields: viewStateFields{statusBarShown: true}},
+		config:      config.Config{Theme: config.Theme{StatusBarPadding: 8}},
+		inputState:  inputState{mode: modeCommand},
+		sdlState:    sdlState{fontFace: basicfont.Face7x13},
+		windowState: windowState{winW: 500, winH: 200},
 	}
 	app.input.Set("hello")
 

@@ -53,7 +53,7 @@ func TestTextInputSelectionMovementAndEditing(t *testing.T) {
 
 func TestClipboardEditingMainTextInputUsesSelection(t *testing.T) {
 	withTestClipboard(t)
-	app := &App{inputState: inputState{mode: modeCommand}}
+	app := &App{tab: &tab{}, inputState: inputState{mode: modeCommand}}
 	app.input.Set("hello")
 	app.input.SetCursor(1, false)
 	app.input.SetCursor(4, true)
@@ -91,7 +91,7 @@ func TestClipboardEditingMainTextInputUsesSelection(t *testing.T) {
 func TestClipboardCopyWithoutTextInputSelectionIsNoop(t *testing.T) {
 	withTestClipboard(t)
 	sdlSetClipboardText("existing")
-	app := &App{inputState: inputState{mode: modeCommand}}
+	app := &App{tab: &tab{}, inputState: inputState{mode: modeCommand}}
 	app.input.Set("hello")
 	if !app.copyActiveTextInputToClipboard() {
 		t.Fatal("expected active input to consume copy")
@@ -104,7 +104,7 @@ func TestClipboardCopyWithoutTextInputSelectionIsNoop(t *testing.T) {
 func TestClipboardEditingOutlineSearch(t *testing.T) {
 	withTestClipboard(t)
 	view := &uiView{visible: true, modal: true, searching: true, query: "needle"}
-	app := &App{uiState: uiState{views: uiManager{active: view}}}
+	app := &App{tab: &tab{}, uiState: uiState{views: uiManager{active: view}}}
 
 	if !app.cutActiveTextInputToClipboard() || view.query != "" {
 		t.Fatalf("expected cut to clear outline query, got %q", view.query)
@@ -122,7 +122,7 @@ func TestClipboardEditingOutlineSearch(t *testing.T) {
 func TestClipboardEditingPluginUISearch(t *testing.T) {
 	withTestClipboard(t)
 	view := &uiView{visible: true, modal: true, searching: true, query: "menu"}
-	app := &App{uiState: uiState{views: uiManager{active: view}}}
+	app := &App{tab: &tab{}, uiState: uiState{views: uiManager{active: view}}}
 
 	if !app.copyActiveTextInputToClipboard() || sdlGetClipboardText() != "menu" {
 		t.Fatalf("expected Lua UI query on clipboard, got %q", sdlGetClipboardText())
@@ -135,11 +135,11 @@ func TestClipboardEditingPluginUISearch(t *testing.T) {
 
 func TestCopyOnSelectDisabledKeepsSelectionAfterMouseCopyHook(t *testing.T) {
 	app := &App{
-		config: config.Config{CopyOnSelect: false},
-		interactionState: interactionState{selection: textSelection{
+		tab: &tab{selection: textSelection{
 			text:  "selected text",
 			parts: []selectionPart{{quads: []mupdf.Quad{{}}}},
 		}},
+		config: config.Config{CopyOnSelect: false},
 	}
 
 	app.copySelectionToClipboard()
@@ -151,11 +151,11 @@ func TestCopyOnSelectDisabledKeepsSelectionAfterMouseCopyHook(t *testing.T) {
 
 func TestEscapeClearsPersistentSelection(t *testing.T) {
 	app := &App{
-		config: config.Config{CopyOnSelect: false},
-		interactionState: interactionState{selection: textSelection{
+		tab: &tab{selection: textSelection{
 			text:  "selected text",
 			parts: []selectionPart{{quads: []mupdf.Quad{{}}}},
 		}},
+		config: config.Config{CopyOnSelect: false},
 	}
 
 	app.closeActiveUI()

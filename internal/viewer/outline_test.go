@@ -12,12 +12,12 @@ import (
 
 func TestVisibleOutlineIndicesRespectExpandedAncestors(t *testing.T) {
 	app := &App{
-		documentState: documentState{outline: []mupdf.OutlineItem{
+		tab: &tab{documentState: documentState{outline: []mupdf.OutlineItem{
 			{Title: "Chapter 1", Page: 0, Parent: -1, HasChildren: true},
 			{Title: "Section 1.1", Page: 1, Parent: 0, HasChildren: true},
 			{Title: "Topic 1.1.1", Page: 2, Parent: 1},
 			{Title: "Chapter 2", Page: 5, Parent: -1},
-		}},
+		}}},
 		uiState: uiState{outlineMenu: outlineMenuState{expanded: map[int]bool{}}},
 	}
 
@@ -35,11 +35,13 @@ func TestVisibleOutlineIndicesRespectExpandedAncestors(t *testing.T) {
 }
 
 func TestOutlineIndexForPageUsesNearestPreviousDestination(t *testing.T) {
-	app := &App{documentState: documentState{outline: []mupdf.OutlineItem{
-		{Title: "Intro", Page: 0},
-		{Title: "Chapter", Page: 5},
-		{Title: "Appendix", Page: 10},
-	}}}
+	app := &App{
+		tab: &tab{documentState: documentState{outline: []mupdf.OutlineItem{
+			{Title: "Intro", Page: 0},
+			{Title: "Chapter", Page: 5},
+			{Title: "Appendix", Page: 10},
+		}}},
+	}
 
 	tests := []struct {
 		page int
@@ -60,15 +62,15 @@ func TestOutlineIndexForPageUsesNearestPreviousDestination(t *testing.T) {
 
 func TestOutlineSelectionMovementAndExpandCollapse(t *testing.T) {
 	app := &App{
-		layoutState: layoutState{winW: 800, winH: 600},
-		sdlState:    sdlState{fontFace: basicfont.Face7x13},
-		config:      config.Default(),
-		documentState: documentState{outline: []mupdf.OutlineItem{
+		tab: &tab{documentState: documentState{outline: []mupdf.OutlineItem{
 			{Title: "Chapter 1", Page: 0, Parent: -1, HasChildren: true},
 			{Title: "Section 1.1", Page: 1, Parent: 0},
 			{Title: "Chapter 2", Page: 5, Parent: -1},
-		}},
-		uiState: uiState{outlineMenu: outlineMenuState{expanded: map[int]bool{}}},
+		}}},
+		sdlState:    sdlState{fontFace: basicfont.Face7x13},
+		config:      config.Default(),
+		uiState:     uiState{outlineMenu: outlineMenuState{expanded: map[int]bool{}}},
+		windowState: windowState{winW: 800, winH: 600},
 	}
 	app.outlineMenu.view = app.newOutlineView()
 	app.refreshOutlineView()
@@ -102,14 +104,14 @@ func TestOutlineSelectionMovementAndExpandCollapse(t *testing.T) {
 
 func TestOutlineRunsItsOwnActionsThroughTheGenericList(t *testing.T) {
 	app := &App{
-		layoutState: layoutState{winW: 800, winH: 600},
-		sdlState:    sdlState{fontFace: basicfont.Face7x13},
-		config:      config.Default(),
-		documentState: documentState{outline: []mupdf.OutlineItem{
+		tab: &tab{documentState: documentState{outline: []mupdf.OutlineItem{
 			{Title: "Chapter 1", Page: 0, Parent: -1, HasChildren: true},
 			{Title: "Section 1.1", Page: 1, Parent: 0},
-		}},
-		uiState: uiState{outlineMenu: outlineMenuState{expanded: map[int]bool{}}},
+		}}},
+		sdlState:    sdlState{fontFace: basicfont.Face7x13},
+		config:      config.Default(),
+		uiState:     uiState{outlineMenu: outlineMenuState{expanded: map[int]bool{}}},
+		windowState: windowState{winW: 800, winH: 600},
 	}
 	view := app.newOutlineView()
 	app.outlineMenu.view = view

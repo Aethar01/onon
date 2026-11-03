@@ -41,7 +41,7 @@ func TestOpenInitialDocumentDisplaysOpenError(t *testing.T) {
 }
 
 func TestHandleSDLEventTracksSystemFullscreenChanges(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 
 	enter := sdl.Event{}
 	binary.NativeEndian.PutUint32(enter[:], uint32(sdl.EventWindowEnterFullscreen))
@@ -71,7 +71,7 @@ func TestHandleSDLEventTracksSystemFullscreenChanges(t *testing.T) {
 }
 
 func TestHandleSDLEventRedrawsExposedWindow(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	event := sdl.Event{}
 	binary.NativeEndian.PutUint32(event[:], uint32(sdl.EventWindowExposed))
 
@@ -85,6 +85,7 @@ func TestHandleSDLEventRedrawsExposedWindow(t *testing.T) {
 
 func TestEventWaitTimeoutUsesConfiguredAnimationFrame(t *testing.T) {
 	app := &App{
+		tab:        &tab{},
 		config:     config.Config{AnimationFrameMS: 24},
 		smoothZoom: &smoothZoomState{targetLog: 1, appliedLog: 0},
 	}
@@ -104,7 +105,7 @@ func TestEventWaitTimeoutUsesConfiguredAnimationFrame(t *testing.T) {
 }
 
 func TestHandleSDLEventFocusLossStopsKeyPanning(t *testing.T) {
-	app := &App{interactionState: interactionState{panning: true, panKeycode: sdl.KeycodeSpace}}
+	app := &App{tab: &tab{}, interactionState: interactionState{panning: true, panKeycode: sdl.KeycodeSpace}}
 	event := sdl.Event{}
 	binary.NativeEndian.PutUint32(event[:], uint32(sdl.EventWindowFocusLost))
 
@@ -118,8 +119,8 @@ func TestHandleSDLEventFocusLossStopsKeyPanning(t *testing.T) {
 
 func TestHandleSDLEventPinchUpdatesZoom(t *testing.T) {
 	app := &App{
-		config:          config.Config{PinchSensitivity: 2, MinZoom: 0.5, MaxZoom: 8, SmoothZoomSources: config.SmoothInputAll, SmoothZoomDampening: 0.35},
-		viewStateFields: viewStateFields{zoom: 2, fitMode: fitManual},
+		tab:    &tab{viewStateFields: viewStateFields{zoom: 2, fitMode: fitManual}},
+		config: config.Config{PinchSensitivity: 2, MinZoom: 0.5, MaxZoom: 8, SmoothZoomSources: config.SmoothInputAll, SmoothZoomDampening: 0.35},
 	}
 	begin := sdl.Event{}
 	binary.NativeEndian.PutUint32(begin[:], uint32(sdl.EventPinchBegin))
@@ -165,7 +166,7 @@ func TestHandleSDLEventPinchUpdatesZoom(t *testing.T) {
 }
 
 func TestHandleSDLEventPinchOutDoesNotReverseDirection(t *testing.T) {
-	app := &App{config: config.Config{MinZoom: 0.5, MaxZoom: 8, SmoothZoomSources: config.SmoothInputAll, SmoothZoomDampening: 0.35}, viewStateFields: viewStateFields{zoom: 2, fitMode: fitManual}}
+	app := &App{tab: &tab{viewStateFields: viewStateFields{zoom: 2, fitMode: fitManual}}, config: config.Config{MinZoom: 0.5, MaxZoom: 8, SmoothZoomSources: config.SmoothInputAll, SmoothZoomDampening: 0.35}}
 	for _, scale := range []float32{0.98, 0.99, 0.97} {
 		event := sdl.Event{}
 		binary.NativeEndian.PutUint32(event[:], uint32(sdl.EventPinchUpdate))
@@ -184,8 +185,8 @@ func TestHandleSDLEventPinchOutDoesNotReverseDirection(t *testing.T) {
 
 func TestZoomActionAnimatesTowardTarget(t *testing.T) {
 	app := &App{
-		config:          config.Config{MinZoom: 0.5, MaxZoom: 8, SmoothZoomSources: config.SmoothInputAll, SmoothZoomDampening: 0.35},
-		viewStateFields: viewStateFields{zoom: 2, fitMode: fitManual},
+		tab:    &tab{viewStateFields: viewStateFields{zoom: 2, fitMode: fitManual}},
+		config: config.Config{MinZoom: 0.5, MaxZoom: 8, SmoothZoomSources: config.SmoothInputAll, SmoothZoomDampening: 0.35},
 	}
 
 	if err := app.runBuiltinAction("zoom_in"); err != nil {
@@ -208,8 +209,8 @@ func TestZoomActionAnimatesTowardTarget(t *testing.T) {
 
 func TestRepeatedZoomActionsAccumulateTarget(t *testing.T) {
 	app := &App{
-		config:          config.Config{MinZoom: 0.5, MaxZoom: 8, SmoothZoomSources: config.SmoothInputAll, SmoothZoomDampening: 0.35},
-		viewStateFields: viewStateFields{zoom: 2, fitMode: fitManual},
+		tab:    &tab{viewStateFields: viewStateFields{zoom: 2, fitMode: fitManual}},
+		config: config.Config{MinZoom: 0.5, MaxZoom: 8, SmoothZoomSources: config.SmoothInputAll, SmoothZoomDampening: 0.35},
 	}
 
 	if err := app.runBuiltinAction("zoom_in"); err != nil {
@@ -229,7 +230,7 @@ func TestRepeatedZoomActionsAccumulateTarget(t *testing.T) {
 func TestHandleDroppedFileQueuesOpenWithoutRuntime(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "dropped.pdf")
-	app := &App{}
+	app := &App{tab: &tab{}}
 
 	app.handleDroppedFile(path, 1)
 
@@ -264,7 +265,7 @@ func TestHandleDroppedFileOpensSystemRequestsInNewWindow(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			started = nil
-			app := &App{launchArgs: []string{"-config=/c.lua"}}
+			app := &App{tab: &tab{}, launchArgs: []string{"-config=/c.lua"}}
 			app.config.OpenInNewWindow = tt.option
 			app.docPath = tt.docPath
 
@@ -290,7 +291,7 @@ func TestHandleDroppedFileOpensSystemRequestsInNewWindow(t *testing.T) {
 func TestTextInputNeededOnlyForActiveTextEntry(t *testing.T) {
 	modalApp := func(searching bool) *App {
 		view := &uiView{visible: true, modal: true, searching: searching}
-		return &App{uiState: uiState{views: uiManager{active: view}}}
+		return &App{tab: &tab{}, uiState: uiState{views: uiManager{active: view}}}
 	}
 	// App carries a mutex, so cases hold pointers rather than copies.
 	tests := []struct {
@@ -298,11 +299,11 @@ func TestTextInputNeededOnlyForActiveTextEntry(t *testing.T) {
 		app  *App
 		want bool
 	}{
-		{name: "normal", app: &App{}, want: false},
-		{name: "command prompt", app: &App{inputState: inputState{mode: modeCommand}}, want: true},
-		{name: "goto prompt", app: &App{inputState: inputState{mode: modeGotoPage}}, want: true},
-		{name: "search prompt", app: &App{inputState: inputState{mode: modeSearch}}, want: true},
-		{name: "password prompt", app: &App{inputState: inputState{mode: modePassword}}, want: true},
+		{name: "normal", app: &App{tab: &tab{}}, want: false},
+		{name: "command prompt", app: &App{tab: &tab{}, inputState: inputState{mode: modeCommand}}, want: true},
+		{name: "goto prompt", app: &App{tab: &tab{}, inputState: inputState{mode: modeGotoPage}}, want: true},
+		{name: "search prompt", app: &App{tab: &tab{}, inputState: inputState{mode: modeSearch}}, want: true},
+		{name: "password prompt", app: &App{tab: &tab{}, inputState: inputState{mode: modePassword}}, want: true},
 		{name: "modal menu", app: modalApp(false), want: false},
 		{name: "modal search", app: modalApp(true), want: true},
 	}

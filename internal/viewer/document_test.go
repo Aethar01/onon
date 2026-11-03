@@ -12,7 +12,7 @@ func TestResolveOpenPathReturnsAbsolutePath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	app := &App{}
+	app := &App{tab: &tab{}}
 	if got, _ := app.resolveOpenPath("test.txt"); got != want {
 		t.Fatalf("expected absolute path %q, got %q", want, got)
 	}
@@ -20,7 +20,7 @@ func TestResolveOpenPathReturnsAbsolutePath(t *testing.T) {
 
 func TestResolveOpenPathUsesCurrentDocumentDirectory(t *testing.T) {
 	dir := t.TempDir()
-	app := &App{documentState: documentState{docPath: filepath.Join(dir, "paper.pdf")}}
+	app := &App{tab: &tab{documentState: documentState{docPath: filepath.Join(dir, "paper.pdf")}}}
 	want := filepath.Join(dir, "other.pdf")
 
 	if got, _ := app.resolveOpenPath("other.pdf"); got != want {
@@ -34,7 +34,7 @@ func TestResolveOpenPathPrefersAFileBesideTheDocument(t *testing.T) {
 	if err := os.WriteFile(want, nil, 0o600); err != nil {
 		t.Skip("no colons in file names here:", err)
 	}
-	app := &App{documentState: documentState{docPath: filepath.Join(dir, "a.pdf")}}
+	app := &App{tab: &tab{documentState: documentState{docPath: filepath.Join(dir, "a.pdf")}}}
 	if got, err := app.resolveOpenPath("notes:v2.pdf"); err != nil || got != want {
 		t.Fatalf("resolveOpenPath = %q, %v; want the local %q", got, err, want)
 	}

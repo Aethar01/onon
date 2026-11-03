@@ -189,7 +189,7 @@ func TestSmoothTowardUsesConfiguredDampening(t *testing.T) {
 }
 
 func TestSmoothAnimationUsesConfiguredFrame(t *testing.T) {
-	app := &App{config: config.Config{AnimationFrameMS: 32}}
+	app := &App{tab: &tab{}, config: config.Config{AnimationFrameMS: 32}}
 	if got := app.animationFrameDuration(); got != 32*time.Millisecond {
 		t.Fatalf("expected configured animation frame, got %v", got)
 	}

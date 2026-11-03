@@ -26,10 +26,12 @@ func TestRecomputeLayoutUsesRotatedPageDimensions(t *testing.T) {
 	}
 
 	app := &App{
-		documentState:   documentState{pageCount: 5, page: 0},
-		viewStateFields: viewStateFields{zoom: 1, fitMode: fitManual, renderMode: renderContinuous, dualPage: true, firstPageOffset: true},
-		config:          config.Config{PageGap: -1, PageGapHorizontal: -1, PageGapVertical: -1, SpreadGap: -1},
-		metricsService:  metricsService{pageMetrics: metrics},
+		tab: &tab{
+			documentState:   documentState{pageCount: 5, page: 0},
+			viewStateFields: viewStateFields{zoom: 1, fitMode: fitManual, renderMode: renderContinuous, dualPage: true, firstPageOffset: true},
+			metricsService:  metricsService{pageMetrics: metrics},
+		},
+		config: config.Config{PageGap: -1, PageGapHorizontal: -1, PageGapVertical: -1, SpreadGap: -1},
 	}
 
 	app.recomputeLayout(1000, 1000)
@@ -324,7 +326,7 @@ func TestPanEndsWhenKeyIsReleasedWithOtherModifiers(t *testing.T) {
 }
 
 func TestOpenCommandKeepsSpacesInPath(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	path := filepath.Join(t.TempDir(), "Lancer - Core Book.pdf")
 
 	app.runCommand(":open " + path)
@@ -333,7 +335,7 @@ func TestOpenCommandKeepsSpacesInPath(t *testing.T) {
 		t.Fatalf("expected pending open path %q, got %q", path, app.pendingOpen)
 	}
 
-	app = &App{}
+	app = &App{tab: &tab{}}
 	app.runCommand(":open " + escapeCommandPath(path))
 	if app.pendingOpen != path {
 		t.Fatalf("expected escaped pending open path %q, got %q", path, app.pendingOpen)
@@ -392,13 +394,15 @@ func testLayoutApp(pageCount int) *App {
 		metrics[i] = pageMetrics{bounds: mupdf.Rect{X1: 100, Y1: 200}, width: 100, height: 200}
 	}
 	return &App{
-		documentState:   documentState{pageCount: pageCount},
-		viewStateFields: viewStateFields{zoom: 1, fitMode: fitManual, renderMode: renderContinuous, firstPageOffset: true},
+		tab: &tab{
+			documentState:   documentState{pageCount: pageCount},
+			viewStateFields: viewStateFields{zoom: 1, fitMode: fitManual, renderMode: renderContinuous, firstPageOffset: true},
+			metricsService:  metricsService{pageMetrics: metrics},
+		},
 		config: config.Config{
 			PageGap: -1, PageGapHorizontal: -1, PageGapVertical: -1, SpreadGap: -1, SmoothScrollSources: config.SmoothInputAll,
 			OverviewThumbWidth: 220, OverviewMaxColumns: 12, OverviewGap: 16,
 		},
-		metricsService: metricsService{pageMetrics: metrics},
 	}
 }
 
@@ -567,7 +571,7 @@ func TestFitWidthKeepsSpreadGapUnscaled(t *testing.T) {
 }
 
 func TestViewportAndContentOffsets(t *testing.T) {
-	app := &App{layoutState: layoutState{winW: 800, winH: 600}, sdlState: sdlState{fontFace: basicfont.Face7x13}, viewStateFields: viewStateFields{statusBarShown: true}}
+	app := &App{tab: &tab{viewStateFields: viewStateFields{statusBarShown: true}}, sdlState: sdlState{fontFace: basicfont.Face7x13}, windowState: windowState{winW: 800, winH: 600}}
 	w, h := app.viewportSize()
 	if w != 800 || h != 583 {
 		t.Fatalf("expected status bar to reduce viewport height, got %dx%d", w, h)
@@ -604,7 +608,7 @@ func TestTransformAndInverseTransformRoundTrip(t *testing.T) {
 }
 
 func TestLayoutGapAndRotationEdgeCases(t *testing.T) {
-	app := &App{config: config.Config{PageGap: 12, PageGapVertical: -1, SpreadGap: 34, PageGapHorizontal: -1}}
+	app := &App{tab: &tab{}, config: config.Config{PageGap: 12, PageGapVertical: -1, SpreadGap: 34, PageGapHorizontal: -1}}
 	if app.verticalGap() != 12 || app.horizontalGap() != 34 {
 		t.Fatalf("expected fallback gaps from page/spread gap, got vertical=%d horizontal=%d", app.verticalGap(), app.horizontalGap())
 	}

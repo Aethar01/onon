@@ -4,7 +4,6 @@ import (
 	"log"
 
 	"onon/internal/config"
-	"onon/internal/mupdf"
 	"onon/internal/remote"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
@@ -17,13 +16,13 @@ type App struct {
 	// launchArgs are the flags a new window's process inherits.
 	launchArgs []string
 
-	documentState
-	viewStateFields
-	layoutState
+	// tab is the document shown; tabs holds every document open in the
+	// window, in order, this one among them.
+	*tab
+	tabs []*tab
+
+	windowState
 	sdlState
-	documentWorkers
-	renderService
-	metricsService
 	inputState
 	interactionState
 	uiState
@@ -43,27 +42,19 @@ func New(docPath string, runtime *config.Runtime, startPage int, iconBytes []byt
 	if startPage < 0 {
 		startPage = 0
 	}
+	first := newTab(startPage)
+	first.zoom = cfg.MinZoom
+	first.cache = tileCache{byteLimit: pageCacheByteLimit(cfg)}
 	app := &App{
-		runtime:    runtime,
-		verbose:    opts.Verbose,
-		launchArgs: opts.LaunchArgs,
-		documentState: documentState{
-			page:      startPage,
-			pageLinks: map[int][]mupdf.Link{},
-		},
-		viewStateFields: viewStateFields{
-			zoom:     cfg.MinZoom,
-			scale:    1,
-			pageStep: 64,
-		},
+		runtime:     runtime,
+		verbose:     opts.Verbose,
+		launchArgs:  opts.LaunchArgs,
+		tab:         first,
+		tabs:        []*tab{first},
+		windowState: windowState{pageStep: 64},
 		sdlState: sdlState{
 			iconBytes: iconBytes,
 		},
-		renderService: renderService{
-			cache:              tileCache{byteLimit: pageCacheByteLimit(cfg)},
-			minRenderBaseScale: 0.25,
-		},
-		metricsService: metricsService{},
 		inputState: inputState{
 			mouseBindings:  map[string]string{},
 			sequenceLookup: map[string]string{},

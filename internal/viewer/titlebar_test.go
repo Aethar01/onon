@@ -92,7 +92,7 @@ func TestTitleBarFadesBothWays(t *testing.T) {
 }
 
 func TestTitleBarPointerRevealsAndHides(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	app.winW, app.winH = 1000, 800
 	app.titleBar = &titleBar{}
 	app.noteTitleBarPointer(980, 10, true)
@@ -111,7 +111,7 @@ func TestTitleBarPointerRevealsAndHides(t *testing.T) {
 }
 
 func TestTitleBarPressedButtonStaysShown(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	app.winW, app.winH = 1000, 800
 	app.titleBar = &titleBar{}
 	app.noteTitleBarPointer(880, 10, true)
@@ -131,7 +131,7 @@ func TestTitleBarPressedButtonStaysShown(t *testing.T) {
 }
 
 func TestTitleBarInactiveWithoutOneOrInFullscreen(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	app.winW, app.winH = 1000, 800
 	if got := app.titleBarHitTest(400, 10); got != sdl.HitTestNormal {
 		t.Errorf("no title bar: got %d", got)

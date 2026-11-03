@@ -98,17 +98,15 @@ type documentState struct {
 	documentAPIMu sync.Mutex
 	viewEvents    viewStateEvents
 	// instanceServer is nil unless single-instance handling is enabled.
-	singleInstance         bool
-	instanceServer         *instance.Server
-	instanceAddress        string
-	pendingInstanceJump    *instanceJump
-	pendingInstanceCommand string
-	docPath                string // what the document is known by: a path, or a remote URI
-	docFile                string // the file read: docPath, or a remote document's cached copy
-	releaseCopy            func() // lets the cache remove a remote document's copy, once read no more
-	docName                string
-	docPassword            string
-	doc                    *mupdf.Document
+	instanceServer      *instance.Server
+	instanceAddress     string
+	pendingInstanceJump *instanceJump
+	docPath             string // what the document is known by: a path, or a remote URI
+	docFile             string // the file read: docPath, or a remote document's cached copy
+	releaseCopy         func() // lets the cache remove a remote document's copy, once read no more
+	docName             string
+	docPassword         string
+	doc                 *mupdf.Document
 
 	pageCount  int
 	page       int
@@ -116,19 +114,12 @@ type documentState struct {
 	pageLinks  map[int][]mupdf.Link
 	outline    []mupdf.OutlineItem
 
-	initialDocPath   string
-	initialStartPage int
-	initialPageSet   bool
-	document         documentSession
+	document documentSession
 
 	// remoteInfo is the version of a remote document that was opened, and
 	// remoteTask a fetch or save in progress.
 	remoteInfo remote.Info
 	remoteTask *remoteTask
-	// remotePrompts brings questions from ssh and web servers to the event
-	// loop; remotePrompt is the one being asked.
-	remotePrompts chan *remotePrompt
-	remotePrompt  *remotePrompt
 }
 
 type viewStateFields struct {
@@ -140,10 +131,8 @@ type viewStateFields struct {
 	dualPage        bool
 	firstPageOffset bool
 	statusBarShown  bool
-	fullscreen      bool
 	scrollX         float64
 	scrollY         float64
-	pageStep        float64
 	altColors       bool
 	trimMargins     bool
 }
@@ -153,8 +142,6 @@ type layoutState struct {
 	pageToRow []int
 	contentW  float64
 	contentH  float64
-	winW      int
-	winH      int
 }
 
 type sdlState struct {
@@ -220,7 +207,6 @@ type inputState struct {
 	overview       *overviewState // non-nil while the page overview is shown
 	presentation   *presentationState
 	histories      map[string]*promptHistory
-	unsaved        bool        // the document has edits not yet written
 	highlightColor int         // palette index last used for highlights
 	promptState    promptState // the question asked in modePrompt
 	printSettings  printSettings
@@ -229,10 +215,6 @@ type inputState struct {
 	printersFound  chan printerList // delivers a printer lookup in progress
 	updateResult   chan updateCheck // delivers the outcome of :check-updates
 	preview        *linkPreview
-	discardWarned  bool // the user was told that unsaved edits would be lost
-	editPos        int  // see markEdited
-	editEnd        int
-	savedPos       int
 	pointer        sdl.FPoint // last pointer position, for actions on what is under it
 	inputScroll    int        // pixels the status-bar prompt is scrolled left
 	// composition is what the input method is composing, shown at the
@@ -264,7 +246,6 @@ type pendingPasswordPrompt struct {
 }
 
 type interactionState struct {
-	selection  textSelection
 	panning    bool
 	panButton  uint8
 	panKeycode sdl.Keycode
@@ -282,7 +263,6 @@ type interactionState struct {
 
 type uiState struct {
 	pendingRedraw bool
-	search        searchState
 	views         uiManager
 	outlineMenu   outlineMenuState
 	keybindMenu   keybindMenuState
@@ -293,12 +273,40 @@ type uiState struct {
 type navigationState struct {
 	quit        bool
 	pendingOpen string
-	jumpBack    []jumpPosition
-	jumpAhead   []jumpPosition
 }
 
 type jumpPosition struct {
 	page    int
 	scrollX float64
 	scrollY float64
+}
+
+// windowState is what belongs to the window rather than to the document
+// a tab shows.
+type windowState struct {
+	singleInstance bool
+	// pendingInstanceCommand runs once plugins are ready at startup.
+	pendingInstanceCommand string
+	// The document the window opens with.
+	initialDocPath   string
+	initialStartPage int
+	initialPageSet   bool
+	// remotePrompts brings questions from ssh and web servers to the event
+	// loop; remotePrompt is the one being asked.
+	remotePrompts chan *remotePrompt
+	remotePrompt  *remotePrompt
+	fullscreen    bool
+	pageStep      float64
+	winW          int
+	winH          int
+}
+
+// editState counts a document's edits, so undo and redo know whether it
+// has changes not yet written.
+type editState struct {
+	unsaved       bool // the document has edits not yet written
+	discardWarned bool // the user was told that unsaved edits would be lost
+	editPos       int  // see markEdited
+	editEnd       int
+	savedPos      int
 }

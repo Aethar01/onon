@@ -16,7 +16,7 @@ func stepMotion(app *App, start time.Time, elapsed time.Duration) {
 }
 
 func TestAnimateMovesToItsTarget(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	app.config.Theme.Motion.Scale = 1
 	tr, _ := config.Preset("moss")
 	linear := tr.Motion.Panel
@@ -66,7 +66,7 @@ func TestAnimateMovesToItsTarget(t *testing.T) {
 }
 
 func TestFadeFadesStyleColours(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	clr := config.Color{RGB: [3]uint8{10, 20, 30}, Alpha: 1}
 	_ = app.faded(0.5, func() error {
 		if got := app.styleColor(clr, 1).A; got != 128 {
@@ -85,7 +85,7 @@ func TestFadeFadesStyleColours(t *testing.T) {
 }
 
 func TestOSReducedMotionStopsMotion(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	app.config.Theme.Motion.Scale = 1
 	tr, _ := config.Preset("moss")
 	app.motion.osReduced.Store(true)
@@ -101,7 +101,7 @@ func TestReducedMotionIsReadAtMostOnceAWhile(t *testing.T) {
 	reads := make(chan struct{}, 4)
 	defer func(read func() bool) { readOSMotion = read }(readOSMotion)
 	readOSMotion = func() bool { reads <- struct{}{}; return true }
-	app := &App{}
+	app := &App{tab: &tab{}}
 	app.refreshReducedMotion()
 	<-reads
 	for app.motion.osReading.Load() {

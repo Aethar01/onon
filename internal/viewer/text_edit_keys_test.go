@@ -44,7 +44,7 @@ func TestTextEditKeysPerSystem(t *testing.T) {
 			t.Errorf("%s has no edit for %s", tt.goos, tt.key)
 			continue
 		}
-		app := &App{inputState: inputState{mode: modeCommand}}
+		app := &App{tab: &tab{}, inputState: inputState{mode: modeCommand}}
 		app.input.Set(tt.value)
 		app.input.SetCursor(tt.cursor, false)
 		edit(app)
@@ -59,7 +59,7 @@ func TestTextEditKeysPerSystem(t *testing.T) {
 			t.Errorf("%s has no select all on %s", goos, key)
 			continue
 		}
-		app := &App{inputState: inputState{mode: modeCommand}}
+		app := &App{tab: &tab{}, inputState: inputState{mode: modeCommand}}
 		app.input.Set("one two")
 		edit(app)
 		if got, ok := app.input.SelectedText(); !ok || got != "one two" {

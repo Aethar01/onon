@@ -125,8 +125,10 @@ func TestTilesCoveringClipsToPage(t *testing.T) {
 func TestRequestTilePromotesPendingRequest(t *testing.T) {
 	key := tileKey{page: 0, scale: 1}
 	app := &App{
-		documentWorkers: documentWorkers{renderWorker: &renderWorker{}},
-		renderService:   renderService{renderPending: map[tileKey]renderRequest{key: {key: key, priority: 10}}},
+		tab: &tab{
+			documentWorkers: documentWorkers{renderWorker: &renderWorker{}},
+			renderService:   renderService{renderPending: map[tileKey]renderRequest{key: {key: key, priority: 10}}},
+		},
 	}
 	if app.requestTile(key, image.Rect(0, 0, 1, 1), 0) {
 		t.Fatal("pending request should be promoted rather than enqueued again")
@@ -208,13 +210,15 @@ func TestVisibleRequestPreemptsPreviouslyVisibleRender(t *testing.T) {
 	worker := &renderWorker{slots: []*renderSlot{{}}}
 	worker.slots[0].rendering.Store(&old)
 	app := &App{
-		documentWorkers: documentWorkers{renderWorker: worker},
-		renderService: renderService{
-			renderPending: map[tileKey]renderRequest{
-				old:     {generation: 2, key: old},
-				visible: {generation: 2, key: visible},
+		tab: &tab{
+			documentWorkers: documentWorkers{renderWorker: worker},
+			renderService: renderService{
+				renderPending: map[tileKey]renderRequest{
+					old:     {generation: 2, key: old},
+					visible: {generation: 2, key: visible},
+				},
+				renderGeneration: 2,
 			},
-			renderGeneration: 2,
 		},
 	}
 
@@ -312,12 +316,12 @@ func TestRenderScalePolicy(t *testing.T) {
 		t.Fatal("expected positive finite scale to be valid")
 	}
 
-	app := &App{config: config.Config{RenderOversample: math.NaN()}, renderService: renderService{minRenderBaseScale: math.NaN()}}
+	app := &App{tab: &tab{renderService: renderService{minRenderBaseScale: math.NaN()}}, config: config.Config{RenderOversample: math.NaN()}}
 	assertClose(t, app.renderScaleFloor(), defaultMinRenderBaseScale)
 	assertClose(t, app.renderOversampleFactor(), defaultRenderOversample)
 	assertClose(t, app.oversampledRenderScale(math.NaN()), 1)
 
-	app = &App{viewStateFields: viewStateFields{scale: 1, zoom: 1, fitMode: fitManual}, config: config.Config{RenderOversample: 1}, renderService: renderService{minRenderBaseScale: 0.25, renderBaseScale: 2, renderPending: map[tileKey]renderRequest{{page: 1}: {key: tileKey{page: 1}}}}}
+	app = &App{tab: &tab{viewStateFields: viewStateFields{scale: 1, zoom: 1, fitMode: fitManual}, renderService: renderService{minRenderBaseScale: 0.25, renderBaseScale: 2, renderPending: map[tileKey]renderRequest{{page: 1}: {key: tileKey{page: 1}}}}}, config: config.Config{RenderOversample: 1}}
 	if !app.applyRenderBaseScaleTarget(app.oversampledRenderScale(4)) {
 		t.Fatal("expected target above tolerance to upgrade render base scale")
 	}
@@ -334,7 +338,7 @@ func TestRenderScalePolicy(t *testing.T) {
 }
 
 func TestRenderScaleTargetDowngradesAfterModestZoomOut(t *testing.T) {
-	app := &App{viewStateFields: viewStateFields{scale: 1, zoom: 1, fitMode: fitManual}, config: config.Config{RenderOversample: 1}, renderService: renderService{minRenderBaseScale: 0.25, renderBaseScale: 1.8}}
+	app := &App{tab: &tab{viewStateFields: viewStateFields{scale: 1, zoom: 1, fitMode: fitManual}, renderService: renderService{minRenderBaseScale: 0.25, renderBaseScale: 1.8}}, config: config.Config{RenderOversample: 1}}
 
 	app.scheduleRenderScaleTarget(1.3)
 	app.renderScaleReadyAt = time.Now().Add(-time.Millisecond)
@@ -352,13 +356,13 @@ func TestRenderScaleTargetDowngradesAfterModestZoomOut(t *testing.T) {
 }
 
 func TestRenderBaseScaleOversamplesOnce(t *testing.T) {
-	app := &App{viewStateFields: viewStateFields{scale: 1, zoom: 1, fitMode: fitManual}, config: config.Config{RenderOversample: 2}, renderService: renderService{minRenderBaseScale: 0.25}}
+	app := &App{tab: &tab{viewStateFields: viewStateFields{scale: 1, zoom: 1, fitMode: fitManual}, renderService: renderService{minRenderBaseScale: 0.25}}, config: config.Config{RenderOversample: 2}}
 	app.ensureRenderBaseScale()
 	assertClose(t, app.renderBaseScale, 2)
 }
 
 func TestResetRenderScaleUsesRestoredView(t *testing.T) {
-	app := &App{viewStateFields: viewStateFields{scale: 1, zoom: 1, fitMode: fitManual}, config: config.Config{RenderOversample: 1}, renderService: renderService{minRenderBaseScale: 0.25}}
+	app := &App{tab: &tab{viewStateFields: viewStateFields{scale: 1, zoom: 1, fitMode: fitManual}, renderService: renderService{minRenderBaseScale: 0.25}}, config: config.Config{RenderOversample: 1}}
 	app.scheduleRenderScaleTarget(1) // fixes the base before the saved view is restored
 	app.scale, app.zoom = 3, 3
 	app.scheduleRenderScaleTarget(3)
@@ -370,7 +374,7 @@ func TestResetRenderScaleUsesRestoredView(t *testing.T) {
 }
 
 func TestRenderScaleForAllowsLowZoomUndersampling(t *testing.T) {
-	app := &App{config: config.Config{RenderOversample: 1}, renderService: renderService{minRenderBaseScale: 0.25, renderBaseScale: 1}}
+	app := &App{tab: &tab{renderService: renderService{minRenderBaseScale: 0.25, renderBaseScale: 1}}, config: config.Config{RenderOversample: 1}}
 
 	assertClose(t, app.renderScaleFor(1), 1)
 	assertClose(t, app.renderScaleFor(0.2), 0.4)
@@ -378,7 +382,7 @@ func TestRenderScaleForAllowsLowZoomUndersampling(t *testing.T) {
 }
 
 func TestRenderScaleTargetDebouncesFastZoom(t *testing.T) {
-	app := &App{viewStateFields: viewStateFields{scale: 1, zoom: 1, fitMode: fitManual}, config: config.Config{RenderOversample: 1}, renderService: renderService{minRenderBaseScale: 0.25, renderBaseScale: 1, renderPending: map[tileKey]renderRequest{{page: 1}: {key: tileKey{page: 1}}}}}
+	app := &App{tab: &tab{viewStateFields: viewStateFields{scale: 1, zoom: 1, fitMode: fitManual}, renderService: renderService{minRenderBaseScale: 0.25, renderBaseScale: 1, renderPending: map[tileKey]renderRequest{{page: 1}: {key: tileKey{page: 1}}}}}, config: config.Config{RenderOversample: 1}}
 
 	app.scheduleRenderScaleTarget(2)
 	app.scheduleRenderScaleTarget(3)
@@ -496,7 +500,7 @@ func TestRenderWorkerDeliversPageLinksWithTile(t *testing.T) {
 	w := newRenderWorker(doc, 1, nil)
 	defer w.Close()
 
-	app := &App{documentWorkers: documentWorkers{renderWorker: w}, renderService: renderService{renderPending: map[tileKey]renderRequest{}}}
+	app := &App{tab: &tab{documentWorkers: documentWorkers{renderWorker: w}, renderService: renderService{renderPending: map[tileKey]renderRequest{}}}}
 	key := tileKey{scale: 0.5}
 	app.queueRender(renderRequest{key: key, scale: 0.5, rect: image.Rect(0, 0, 306, 396)}, 0)
 	if !app.renderPending[key].links {

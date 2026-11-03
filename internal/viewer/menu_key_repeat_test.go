@@ -64,7 +64,7 @@ func TestHeldKeysAreNotCapturedAsKeybinds(t *testing.T) {
 
 func TestUIViewSearchRepeatsBackspace(t *testing.T) {
 	view := &uiView{visible: true, modal: true, searchable: true, searching: true, query: "abc"}
-	app := &App{uiState: uiState{views: uiManager{active: view}}}
+	app := &App{tab: &tab{}, uiState: uiState{views: uiManager{active: view}}}
 	e := sdl.KeyboardEvent{CommonEvent: sdl.CommonEvent{Type: sdl.EventKeyDown}, Key: sdl.KeycodeBackspace, Repeat: true}
 
 	app.handleUIViewSearchKey(view, &e)
@@ -76,7 +76,7 @@ func TestUIViewSearchRepeatsBackspace(t *testing.T) {
 
 func TestPluginUIViewSearchRepeatsBackspace(t *testing.T) {
 	view := &uiView{visible: true, modal: true, searchable: true, searching: true, query: "abc"}
-	app := &App{uiState: uiState{views: uiManager{active: view}}}
+	app := &App{tab: &tab{}, uiState: uiState{views: uiManager{active: view}}}
 	e := sdl.KeyboardEvent{CommonEvent: sdl.CommonEvent{Type: sdl.EventKeyDown}, Key: sdl.KeycodeBackspace, Repeat: true}
 
 	app.viewKey(view, &e)
