@@ -186,6 +186,7 @@ onon --unique --goto 42 file.pdf        # ... and go to page 42
 onon --unique --goto 42:100:250 f.pdf   # ... to a point on page 42
 onon --goto 42 file.pdf                 # always a new window, opened at 42
 onon --unique --command "reload-config" f.pdf   # run a command in that window
+onon --tab file.pdf                     # a new tab in the window focused last
 ```
 
 `X` and `Y` are points from the page's top-left corner. `--command` takes a
@@ -193,7 +194,10 @@ viewer command as typed after `:`, including commands registered by plugins,
 and exits non-zero if the command is unrecognised.
 
 With no window showing the document, `--unique` opens one and applies any
-`--goto` and `--command` as it starts. A different document is a different
+`--goto` and `--command` as it starts. `--tab` also shows the tab that has the
+document open, and otherwise opens it in a new tab of the window focused last,
+started with the same `--config`, `--no-config` and `--no-plugins`; with no
+document it opens an empty tab there. A different document is a different
 instance, so two files give two windows. The address follows the document: a
 tab that switches files becomes reachable under the new one.
 

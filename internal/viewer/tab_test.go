@@ -244,7 +244,10 @@ func TestWriteAllSavesEveryEditedTab(t *testing.T) {
 	}
 }
 
-func TestInstanceRequestShowsItsTab(t *testing.T) {
+// shortRuntimeDir points instance sockets at a directory with a short
+// path, as socket paths are limited to about 100 bytes.
+func shortRuntimeDir(t *testing.T) {
+	t.Helper()
 	dir, err := os.MkdirTemp("/tmp", "onon")
 	if err != nil {
 		t.Fatal(err)
@@ -252,7 +255,35 @@ func TestInstanceRequestShowsItsTab(t *testing.T) {
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	t.Setenv("TMPDIR", dir)
 	t.Setenv("XDG_RUNTIME_DIR", dir)
+}
 
+// sendWhilePolling sends request to address, polling the app's instance
+// commands as its event loop would until it is answered.
+func sendWhilePolling(t *testing.T, app *App, address string, request instance.Request) {
+	t.Helper()
+	done := make(chan error, 1)
+	go func() {
+		_, err := instance.Send(address, request)
+		done <- err
+	}()
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+		app.pollInstanceCommands()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatal(err)
+			}
+			return
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the request was not answered")
+		}
+	}
+}
+
+func TestInstanceRequestShowsItsTab(t *testing.T) {
+	shortRuntimeDir(t)
 	first, second := testPages(t, 5), testPages(t, 5)
 	app := tabsApp(t, first)
 	app.EnableSingleInstance()
@@ -264,27 +295,29 @@ func TestInstanceRequestShowsItsTab(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	done := make(chan error, 1)
-	go func() {
-		_, err := instance.Send(address, instance.Request{Command: "open", Path: config.AbsoluteDocumentPath(first), Page: 4})
-		done <- err
-	}()
-	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(5 * time.Millisecond) {
-		app.pollInstanceCommands()
-		select {
-		case err := <-done:
-			if err != nil {
-				t.Fatal(err)
-			}
-			if app.tabIndex() != 0 || app.page != 3 {
-				t.Fatalf("request for the first tab left tabs %s at page %d", tabNames(app), app.page+1)
-			}
-			return
-		default:
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("the request was not answered")
-		}
+	sendWhilePolling(t, app, address, instance.Request{Command: "open", Path: config.AbsoluteDocumentPath(first), Page: 4})
+	if app.tabIndex() != 0 || app.page != 3 {
+		t.Fatalf("request for the first tab left tabs %s at page %d", tabNames(app), app.page+1)
+	}
+}
+
+func TestLastWindowOpensDocumentsInNewTabs(t *testing.T) {
+	shortRuntimeDir(t)
+	first, second := testPages(t, 5), testPages(t, 5)
+	app := tabsApp(t, first)
+	app.EnableSingleInstance()
+	t.Cleanup(app.CloseInstanceServer)
+	last, ok := instance.ReadLastWindow()
+	if !ok {
+		t.Fatal("the window was not recorded as the last")
+	}
+	sendWhilePolling(t, app, last.Address, instance.Request{Command: "open-tab", Path: config.AbsoluteDocumentPath(second), Page: 2})
+	if len(app.tabs) != 2 || app.docPath != config.AbsoluteDocumentPath(second) || app.page != 1 {
+		t.Fatalf("open-tab gave tabs %s at page %d, want the second at page 2", tabNames(app), app.page+1)
+	}
+	sendWhilePolling(t, app, last.Address, instance.Request{Command: "run", Text: "tabfirst"})
+	if app.tabIndex() != 0 {
+		t.Fatalf("run tabfirst left %s", tabNames(app))
 	}
 }
 

@@ -289,6 +289,7 @@ func (a *App) handleSDLEvent(event *sdl.Event) error {
 		a.followSystemColors()
 	case sdl.EventWindowFocusGained:
 		a.refreshReducedMotion()
+		a.noteLastWindow()
 		redraw = false
 	case sdl.EventWindowFocusLost:
 		a.stopPan()

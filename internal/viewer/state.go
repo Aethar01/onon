@@ -285,6 +285,9 @@ type jumpPosition struct {
 // a tab shows.
 type windowState struct {
 	singleInstance bool
+	// windowServer is where other processes ask this window to open a
+	// document in a new tab.
+	windowServer *instance.Server
 	// pendingInstanceCommand runs once plugins are ready at startup.
 	pendingInstanceCommand string
 	// The document the window opens with.

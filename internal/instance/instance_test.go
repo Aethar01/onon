@@ -410,3 +410,25 @@ func TestParseTarget(t *testing.T) {
 		})
 	}
 }
+
+func TestLastWindowIsRecordedWhole(t *testing.T) {
+	dir := filepath.Dir(testAddress(t))
+	t.Setenv("TMPDIR", dir)
+	t.Setenv("XDG_RUNTIME_DIR", dir)
+	t.Setenv("LOCALAPPDATA", dir)
+	if _, ok := ReadLastWindow(); ok {
+		t.Fatal("a last window before any was noted")
+	}
+	address, err := WindowAddressFor(42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := LastWindow{Address: address, Args: []string{"-config=/c.lua"}}
+	if err := NoteLastWindow(want); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := ReadLastWindow()
+	if !ok || got.Address != want.Address || !got.SameArgs(want.Args) || got.SameArgs(nil) {
+		t.Fatalf("read %+v, want %+v", got, want)
+	}
+}

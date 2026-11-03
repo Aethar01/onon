@@ -36,6 +36,7 @@ func run() error {
 	var noPlugins bool
 	var noConfig bool
 	var unique bool
+	var newTab bool
 	var gotoSpec string
 	var command string
 	flag.StringVar(&cfgPath, "config", "", "path to config.lua")
@@ -44,6 +45,7 @@ func run() error {
 	flag.BoolVar(&noPlugins, "no-plugins", false, "disable Lua plugin loading")
 	flag.BoolVar(&noConfig, "no-config", false, "start from built-in defaults, ignoring configuration files")
 	flag.BoolVar(&unique, "unique", false, "reuse the window already showing this document, if there is one")
+	flag.BoolVar(&newTab, "tab", false, "open the document in a new tab of the window focused last, or show the tab that has it open")
 	flag.StringVar(&gotoSpec, "goto", "", "open at PAGE, or at X:Y points from the top-left corner of PAGE")
 	flag.StringVar(&command, "command", "", "run a viewer command, as typed after ':'")
 	flag.Parse()
@@ -79,6 +81,8 @@ func run() error {
 		// arguments. The window shows one document, so the first wins.
 		if launched := viewer.LaunchDocuments(verbose); len(launched) > 0 {
 			docPath = config.AbsoluteDocumentPath(launched[0])
+		} else if newTab {
+			// An empty tab, to choose a document in.
 		} else if recent := config.RecentFiles(1); len(recent) > 0 {
 			docPath = recent[0]
 			if session, ok := config.GetDocumentSession(docPath); !pageSet && ok {
@@ -100,15 +104,27 @@ func run() error {
 		log.Printf("startup config=%q page=%d doc=%q", cfgPath, startPage, docPath)
 	}
 
-	// With --unique, a window already showing this document does the work and
-	// this process exits. Any other document is a different instance.
+	// With --unique or --tab, a tab already showing this document does the
+	// work and this process exits. Any other document is a different
+	// instance, which --tab opens in a new tab of the window focused last.
 	handOff := func() (bool, error) {
-		if !unique || docPath == "" {
+		if unique || newTab {
+			if docPath != "" {
+				handled, err := handOffToRunningInstance(docPath, target, command)
+				if handled && verbose {
+					log.Printf("handed %q to the running instance", remote.Display(docPath))
+				}
+				if handled || err != nil {
+					return handled, err
+				}
+			}
+		}
+		if !newTab {
 			return false, nil
 		}
-		handled, err := handOffToRunningInstance(docPath, target, command)
+		handled, err := handOffToLastWindow(docPath, target, command)
 		if handled && verbose {
-			log.Printf("handed %q to the running instance", remote.Display(docPath))
+			log.Printf("opened %q in a new tab of the running window", remote.Display(docPath))
 		}
 		return handled, err
 	}
@@ -184,6 +200,32 @@ func handOffToRunningInstance(docPath string, target *instance.Request, command 
 	// The command runs after the open so it acts on the requested document.
 	if command != "" {
 		if _, err := instance.Send(address, instance.Request{Command: "run", Text: command}); err != nil {
+			return false, fmt.Errorf("run %q: %w", command, err)
+		}
+	}
+	return true, nil
+}
+
+// handOffToLastWindow asks the window focused last to open docPath in a
+// new tab, or an empty tab with none, and run command there. A window whose
+// process loaded another configuration, from other flags, is not asked.
+func handOffToLastWindow(docPath string, target *instance.Request, command string) (bool, error) {
+	last, ok := instance.ReadLastWindow()
+	if !ok || !last.SameArgs(launchArgs()) {
+		return false, nil
+	}
+	if _, err := instance.Send(last.Address, instance.Request{Command: "ping"}); err != nil {
+		return false, nil
+	}
+	request := instance.Request{Command: "open-tab", Path: docPath}
+	if target != nil {
+		request.Page, request.X, request.Y, request.HasPoint = target.Page, target.X, target.Y, target.HasPoint
+	}
+	if _, err := instance.Send(last.Address, request); err != nil {
+		return false, fmt.Errorf("open in a tab of the running onon: %w", err)
+	}
+	if command != "" {
+		if _, err := instance.Send(last.Address, instance.Request{Command: "run", Text: command}); err != nil {
 			return false, fmt.Errorf("run %q: %w", command, err)
 		}
 	}

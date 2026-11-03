@@ -2,6 +2,7 @@ package viewer
 
 import (
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 
@@ -26,6 +27,27 @@ func (a *App) raiseWindow() {
 func (a *App) EnableSingleInstance() {
 	a.singleInstance = true
 	a.rebindInstanceServer()
+	address, err := instance.WindowAddressFor(os.Getpid())
+	if err == nil {
+		a.windowServer, err = instance.Listen(address)
+	}
+	if err != nil {
+		a.logf("not listening for new tabs: %v", err)
+		return
+	}
+	a.noteLastWindow()
+}
+
+// noteLastWindow records this window as the one focused last, which
+// --tab opens documents in.
+func (a *App) noteLastWindow() {
+	if a.windowServer == nil {
+		return
+	}
+	last := instance.LastWindow{Address: a.windowServer.Address(), Args: a.launchArgs}
+	if err := instance.NoteLastWindow(last); err != nil {
+		a.logf("cannot record the last window: %v", err)
+	}
 }
 
 // rebindInstanceServer points the listener at the current document. Losing the
@@ -70,6 +92,8 @@ func (a *App) rebindInstanceServer() {
 
 // CloseInstanceServer releases every tab's address at shutdown.
 func (a *App) CloseInstanceServer() {
+	a.windowServer.Close()
+	a.windowServer = nil
 	for _, t := range a.tabList() {
 		if t.instanceServer != nil {
 			t.instanceServer.Close()
@@ -85,7 +109,7 @@ func (a *App) CloseInstanceServer() {
 // which is what makes it safe to touch viewer state directly. It reports
 // whether anything changed.
 func (a *App) pollInstanceCommands() bool {
-	changed := false
+	changed := a.pollWindowCommands()
 	for _, t := range slices.Clone(a.tabList()) {
 		for t.instanceServer != nil {
 			var delivery instance.Delivery
@@ -111,6 +135,56 @@ func (a *App) pollInstanceCommands() bool {
 		}
 	}
 	return changed
+}
+
+// pollWindowCommands applies what other processes asked of the window
+// rather than of a document: opening one in a new tab, and running a
+// command in the tab that shows it.
+func (a *App) pollWindowCommands() bool {
+	if a.windowServer == nil {
+		return false
+	}
+	changed := false
+	for {
+		select {
+		case delivery := <-a.windowServer.Deliveries():
+			var err error
+			switch request := delivery.Request; request.Command {
+			case "open-tab":
+				err = a.applyInstanceOpenTab(request)
+			case "run":
+				err = a.applyInstanceRun(request.Text)
+			default:
+				err = fmt.Errorf("unknown command %q", request.Command)
+			}
+			delivery.Reply(err)
+			if err != nil {
+				a.logf("window command %q failed: %v", delivery.Request.Command, err)
+			}
+			changed = true
+		default:
+			return changed
+		}
+	}
+}
+
+// applyInstanceOpenTab opens a document in a new tab, or shows the tab it
+// is open in, at the page asked for.
+func (a *App) applyInstanceOpenTab(request instance.Request) error {
+	if err := a.OpenTab(request.Path); err != nil {
+		return err
+	}
+	a.raiseWindow()
+	if request.Page <= 0 {
+		a.pendingRedraw = true
+		return nil
+	}
+	jump := instanceJump{page: request.Page, x: request.X, y: request.Y, hasPoint: request.HasPoint}
+	if a.pageCount == 0 {
+		a.pendingInstanceJump = &jump
+		return nil
+	}
+	return a.applyInstanceJump(jump)
 }
 
 func (a *App) applyInstanceRequest(request instance.Request) error {
