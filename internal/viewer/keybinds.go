@@ -192,15 +192,15 @@ func (a *App) refreshKeybindRows() {
 		m.keys = bound[m.action]
 		rows := []uiRow{{index: 0, text: addKeyLabel, button: true}}
 		for i, key := range m.keys {
-			rows = append(rows, uiRow{index: i + 1, text: key, value: key, hint: "Enter rebinds, Delete removes"})
+			rows = append(rows, uiRow{index: i + 1, text: key, value: key, hint: "Enter rebind, Del remove"})
 		}
 		if m.capturing {
 			// The row being bound says so.
-			i, prompt := 0, "press keys, Esc cancels"
+			i := 0
 			if m.captureKey != "" {
-				i, prompt = slices.Index(m.keys, m.captureKey)+1, "press keys, Delete removes, Esc cancels"
+				i = slices.Index(m.keys, m.captureKey) + 1
 			}
-			rows[i].secondary = prompt
+			rows[i].secondary = "press keys, Esc cancels"
 			if len(m.captured) > 0 {
 				rows[i].secondary = strings.Join(m.captured, " ") + " …"
 			}

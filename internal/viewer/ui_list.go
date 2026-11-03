@@ -1029,8 +1029,10 @@ func (a *App) listContentWidth(view *uiView) int {
 			continue
 		}
 		w := a.depthIndent(row.depth) + measureText(rowFace, row.text)
-		if row.secondary != "" {
-			w += detailGap + measureText(a.fontFace, row.secondary)
+		// A hint shows in place of no secondary while the row is selected,
+		// so the width has room for whichever is wider.
+		if detail := max(measureText(a.fontFace, row.secondary), measureText(a.fontFace, row.hint)); detail > 0 {
+			w += detailGap + detail
 		}
 		widest = max(widest, w)
 	}

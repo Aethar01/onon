@@ -359,3 +359,18 @@ func TestMenusOverMenusOpenBesideTheirRow(t *testing.T) {
 		t.Fatalf("keybinds with anchor beside, over print, placed %+v", app.keybindMenu.view.place)
 	}
 }
+
+// The keys are wide enough for the hint the selected one shows, which
+// is not cut short.
+func TestKeybindKeysFitTheirHint(t *testing.T) {
+	app := testKeybindApp(t)
+	app.winW, app.winH = 1400, 900
+	keys := chooseAction(t, app, "help")
+	row := keys.rows[1]
+	if row.hint == "" {
+		t.Fatal("a key row has no hint")
+	}
+	if got, want := app.listContentWidth(keys), measureText(app.fontFace, row.text)+measureText(app.fontFace, row.hint); got < want {
+		t.Fatalf("keys %d wide, under the %d their text and hint take", got, want)
+	}
+}
