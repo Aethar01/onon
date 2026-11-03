@@ -341,8 +341,8 @@ func menusOption(description string, get func(*Config) map[string]MenuPlacement,
 					}
 				case "anchor":
 					p.Anchor = value.String()
-					if !slices.Contains(UIAnchors, p.Anchor) {
-						err = fmt.Errorf("%s: unknown anchor %q; use one of %s", name, p.Anchor, strings.Join(UIAnchors, ", "))
+					if !slices.Contains(UIAnchors, p.Anchor) && p.Anchor != MenuBeside {
+						err = fmt.Errorf("%s: unknown anchor %q; use one of %s or %s", name, p.Anchor, strings.Join(UIAnchors, ", "), MenuBeside)
 					}
 				default:
 					err = fmt.Errorf("%s: unknown field %q; menus take width, height and anchor", name, field.String())
@@ -654,7 +654,7 @@ var configOptions = map[string]optionDesc{
 	"page_cache_size":        intOption("Deprecated and ignored; the cache is bounded by page_cache_memory_mb.", func(*Config) int { return 0 }, func(*Config, int) {}),
 	"outline_initial_depth":  intOption("Outline levels expanded when the outline opens.", func(c *Config) int { return c.OutlineInitialDepth }, func(c *Config, v int) { c.OutlineInitialDepth = v }),
 	"outline_width_percent":  intOption("Most of the window the outline overlay takes, as a percentage of its width; the outline is narrower when its entries are.", func(c *Config) int { return c.OutlineWidthPercent }, func(c *Config, v int) { c.OutlineWidthPercent = v }),
-	"menus":                  menusOption("Where onon's own menus sit, by name, such as { outline = { anchor = \"left\", width = \"40%\" } }: each takes width and height, the most of the window it takes, in logical pixels or a percentage, and anchor, as views do. Menus: "+strings.Join(MenuNames, ", ")+".", func(c *Config) map[string]MenuPlacement { return c.Menus }, func(c *Config, v map[string]MenuPlacement) { c.Menus = v }),
+	"menus":                  menusOption("Where onon's own menus sit, by name, such as { outline = { anchor = \"left\", width = \"40%\" } }: each takes width and height, the most of the window it takes, in logical pixels or a percentage, and anchor, as views do, or beside, for a menu opened over another, beside the row it was opened from, as keybind_keys and printers are unless set. Menus: "+strings.Join(MenuNames, ", ")+".", func(c *Config) map[string]MenuPlacement { return c.Menus }, func(c *Config, v map[string]MenuPlacement) { c.Menus = v }),
 	"prompts":                promptsOption("Where prompts sit, by name, such as { command = { anchor = \"center\", width = \"50%\" } }: each is \"bar\", in the status bar as by default, or a box of its own with an anchor, as views take, centred if not given, and a width in logical pixels or a percentage, half the window if not given. Prompts: "+strings.Join(PromptNames, ", ")+".", func(c *Config) map[string]PromptPlacement { return c.Prompts }, func(c *Config, v map[string]PromptPlacement) { c.Prompts = v }),
 	"outline_height_percent": intOption("Outline overlay height as a percentage of the window.", func(c *Config) int { return c.OutlineHeightPercent }, func(c *Config, v int) { c.OutlineHeightPercent = v }),
 	"completion_max_items":   intOption("Maximum command-completion rows.", func(c *Config) int { return c.CompletionMaxItems }, func(c *Config, v int) { c.CompletionMaxItems = max(1, v) }),

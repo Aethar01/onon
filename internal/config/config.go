@@ -150,7 +150,10 @@ type UIOverlay struct {
 	Width, Height UISize
 	Anchor        string
 	At            *UIPoint
-	Dock          string
+	// Attach, if set, attaches the view to another's selected row or to
+	// a box, Anchor being where it sits while that is not shown.
+	Attach *UIAttach
+	Dock   string
 	// Resizable lets the pointer drag a docked view's inner edge.
 	Resizable bool
 	// Stack opens a modal view over the menu open, which it returns to,
@@ -190,6 +193,10 @@ type MenuPlacement struct {
 	Width, Height UISize
 	Anchor        string
 }
+
+// MenuBeside is the menus option's anchor for a menu opened over another,
+// such as keybind_keys over keybinds: beside the row it was opened from.
+const MenuBeside = "beside"
 
 // PromptNames are the prompts the prompts option places: the command line,
 // go to page, a document's password, a plugin's question, and search.
@@ -232,6 +239,26 @@ type UISize struct {
 type UIPoint struct {
 	Page int
 	X, Y float64
+}
+
+// UIAttach is what a view is attached to: the selected row of the view
+// whose id is View, as a submenu is, or else Box, as a dropdown is; and
+// Side, the side of it the view sits on first, right of a row and below a
+// box unless given.
+type UIAttach struct {
+	View string
+	Box  UIBox
+	Side string
+}
+
+// UIAttachSides are the sides a view may be attached on.
+var UIAttachSides = []string{"right", "left", "below", "above"}
+
+// UIBox is a box in the window, in logical pixels, or with Page on a page,
+// in its points from its top left.
+type UIBox struct {
+	Page       int
+	X, Y, W, H float64
 }
 
 type UIListRow struct {

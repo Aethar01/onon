@@ -1,6 +1,7 @@
 package viewer
 
 import (
+	"math"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -246,4 +247,92 @@ func freshKey(keys ...string) (sdl.Keycode, string) {
 		}
 	}
 	panic("no fresh key")
+}
+
+func TestKeybindKeysOpenBesideTheirAction(t *testing.T) {
+	app := testKeybindApp(t)
+	app.winW, app.winH = 1400, 900
+	keys := chooseAction(t, app, "help")
+	actions := app.keybindMenu.view
+	parent, _ := actions.frameGeometry(app)
+	frame, _ := keys.frameGeometry(app)
+	if frame.X < parent.X+parent.W {
+		t.Fatalf("keys at x %v, want right of the actions, which end at %v", frame.X, parent.X+parent.W)
+	}
+	i := slices.Index(app.keybindMenu.actions, "help")
+	row := float64(parent.Y) + float64(app.uiViewHeadHeight(actions)) + (float64(i)-actions.offset)*float64(app.modalListRowHeight())
+	first := float64(frame.Y) + float64(app.uiViewHeadHeight(keys))
+	if math.Abs(first-row) > 1 {
+		t.Fatalf("keys' first row at y %v, want level with help's row at %v", first, row)
+	}
+
+	// With no room on the right, they open on the left.
+	app.config.Menus = map[string]config.MenuPlacement{"keybinds": {Anchor: "right"}}
+	app.placeMenu(actions)
+	parent, _ = actions.frameGeometry(app)
+	frame, _ = keys.frameGeometry(app)
+	if frame.X+frame.W > parent.X {
+		t.Fatalf("keys end at x %v, want left of the actions, which start at %v", frame.X+frame.W, parent.X)
+	}
+}
+
+func TestAttachedViewsTakeTheSideWithRoom(t *testing.T) {
+	app := testLayoutApp(5)
+	app.winW, app.winH = 1000, 800
+	area := app.documentRect()
+	place := func(box config.UIBox, side string, w, h int) sdl.FRect {
+		rect, ok := app.attachedRect(attachment{box: box, side: side}, area, 0, w, h)
+		if !ok {
+			t.Fatalf("no place attached to %+v", box)
+		}
+		return rect
+	}
+	gap := app.px(6)
+	W, H := float64(area.W), float64(area.H)
+	if r := place(config.UIBox{X: 100, Y: 100, W: 50, H: 20}, "below", 80, 60); r.Y != 120+gap || r.X != 100 {
+		t.Fatalf("below a box with room: %+v", r)
+	}
+	// Near the bottom, a dropdown opens above its box.
+	if r := place(config.UIBox{X: 100, Y: H - 30, W: 50, H: 20}, "below", 80, 60); r.Y+r.H != area.H-30-gap {
+		t.Fatalf("below a box near the bottom: %+v, want above it", r)
+	}
+	// Near the right, a submenu opens on the left.
+	if r := place(config.UIBox{X: W - 100, Y: 100, W: 90, H: 20}, "right", 200, 60); r.X+r.W != area.W-100-gap {
+		t.Fatalf("right of a box near the right: %+v, want left of it", r)
+	}
+	// At a point near the corner, a context menu is kept in the window.
+	if r := place(config.UIBox{X: W - 10, Y: H - 10}, "below", 200, 100); r.X+r.W != area.W || r.Y+r.H != area.H-10 {
+		t.Fatalf("at a point by the corner: %+v", r)
+	}
+	// With room on neither side, the side with more, kept in the window.
+	if r := place(config.UIBox{X: 300, Y: 100, W: 300, H: 20}, "right", 500, 60); r.X+r.W != float32(W) {
+		t.Fatalf("with room on neither side: %+v, want on the right, the roomier, at the edge", r)
+	}
+}
+
+func TestMenusOverMenusOpenBesideTheirRow(t *testing.T) {
+	app := testStyleApp("bar")
+	app.winW, app.winH = 1200, 800
+	under := app.showRowList("print", "Print", uiRowsFromStrings([]string{"Printer", "Pages", "Print"}), 30, 40, func(*uiView) {})
+	under.selected = 0
+	over := app.showRowListOver("printers", "Printer", uiRowsFromStrings([]string{"a", "b"}), 30, 40, func(*uiView) {})
+	u, _ := under.frameGeometry(app)
+	o, _ := over.frameGeometry(app)
+	if o.X < u.X+u.W {
+		t.Fatalf("a menu over a menu at %+v, want beside it at %+v", o, u)
+	}
+
+	// The menus option can put a menu opened over another beside it, or
+	// back in the window.
+	app.config.Menus = map[string]config.MenuPlacement{"printers": {Anchor: "center"}}
+	over = app.showRowListOver("printers", "Printer", uiRowsFromStrings([]string{"a", "b"}), 30, 40, func(*uiView) {})
+	if over.place.attach != nil || over.place.anchor != "center" {
+		t.Fatalf("printers with anchor center placed %+v", over.place)
+	}
+	app.closeUIView(over, false)
+	app.config.Menus = map[string]config.MenuPlacement{"keybinds": {Anchor: config.MenuBeside}}
+	app.openKeybindMenu(true)
+	if att := app.keybindMenu.view.place.attach; att == nil || att.row != under {
+		t.Fatalf("keybinds with anchor beside, over print, placed %+v", app.keybindMenu.view.place)
+	}
 }

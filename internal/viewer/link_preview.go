@@ -80,9 +80,7 @@ func (a *App) showLinkPreview() {
 		place: viewPlacement{
 			width:  config.UISize{Value: float64(popup.W) / scale},
 			height: config.UISize{Value: float64(popup.H) / scale},
-			at:     &config.UIPoint{X: (ox + float64(popup.X)) / scale, Y: (oy + float64(popup.Y)) / scale},
-			anchor: "top_left",
-		},
+		}.atPoint(config.UIPoint{X: (ox + float64(popup.X)) / scale, Y: (oy + float64(popup.Y)) / scale}, "top_left"),
 		drawBody: func(a *App, c *elementCanvas, state config.DrawState) (bool, error) {
 			c.Page(link.Page, 0, 0, state.W, state.H, &config.PageArea{X: from.X, Y: from.Y, Zoom: 1})
 			return false, nil
