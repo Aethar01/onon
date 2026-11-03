@@ -171,11 +171,12 @@ func (a *App) documentRect() sdl.FRect {
 // It returns what is left, the document's part of the window, and
 // target's place.
 func (a *App) dockLayout(target *uiView) (doc, rect sdl.FRect) {
-	h := a.winH
+	top := a.topInset()
+	h := a.winH - top
 	if a.statusVisible() {
 		h -= a.statusReservedHeight()
 	}
-	doc = sdl.FRect{W: float32(max(a.winW, 1)), H: float32(max(h, 1))}
+	doc = sdl.FRect{Y: float32(top), W: float32(max(a.winW, 1)), H: float32(max(h, 1))}
 	for _, view := range a.views.panels {
 		if view.place.dock == "" || !view.visible {
 			continue
@@ -219,11 +220,18 @@ func (a *App) hasDock() bool {
 	return false
 }
 
+// documentMoved reports whether the document's part of the window starts
+// anywhere but its top left corner: below the tab bar, or beside a docked
+// view.
+func (a *App) documentMoved() bool {
+	return a.topInset() > 0 || len(a.views.panels) > 0 && a.hasDock()
+}
+
 // withDocumentViewport draws with the document's part of the window as
 // the renderer's viewport while views are docked, so the document is
 // drawn as it is laid out, from its own corner, and not under them.
 func (a *App) withDocumentViewport(renderer *sdl.Renderer, draw func()) {
-	if !a.hasDock() {
+	if !a.documentMoved() {
 		draw()
 		return
 	}
@@ -237,7 +245,7 @@ func (a *App) withDocumentViewport(renderer *sdl.Renderer, draw func()) {
 // viewportOrigin is where the document's part of the window starts, below
 // and right of the views docked at the top and left.
 func (a *App) viewportOrigin() (float64, float64) {
-	if len(a.views.panels) == 0 || !a.hasDock() {
+	if !a.documentMoved() {
 		return 0, 0 // nothing moves it from the window's corner
 	}
 	r := a.documentRect()

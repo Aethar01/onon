@@ -42,6 +42,9 @@ const (
 	ElementTitleBar
 	ElementTitleButton
 	ElementTitleClose
+	ElementTabBar
+	ElementTab
+	ElementTabSelected
 	ElementLoader
 	ElementAutoscrollMarker
 	ElementPage
@@ -90,6 +93,9 @@ var elementSpecs = [ElementCount]struct {
 	ElementTitleBar:          {"title_bar", noElement, slices.Concat(boxProps, []string{"text"}), "Behind the window buttons onon draws where the system draws no title bar, as on Windows. Its text colour draws the buttons' symbols."},
 	ElementTitleButton:       {"title_button", noElement, slices.Concat(boxProps, []string{"text"}), "A window button under the pointer, drawn a little fainter while pressed."},
 	ElementTitleClose:        {"title_close", ElementTitleButton, slices.Concat(boxProps, []string{"text"}), "The close button under the pointer."},
+	ElementTabBar:            {"tab_bar", noElement, slices.Concat(boxProps, []string{"padding", "gap"}), "The bar of tabs across the top of the window while it has more than one, where the system draws no tabs of its own. Its padding surrounds the tabs, and gap is the space between them."},
+	ElementTab:               {"tab", noElement, slices.Concat(boxProps, textProps), "A tab in the tab bar, named for its document. Its secondary colour marks a tab with unsaved edits, and its padding sets the bar's height."},
+	ElementTabSelected:       {"tab_selected", ElementTab, slices.Concat(boxProps, textProps), "The tab shown."},
 	ElementLoader:            {"loader", noElement, []string{"fill", "opacity", "draw"}, "The drops bouncing on a page still rendering; its box is the page."},
 	ElementPage:              {"page", noElement, []string{"shape", "radius", "fill", "border", "shadow"}, "Each page of the document, its fill showing until the page renders. Pages turned other than by quarter turns are drawn plain."},
 	ElementAutoscrollMarker:  {"autoscroll_marker", noElement, []string{"fill", "border", "opacity", "width", "draw"}, "The marker where autoscroll started: its fill, its outline as its border, and its width."},
@@ -361,6 +367,22 @@ func elementDefaults(t *Theme, e Element) Style {
 		// Windows' own close button red.
 		s.Fill = some(Color{RGB: [3]uint8{0xc4, 0x2b, 0x1c}, Alpha: 1})
 		s.Text = some(Color{RGB: [3]uint8{0xff, 0xff, 0xff}, Alpha: 1})
+	case ElementTabBar:
+		s.Fill = some(paletteColor("status_bar", 1))
+		s.BorderWidth = some(1.0)
+		s.BorderSides = some(SideBottom)
+	case ElementTab:
+		s.Text = some(paletteColor("muted", 1))
+		s.Secondary = some(paletteColor("accent", 1))
+		s.Padding = some(symmetric(line/2, textInset))
+	case ElementTabSelected:
+		// Open onto the pages below it, marked at its edge as the
+		// selected row is.
+		s.Fill = some(paletteColor("background", 1))
+		s.Text = some(paletteColor("foreground", 1))
+		s.BorderWidth = some(2.0)
+		s.BorderColor = some(paletteColor("accent", 1))
+		s.BorderSides = some(SideBottom)
 	case ElementLoader:
 		s.Fill = some(paletteColor("muted", 1))
 	case ElementPage:

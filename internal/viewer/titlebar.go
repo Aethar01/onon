@@ -159,7 +159,11 @@ func (a *App) titleBarHitTest(x, y float64) sdl.HitTestResult {
 	}
 	l := a.titleBarLayout()
 	a.noteTitleBarPointer(x, y, true)
-	return l.hitTest(x, y, float64(a.winH))
+	result := l.hitTest(x, y, float64(a.winH))
+	if result == sdl.HitTestDraggable && a.tabAt(x, y) >= 0 {
+		return sdl.HitTestNormal // a tab is clicked, the strip between them drags
+	}
+	return result
 }
 
 // noteTitleBarPointer shows the controls while x, y is in the strip and
@@ -172,8 +176,9 @@ func (a *App) noteTitleBarPointer(x, y float64, inWindow bool) {
 	t := a.titleBar
 	l := a.titleBarLayout()
 	in := inWindow && y >= 0 && y < l.height && x >= 0 && x < l.width
-	// A pressed button stays shown until released, wherever the pointer is.
-	changed := t.setShown(in || t.pressed != titleButtonNone, now)
+	// A pressed button stays shown until released, wherever the pointer is,
+	// and the buttons stay in the tab bar while it shares their row.
+	changed := t.setShown(in || t.pressed != titleButtonNone || a.tabBarShown(), now)
 	hovered := titleButtonNone
 	if in {
 		hovered = l.buttonAt(x, y)
@@ -197,6 +202,9 @@ func (a *App) advanceTitleBar() {
 		return
 	}
 	t := a.titleBar
+	if a.tabBarShown() && t.setShown(true, time.Now()) {
+		a.pendingRedraw = true // in the tab bar's row, the buttons stay
+	}
 	// A press the system took for its own, as Windows does the maximize
 	// button's, may be released where the window hears nothing of it.
 	if t.pressed != titleButtonNone && sdl.GetGlobalMouseState(nil, nil)&sdl.ButtonLMask == 0 {

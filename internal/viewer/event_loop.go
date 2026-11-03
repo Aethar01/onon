@@ -365,7 +365,7 @@ func (a *App) handleMouseMotionEvent(e *sdl.MouseMotionEvent) bool {
 
 func (a *App) handleMouseButtonEvent(e *sdl.MouseButtonEvent) {
 	a.pointer = sdl.FPoint{X: e.X, Y: e.Y}
-	if a.handleTitleBarButton(e) {
+	if a.handleTitleBarButton(e) || a.handleTabBarButton(e) {
 		return
 	}
 	if a.handleAutoscrollButton(e) {
@@ -526,6 +526,7 @@ func (a *App) drawFrame() error {
 			return err
 		}
 	}
+	a.drawTabBar(a.renderer)
 	if err := a.drawUIViews(a.renderer); err != nil {
 		return err
 	}

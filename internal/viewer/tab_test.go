@@ -11,6 +11,8 @@ import (
 	"onon/internal/config"
 	"onon/internal/instance"
 	"onon/internal/testpdf"
+
+	"github.com/jupiterrider/purego-sdl3/sdl"
 )
 
 // testPages writes a PDF of n pages, each page named for its number, and
@@ -292,5 +294,90 @@ func TestDroppedFileOpensInANewTab(t *testing.T) {
 	app.handleDroppedFile(second, 1)
 	if len(app.tabs) != 2 || app.docPath != config.AbsoluteDocumentPath(second) {
 		t.Fatalf("dropping a file gave tabs %s, want it in a new tab", tabNames(app))
+	}
+}
+
+func TestTabBarShowsWithTwoTabsAndTakesItsHeight(t *testing.T) {
+	app := tabsApp(t, testPages(t, 2))
+	if app.fontFace == nil {
+		t.Skip("no UI font")
+	}
+	_, alone := app.viewportSize()
+	if app.tabBarHeight() != 0 {
+		t.Fatal("a tab bar with one tab")
+	}
+	if err := app.OpenTab(testPages(t, 2)); err != nil {
+		t.Fatal(err)
+	}
+	bar := app.tabBarHeight()
+	if bar <= 0 {
+		t.Fatal("no tab bar with two tabs")
+	}
+	if _, h := app.viewportSize(); h != alone-bar {
+		t.Fatalf("viewport %d high with the bar, want %d", h, alone-bar)
+	}
+	if _, y := app.viewportOrigin(); y != float64(bar) {
+		t.Fatalf("document starts at %v, want below the bar at %d", y, bar)
+	}
+	app.runCommand(":tabclose")
+	if _, h := app.viewportSize(); h != alone || app.tabBarHeight() != 0 {
+		t.Fatalf("viewport %d high after closing back to one tab, want %d", h, alone)
+	}
+}
+
+func TestClickingATabShowsIt(t *testing.T) {
+	first, second := testPages(t, 1), testPages(t, 1)
+	app := tabsApp(t, first)
+	if app.fontFace == nil {
+		t.Skip("no UI font")
+	}
+	if err := app.OpenTab(second); err != nil {
+		t.Fatal(err)
+	}
+	l := app.tabBarLayout()
+	r := l.tabs[0]
+	x, y := float64(r.X+r.W/2), float64(r.Y+r.H/2)
+	if app.tabAt(x, y) != 0 || app.tabAt(x, float64(app.tabBarHeight()+5)) != -1 {
+		t.Fatal("tabAt does not find the first tab, or finds one below the bar")
+	}
+	press := func(button uint8) {
+		e := sdl.MouseButtonEvent{Type: sdl.EventMouseButtonDown, Button: button, X: float32(x), Y: float32(y)}
+		if !app.handleTabBarButton(&e) {
+			t.Fatal("the tab bar did not take the click")
+		}
+	}
+	press(uint8(sdl.ButtonLeft))
+	if app.tabIndex() != 0 {
+		t.Fatalf("clicking the first tab left %s", tabNames(app))
+	}
+	press(uint8(sdl.ButtonMiddle))
+	if len(app.tabs) != 1 || app.docPath != config.AbsoluteDocumentPath(second) {
+		t.Fatalf("middle-clicking the first tab left %s", tabNames(app))
+	}
+}
+
+func TestTabBarSqueezesTabsAndKeepsTheShownOneInView(t *testing.T) {
+	app := tabsApp(t, testPages(t, 1))
+	if app.fontFace == nil {
+		t.Skip("no UI font")
+	}
+	for range 11 {
+		if err := app.OpenTab(testPages(t, 1)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	app.winW = int(app.px(tabMinWidth) * 4)
+	l := app.tabBarLayout()
+	shown := l.tabs[app.tabIndex()]
+	if shown.X < l.area.X || shown.X+shown.W > l.area.X+l.area.W+0.5 {
+		t.Fatalf("shown tab at %v..%v, outside the bar %v..%v", shown.X, shown.X+shown.W, l.area.X, l.area.X+l.area.W)
+	}
+	tabStyle := app.style(config.ElementTab)
+	_, padRight, _, padLeft := app.insets(tabStyle.Padding.V)
+	for i, r := range l.tabs {
+		natural := float32(measureText(app.fontFace, app.tabLabel(app.tabs[i]))) + padLeft + padRight
+		if r.W < min(natural, app.px(tabMinWidth))-0.5 {
+			t.Fatalf("a tab %v wide, under the least %v", r.W, min(natural, app.px(tabMinWidth)))
+		}
 	}
 }

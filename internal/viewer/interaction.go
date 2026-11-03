@@ -141,8 +141,8 @@ func (a *App) viewportSize() (int, int) {
 		return max(1, int(r.W)), max(1, int(r.H))
 	}
 	// Asked for many times a frame, as each row of pages is placed, the
-	// window less the status bar is worked out directly.
-	h := a.winH
+	// window less the status bar and the tab bar is worked out directly.
+	h := a.winH - a.topInset()
 	if a.statusVisible() {
 		h -= a.statusReservedHeight()
 	}

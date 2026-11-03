@@ -289,6 +289,8 @@ func (a *App) removeTab(t, next *tab) {
 	if shown {
 		a.tab = next
 		a.enterTab(-1)
+	} else {
+		a.relayoutWithViewportAnchor(nil) // the tab bar may have gone
 	}
 	a.pendingRedraw = true
 }

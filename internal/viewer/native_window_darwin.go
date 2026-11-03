@@ -50,3 +50,8 @@ func cocoaWindow(window *sdl.Window) unsafe.Pointer {
 	properties := sdl.GetWindowProperties(window)
 	return sdl.GetPointerProperty(properties, sdl.PropWindowCocoaWindowPointer, nil)
 }
+
+// windowTitleBand is the height, in logical pixels, of the band at the
+// top of the window that macOS keeps for its title bar, whose buttons onon
+// shows there and which drags the window: the tab bar is drawn below it.
+const windowTitleBand = 28
