@@ -106,7 +106,7 @@ onon -v                     # print version
 onon -V                     # enable verbose logs
 ```
 
-Use `F1`, `g?` or `:help` to browse commands, key bindings, search modifiers and options; choosing a row runs it or fills in the prompt. `:keybinds` edits key bindings.
+Use `F1`, `g?` or `:help` to browse commands, key bindings, search modifiers and options; choosing a row runs it or fills in the prompt. `:keybinds` edits key bindings, and `:options` the options.
 
 ### Remote documents
 

@@ -66,6 +66,7 @@ var registry = []Action{
 	{Name: "print", Keys: []string{"<C-p>"}},
 	{Name: "help", Keys: []string{"<F1>", "g?"}},
 	{Name: "keybinds"},
+	{Name: "options_menu"}, // not options, which is onon.options in Lua
 	{Name: "pan", Keys: []string{"<Space>"}},
 	{Name: "autoscroll"},
 	{Name: "quit", Keys: []string{"q"}},

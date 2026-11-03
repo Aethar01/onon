@@ -28,6 +28,7 @@ var specs = []Spec{
 	{Name: "highlight", Help: ":highlight - Highlight the selection in the last colour used"},
 	{Name: "hints", Help: ":hints - Label links on screen to follow one by typing its hint"},
 	{Name: "keybinds", Help: ":keybinds - Toggle the keybinds menu"},
+	{Name: "options", Help: ":options - Toggle the options menu"},
 	{Name: "lua", Help: ":lua <code> - Execute Lua code inline"},
 	{Name: "matches", Help: ":matches - List every match of the current search"},
 	{Name: "mode", ArgCompletions: []string{"continuous", "single"}, Help: ":mode continuous|single - Set render mode"},

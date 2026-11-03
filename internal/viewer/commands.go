@@ -532,6 +532,7 @@ func init() {
 		"zoom":          (*App).runZoomCommand,
 		"reload-config": func(a *App, _ string) { a.reloadConfig() },
 		"keybinds":      func(a *App, _ string) { a.toggleKeybindMenu() },
+		"options":       func(a *App, _ string) { a.toggleOptions() },
 		"theme": func(a *App, name string) {
 			if name == "" {
 				a.showThemePicker()
@@ -757,6 +758,19 @@ func (a *App) runSet(input string) {
 		return
 	}
 	a.message = strings.TrimSpace(name) + "=" + value
+}
+
+// toggleOptions opens the options menu, or closes it if it is open.
+func (a *App) toggleOptions() {
+	if view := a.views.views["options"]; view != nil && view.visible {
+		a.closeUIView(view, false)
+		return
+	}
+	if a.runtime == nil {
+		a.message = "no config runtime"
+		return
+	}
+	a.showOptions()
 }
 
 // showOptions lists the options with their values. Enter on one that is
