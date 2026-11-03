@@ -90,9 +90,12 @@ func TestPluginUIViewSearchRepeatsBackspace(t *testing.T) {
 // bindings.
 func testKeybindApp(t *testing.T) *App {
 	t.Helper()
+	// Its own data directory too, on every platform, so the keys one test
+	// binds or deletes, kept in the session database, are not the next's.
 	dir := t.TempDir()
-	t.Setenv("HOME", dir)
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	for _, name := range []string{"HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "APPDATA", "LOCALAPPDATA"} {
+		t.Setenv(name, dir)
+	}
 	rt, err := config.Open(filepath.Join(dir, "config.lua"), "")
 	if err != nil {
 		t.Fatal(err)
