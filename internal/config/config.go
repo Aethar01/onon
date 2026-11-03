@@ -71,6 +71,7 @@ type Config struct {
 	CompletionMaxItems    int
 	RecentFilesMax        int
 	RestoreTabs           bool
+	NativeTabs            bool
 	AutoReload            bool
 	AutoReloadDelayMS     int
 	LinkPreviewDelayMS    int

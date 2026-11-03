@@ -64,8 +64,8 @@ var menuItemsWithoutDocument = map[string]bool{
 // some of the time.
 var menuItemEnabled = map[string]func(*App) bool{
 	"save":           func(a *App) bool { return a.unsaved },
-	"next_tab":       func(a *App) bool { return len(a.tabList()) > 1 },
-	"prev_tab":       func(a *App) bool { return len(a.tabList()) > 1 },
+	"next_tab":       func(a *App) bool { return len(a.userTabs()) > 1 },
+	"prev_tab":       func(a *App) bool { return len(a.userTabs()) > 1 },
 	"undo":           func(a *App) bool { return a.editPos > 0 },
 	"redo":           func(a *App) bool { return a.editPos < a.editEnd },
 	"search_next":    func(a *App) bool { return len(a.search.order) > 0 },

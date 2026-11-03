@@ -538,8 +538,8 @@ var commandAliases = map[string]string{
 func init() {
 	commandHandlers = map[string]func(*App, string){
 		// :q closes the tab, and the window with its last tab, as in Vim.
-		"quit":    func(a *App, _ string) { a.closeTab(a.tabIndex(), false, ":q") },
-		"quit!":   func(a *App, _ string) { a.closeTab(a.tabIndex(), true, ":q!") },
+		"quit":    func(a *App, _ string) { a.closeTab(a.userTabIndex(), false, ":q") },
+		"quit!":   func(a *App, _ string) { a.closeTab(a.userTabIndex(), true, ":q!") },
 		"quitall": func(a *App, _ string) { a.windowGroup().quitAll(":qa") },
 		"quitall!": func(a *App, _ string) {
 			for _, w := range a.windowGroup().windows {
@@ -553,8 +553,8 @@ func init() {
 		"tabnew":      (*App).runTabNewCommand,
 		"tabnext":     func(a *App, args string) { a.runTabGotoCommand(args, 1) },
 		"tabprevious": func(a *App, args string) { a.runTabGotoCommand(args, -1) },
-		"tabfirst":    func(a *App, _ string) { a.selectTab(0) },
-		"tablast":     func(a *App, _ string) { a.selectTab(len(a.tabs) - 1) },
+		"tabfirst":    func(a *App, _ string) { a.showTab(0) },
+		"tablast":     func(a *App, _ string) { a.showTab(len(a.userTabs()) - 1) },
 		"tabclose":    func(a *App, args string) { a.runTabCloseCommand(args, false) },
 		"tabclose!":   func(a *App, args string) { a.runTabCloseCommand(args, true) },
 		"tabonly":     func(a *App, _ string) { a.closeOtherTabs(false) },
@@ -569,7 +569,7 @@ func init() {
 				return
 			}
 			if !a.unsaved {
-				a.closeTab(a.tabIndex(), true, ":wq")
+				a.closeTab(a.userTabIndex(), true, ":wq")
 			}
 		},
 		"print":     (*App).printDocument,

@@ -302,6 +302,11 @@ type windowState struct {
 	pageStep      float64
 	winW          int
 	winH          int
+	// nativeTabbing is whether the system gathers this window into tabs,
+	// as native_tabs asked when it opened; nativeInset is how far the
+	// system's tab bar then covers its top, in render pixels.
+	nativeTabbing bool
+	nativeInset   int
 	// background is set while withTab shows the viewer a tab other than
 	// the one on screen, so it leaves the window alone.
 	background bool

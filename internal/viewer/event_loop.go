@@ -67,6 +67,8 @@ func (a *App) openWindow() error {
 	}
 	a.windowGroup().focus(a)
 	a.configureNativeWindow(window)
+	a.nativeTabbing = nativeTabsAvailable && a.config.NativeTabs
+	configureNativeTabbing(window, a.nativeTabbing)
 	// Frames are presented in step with the display, so animations move
 	// once per refresh rather than when a timer happens to fire.
 	if !sdl.SetRenderVSync(renderer, 1) {
@@ -117,6 +119,7 @@ func (a *App) openWindow() error {
 // tick does a window's share of a turn of the event loop: animations,
 // what its workers and other processes sent, and drawing.
 func (a *App) tick() error {
+	a.updateNativeInset()
 	a.refreshStaleSelection()
 	a.advanceSmoothScroll()
 	a.advanceSmoothZoom()

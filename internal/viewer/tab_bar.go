@@ -22,7 +22,7 @@ const unsavedMark = "• "
 // tabBarShown reports whether the window draws its own tab bar: while it
 // has more than one tab, and not in presentation mode.
 func (a *App) tabBarShown() bool {
-	return len(a.tabList()) > 1 && a.presentation == nil
+	return !a.nativeTabsOn() && len(a.tabList()) > 1 && a.presentation == nil
 }
 
 // tabBarHeight is the height the tab bar takes from the top of the window,
@@ -51,7 +51,10 @@ func (a *App) titleBand() int {
 // topInset is the height at the top of the window that the document is
 // laid out below.
 func (a *App) topInset() int {
-	return a.tabBarHeight()
+	if a.presentation != nil {
+		return 0
+	}
+	return a.tabBarHeight() + a.nativeInset
 }
 
 // tabBarLayout is where the tab bar and each tab are, in render pixels.

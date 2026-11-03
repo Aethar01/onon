@@ -66,6 +66,7 @@ func Default() Config {
 		CompletionMaxItems:    10,
 		RecentFilesMax:        20,
 		RestoreTabs:           true,
+		NativeTabs:            true,
 		AutoReload:            true,
 		AutoReloadDelayMS:     200,
 		LinkPreviewDelayMS:    400,

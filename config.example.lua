@@ -28,6 +28,7 @@ onon.options.menus = {} -- Where onon's own menus sit, by name, such as { outlin
 onon.options.min_zoom = 0.5 -- Minimum manual zoom scale.
 onon.options.mouse_text_select = true -- Enable text selection with the left mouse button.
 onon.options.mupdf_store_mb = 256 -- MuPDF cache for fonts and decoded images in MiB; applies to newly opened documents.
+onon.options.native_tabs = true -- On macOS, let the system gather windows into tabs, as other Mac apps do, with Merge All Windows and the tab bar's +; false draws onon's own tab bar, as on other systems. Applies to windows opened after it changes.
 onon.options.open_documents = "tab" -- Where a document the system sends a running onon, such as from Finder or `open`, or one dropped on the window, opens: tab, in a new tab; window, in a new window; or replace, in place of the document shown. A window with no document takes it whichever is set.
 onon.options.outline_height_percent = 80 -- Outline overlay height as a percentage of the window.
 onon.options.outline_initial_depth = 1 -- Outline levels expanded when the outline opens.

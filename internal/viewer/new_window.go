@@ -35,15 +35,12 @@ func (a *App) openWindowHere(path string) error {
 		if err != nil {
 			return err
 		}
-		for _, w := range a.windowGroup().windows {
-			if w.showTabFor(resolved, page) {
-				w.raiseWindow()
-				return nil
-			}
+		if a.showOpenDocument(resolved, page) {
+			return nil
 		}
 		path = resolved
 	}
-	_, err := a.windowGroup().newWindow(a, path)
+	_, err := a.windowGroup().newWindow(a, path, 0)
 	return err
 }
 

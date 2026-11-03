@@ -20,14 +20,14 @@ func (a *App) runTabNewCommand(path string) {
 func (a *App) tabNumber(arg string) (int, error) {
 	arg = strings.TrimSpace(arg)
 	if arg == "$" {
-		return len(a.tabList()) - 1, nil
+		return len(a.userTabs()) - 1, nil
 	}
 	n, err := strconv.Atoi(arg)
 	if err != nil {
 		return 0, fmt.Errorf("not a tab: %s", arg)
 	}
 	if strings.HasPrefix(arg, "+") || strings.HasPrefix(arg, "-") {
-		return a.tabIndex() + n, nil
+		return a.userTabIndex() + n, nil
 	}
 	return n - 1, nil
 }
@@ -64,21 +64,21 @@ func (a *App) runTabGotoCommand(args string, dir int) {
 		a.message = "usage: :tabnext [N|+N|-N]"
 		return
 	}
-	if i < 0 || i >= len(a.tabList()) {
+	if i < 0 || i >= len(a.userTabs()) {
 		a.message = fmt.Sprintf("no tab %s", args)
 		return
 	}
-	a.selectTab(i)
+	a.showTab(i)
 }
 
 // runTabCloseCommand closes the tab shown, or the one given as tabNumber
 // reads it, as :tabclose does.
 func (a *App) runTabCloseCommand(args string, force bool) {
 	action := ":tabclose"
-	i := a.tabIndex()
+	i := a.userTabIndex()
 	if args = strings.TrimSpace(args); args != "" {
 		var err error
-		if i, err = a.tabNumber(args); err != nil || i < 0 || i >= len(a.tabList()) {
+		if i, err = a.tabNumber(args); err != nil || i < 0 || i >= len(a.userTabs()) {
 			a.message = "no tab " + args
 			return
 		}
@@ -92,10 +92,10 @@ func (a *App) runTabCloseCommand(args string, force bool) {
 // with +N or -N by N places.
 func (a *App) runTabMoveCommand(args string) {
 	args = strings.TrimSpace(args)
-	from := a.tabIndex()
+	from := a.userTabIndex()
 	switch {
 	case args == "" || args == "$":
-		a.moveTab(len(a.tabList()) - 1)
+		a.moveTab(len(a.userTabs()) - 1)
 	case strings.HasPrefix(args, "+") || strings.HasPrefix(args, "-"):
 		n, err := strconv.Atoi(args)
 		if err != nil {
@@ -158,23 +158,25 @@ func (a *App) toggleTabsMenu() {
 		a.closeUIView(view, false)
 		return
 	}
-	rows := make([]uiRow, len(a.tabList()))
-	for i, t := range a.tabList() {
+	tabs := a.userTabs()
+	rows := make([]uiRow, len(tabs))
+	for i, u := range tabs {
+		t := u.t
 		name := t.tabName()
 		if t.unsaved {
-			name = "• " + name
+			name = unsavedMark + name
 		}
 		rows[i] = uiRow{index: i, text: name, key: strconv.Itoa(i + 1)}
 		if t.pageCount > 0 {
 			rows[i].secondary = fmt.Sprintf("p. %d/%d", t.page+1, t.pageCount)
 		}
 	}
-	current := a.tabIndex()
+	current := a.userTabIndex()
 	a.showRowList("tabs", "Tabs", rows, 60, 60, func(view *uiView) {
 		view.selected = current
 		view.onSelect = func(a *App, row uiRow) {
 			a.CloseUI("tabs")
-			a.selectTab(row.index)
+			a.showTab(row.index)
 		}
 	})
 }

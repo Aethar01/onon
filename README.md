@@ -158,7 +158,11 @@ Then `onon arxiv:2401.12345` or `:open papers:smith2024` opens it. A local file 
 ### Tabs
 
 A window holds several documents as tabs, each with its own view, edits and
-session; the tab bar shows while more than one is open. `:tabnew file.pdf`
+session. On macOS they are the system's own window tabs, with the tab bar's +,
+Merge All Windows and Move Tab to New Window in the Window menu, as in other
+Mac apps; `native_tabs = false` draws onon's tab bar there instead. On Linux
+and Windows onon draws a tab bar, styled by the theme's `tab_bar`, `tab` and
+`tab_selected` elements, while more than one document is open. `:tabnew file.pdf`
 opens one, and `:tabnew` alone opens an empty tab with the recent files to
 choose from. A file dropped on the window, or sent by Finder or `open`, opens in
 a new tab; `open_documents` sets `window` or `replace` instead.

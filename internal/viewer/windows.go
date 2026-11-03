@@ -115,8 +115,14 @@ func (g *windowGroup) handleEvent(event *sdl.Event) error {
 	if w == nil {
 		return nil
 	}
-	if event.Type() == sdl.EventWindowFocusGained && w != g.focused {
-		g.focus(w)
+	if event.Type() == sdl.EventWindowFocusGained {
+		if previous := g.focused; w != previous {
+			g.focus(w)
+			if w.nativeTabsOn() && previous != nil && previous.window != nil && sameNativeTabGroup(previous.window, w.window) {
+				defer w.emitTabChanged(slices.IndexFunc(w.userTabs(), func(u userTab) bool { return u.w == previous }))
+			}
+		}
+		w.loadPendingTab() // a restored tab, shown at last
 	}
 	return w.handleSDLEvent(event)
 }
@@ -124,7 +130,7 @@ func (g *windowGroup) handleEvent(event *sdl.Event) error {
 // run is the event loop, until every window has closed.
 func (g *windowGroup) run() error {
 	defer g.closeAll()
-	for len(g.windows) > 0 {
+	for !g.allQuit() {
 		var event sdl.Event
 		for sdl.PollEvent(&event) {
 			if err := g.handleEvent(&event); err != nil {
@@ -144,7 +150,7 @@ func (g *windowGroup) run() error {
 			}
 		}
 		g.closeQuitWindows()
-		if len(g.windows) == 0 {
+		if g.allQuit() {
 			break
 		}
 		wait := g.windows[0].eventWaitTimeoutMS()
@@ -166,11 +172,24 @@ func (g *windowGroup) redrawAll() {
 	}
 }
 
-// closeQuitWindows closes the windows that asked to, keeping the last for
-// closeAll, which closes the process's share with it.
+// allQuit reports whether every window has asked to close, which ends the
+// loop and leaves them to Close.
+func (g *windowGroup) allQuit() bool {
+	for _, w := range g.windows {
+		if !w.quit {
+			return false
+		}
+	}
+	return true
+}
+
+// closeQuitWindows closes the windows that asked to while others stay.
 func (g *windowGroup) closeQuitWindows() {
+	if g.allQuit() {
+		return
+	}
 	for _, w := range slices.Clone(g.windows) {
-		if !w.quit || len(g.windows) == 1 {
+		if !w.quit {
 			continue
 		}
 		g.windows = slices.DeleteFunc(g.windows, func(other *App) bool { return other == w })
@@ -178,9 +197,6 @@ func (g *windowGroup) closeQuitWindows() {
 		if g.focused == w {
 			g.focus(g.windows[len(g.windows)-1])
 		}
-	}
-	if len(g.windows) == 1 && g.windows[0].quit {
-		g.windows = nil // run returns, and closeAll closes it
 	}
 }
 
@@ -222,13 +238,16 @@ func (g *windowGroup) documentsOpen() int {
 	return n
 }
 
-// newWindow opens path, or nothing when it is empty, in a new window of
-// this process, sharing from's runtime.
-func (g *windowGroup) newWindow(from *App, path string) (*App, error) {
+// newWindow opens path, at page when it is above 0, or nothing when path
+// is empty, in a new window of this process, sharing from's runtime.
+func (g *windowGroup) newWindow(from *App, path string, page int) (*App, error) {
 	w := newApp(from.runtime, from.iconBytes, NewOptions{Verbose: from.verbose, LaunchArgs: from.launchArgs})
 	w.group = g
 	w.singleInstance = from.singleInstance
 	w.initialDocPath = path
+	if page > 0 {
+		w.initialStartPage, w.initialPageSet = page-1, true
+	}
 	g.windows = append(g.windows, w)
 	if err := w.openWindow(); err != nil {
 		g.windows = slices.DeleteFunc(g.windows, func(other *App) bool { return other == w })

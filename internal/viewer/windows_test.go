@@ -63,3 +63,13 @@ func TestClosingAWindowLeavesTheOthers(t *testing.T) {
 		t.Fatal("closing the second window did not leave the first, focused")
 	}
 }
+
+func TestOpeningADocumentOpenInAnotherWindowLeavesItThere(t *testing.T) {
+	a, b := twoWindows(t)
+	if err := a.Open(b.docPath); err != nil {
+		t.Fatal(err)
+	}
+	if a.docPath == b.docPath {
+		t.Fatal("the document was opened again in the first window")
+	}
+}

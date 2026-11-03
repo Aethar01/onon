@@ -133,6 +133,7 @@ func (a *App) pollInstanceCommands() bool {
 			if i := slices.Index(a.tabList(), t); i >= 0 {
 				a.selectTab(i)
 			}
+			a.loadPendingTab() // a restored tab in a window of its own
 			err := a.applyInstanceRequest(delivery.Request)
 			delivery.Reply(err)
 			if err != nil {
@@ -187,17 +188,19 @@ func (a *App) applyInstanceOpenTab(request instance.Request) error {
 	if err := a.OpenTab(request.Path); err != nil {
 		return err
 	}
-	a.raiseWindow()
+	// With native tabs the tab is a window of its own, now the focused one.
+	w := a.windowGroup().focused
+	w.raiseWindow()
 	if request.Page <= 0 {
-		a.pendingRedraw = true
+		w.pendingRedraw = true
 		return nil
 	}
 	jump := instanceJump{page: request.Page, x: request.X, y: request.Y, hasPoint: request.HasPoint}
-	if a.pageCount == 0 {
-		a.pendingInstanceJump = &jump
+	if w.pageCount == 0 {
+		w.pendingInstanceJump = &jump
 		return nil
 	}
-	return a.applyInstanceJump(jump)
+	return w.applyInstanceJump(jump)
 }
 
 // applyInstanceOpenDocument opens a document as one the system sends is,

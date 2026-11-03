@@ -32,6 +32,11 @@ const (
 	RoleMinimize   Role = "minimize"
 	RoleZoom       Role = "zoom"
 	RoleFront      Role = "front"
+	// The tab items macOS gives windows that it gathers into tabs.
+	RoleMergeWindows    Role = "merge_windows"
+	RoleMoveTabToWindow Role = "move_tab_to_window"
+	RoleTabOverview     Role = "tab_overview"
+	RoleTabBar          Role = "tab_bar"
 
 	// RoleRecentDocuments is the system's list of documents opened lately.
 	RoleRecentDocuments Role = "recent_documents"
@@ -146,6 +151,10 @@ func Menus() []Menu {
 			{Title: "Show Previous Tab", Action: "prev_tab"},
 			{Title: "Show Next Tab", Action: "next_tab"},
 			{Title: "Tabs…", Action: "tabs_menu"},
+			{Title: "Show All Tabs", Role: RoleTabOverview},
+			{Title: "Show Tab Bar", Role: RoleTabBar},
+			{Title: "Move Tab to New Window", Role: RoleMoveTabToWindow},
+			{Title: "Merge All Windows", Role: RoleMergeWindows},
 			Separator,
 			{Title: "Bring All to Front", Role: RoleFront},
 		}},

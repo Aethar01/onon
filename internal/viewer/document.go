@@ -29,7 +29,7 @@ func (a *App) Open(path string) error {
 	if err != nil {
 		return err
 	}
-	if a.showTabFor(path, page) {
+	if a.showOpenDocument(path, page) {
 		return nil
 	}
 	if !a.confirmDiscard("opening it") {

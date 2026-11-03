@@ -98,11 +98,18 @@ func (a *App) setWindowTitle() {
 		return
 	}
 	a.showWindowDocument()
-	if a.docName == "" {
-		sdl.SetWindowTitle(a.window, "onon")
-		return
+	name := a.docName
+	if name == "" && a.pendingPath != "" {
+		name = config.DocumentName(a.pendingPath)
 	}
-	sdl.SetWindowTitle(a.window, a.docName+" - onon")
+	switch {
+	case a.nativeTabsOn():
+		sdl.SetWindowTitle(a.window, a.tab.tabName()) // as its tab shows it
+	case name == "":
+		sdl.SetWindowTitle(a.window, "onon")
+	default:
+		sdl.SetWindowTitle(a.window, name+" - onon")
+	}
 }
 
 // showWindowDocument tells the system which file the window shows and
@@ -121,14 +128,10 @@ func (a *App) showWindowDocument() {
 // share of the viewer: the shutdown event, and SDL.
 func (a *App) Close() {
 	g := a.windowGroup()
-	windows := g.windows
-	if len(windows) == 0 {
-		windows = []*App{a} // the last window, which run leaves to Close
+	if f := g.focused; f != nil && f.window != nil {
+		f.rememberTabs() // only a window that was shown, not one a test made
 	}
-	if last := windows[len(windows)-1]; last.window != nil {
-		last.rememberTabs() // only a window that was shown, not one a test made
-	}
-	for _, w := range windows {
+	for _, w := range g.windows {
 		w.closeWindow()
 	}
 	g.windows = nil
@@ -140,7 +143,7 @@ func (a *App) Close() {
 	if a.runtime != nil {
 		a.emitPluginEvent("shutdown", map[string]any{})
 	}
-	if a.window != nil || a.renderer != nil || g.waker != nil {
+	if g.waker != nil {
 		sdl.Quit()
 	}
 }

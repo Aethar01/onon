@@ -119,11 +119,15 @@ func (a *App) OpenTab(path string) error {
 	if err != nil {
 		return err
 	}
-	if a.showTabFor(path, page) {
+	if a.showOpenDocument(path, page) {
 		return nil
 	}
 	if a.tabIsEmpty() {
 		return a.openInTab(path, page)
+	}
+	if a.nativeTabsOn() {
+		_, err := a.openNativeTab(path, page)
+		return err
 	}
 	previous := a.tab
 	t := a.emptyTab()
@@ -171,11 +175,35 @@ func (a *App) showTabFor(path string, page int) bool {
 	return true
 }
 
+// showOpenDocument shows the tab of any window of the process that has
+// path open, at page when page is above 0, reporting whether there is one.
+func (a *App) showOpenDocument(path string, page int) bool {
+	if a.showTabFor(path, page) {
+		return true
+	}
+	for _, w := range a.windowGroup().windows {
+		if w != a && w.showTabFor(path, page) {
+			w.raiseWindow()
+			return true
+		}
+	}
+	return false
+}
+
 // newEmptyTab opens a tab with no document, and the recent-files menu to
 // choose one from, or the file picker when there are no recent files.
 func (a *App) newEmptyTab() {
 	if !a.tabIsEmpty() {
-		a.insertTab(a.emptyTab())
+		if a.nativeTabsOn() {
+			w, err := a.openNativeTab("", 0)
+			if err != nil {
+				a.message = err.Error()
+				return
+			}
+			a = w // to choose a document in
+		} else {
+			a.insertTab(a.emptyTab())
+		}
 	}
 	if a.config.SessionDatabase && len(config.RecentFiles(1)) > 0 {
 		a.showRecentFiles()
@@ -199,11 +227,11 @@ func (a *App) selectTab(i int) {
 
 // cycleTab shows the tab delta tabs on from the one shown, wrapping around.
 func (a *App) cycleTab(delta int) {
-	n := len(a.tabList())
+	n := len(a.userTabs())
 	if n < 2 {
 		return
 	}
-	a.selectTab(((a.tabIndex()+delta)%n + n) % n)
+	a.showTab(((a.userTabIndex()+delta)%n + n) % n)
 }
 
 // leaveTab puts away what the window shows of the tab shown before
@@ -259,8 +287,21 @@ func (a *App) CloseTab(i int, force bool) bool { return a.closeTab(i, force, ":t
 // closeTab closes the tab at index i as CloseTab does, its warning naming
 // action as what to repeat to discard the edits.
 func (a *App) closeTab(i int, force bool, action string) bool {
-	if i < 0 || i >= len(a.tabList()) {
+	users := a.userTabs()
+	if i < 0 || i >= len(users) {
 		return false
+	}
+	if a.nativeTabsOn() {
+		// The tab is a window, which closes with its one tab.
+		w := users[i].w
+		if w != a {
+			a.showTab(i) // to show what would be lost
+		}
+		if !force && !w.confirmDiscard(action) {
+			return false
+		}
+		w.quit = true
+		return true
 	}
 	t := a.tabList()[i]
 	if !force && t.unsaved {
@@ -333,6 +374,21 @@ func (a *App) closeTabDocument() {
 // unsaved edits unless force is set.
 func (a *App) closeOtherTabs(force bool) {
 	kept := 0
+	if a.nativeTabsOn() {
+		for _, u := range a.userTabs() {
+			switch {
+			case u.w == a:
+			case u.w.unsaved && !force:
+				kept++
+			default:
+				u.w.quit = true
+			}
+		}
+		if kept > 0 {
+			a.message = fmt.Sprintf("%s unsaved changes: :tabonly! discards them", countTabs(kept, "has", "have"))
+		}
+		return
+	}
 	for _, t := range slices.Clone(a.tabList()) {
 		if t == a.tab {
 			continue
@@ -350,6 +406,10 @@ func (a *App) closeOtherTabs(force bool) {
 
 // moveTab moves the tab shown to index to, clamped to the tabs.
 func (a *App) moveTab(to int) {
+	if a.nativeTabsOn() {
+		moveNativeTab(a.window, clampInt(to, 0, len(a.userTabs())-1))
+		return
+	}
 	from := a.tabIndex()
 	to = clampInt(to, 0, len(a.tabList())-1)
 	if from == to {
@@ -404,19 +464,6 @@ func countTabs(n int, one, many string) string {
 	return fmt.Sprintf("%d tabs %s", n, many)
 }
 
-// forEachTab runs fn on every tab in turn, each shown to fn as a.tab,
-// stopping at the first error.
-func (a *App) forEachTab(fn func() error) error {
-	for _, t := range slices.Clone(a.tabList()) {
-		var err error
-		a.withTab(t, func() { err = fn() })
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // tabDo runs a command in every tab, as :tabdo does, showing each while
 // it runs and ending on the last.
 func (a *App) tabDo(command string) {
@@ -424,14 +471,14 @@ func (a *App) tabDo(command string) {
 		a.message = "usage: :tabdo <command>"
 		return
 	}
-	for _, t := range slices.Clone(a.tabList()) {
-		i := slices.Index(a.tabList(), t)
+	for _, u := range a.userTabs() {
+		i := slices.Index(a.userTabs(), u)
 		if i < 0 {
 			continue // an earlier command closed it
 		}
-		a.selectTab(i)
-		a.runCommand(command)
-		if a.quit {
+		a.showTab(i)
+		u.w.runCommand(command)
+		if u.w.quit || a.quit {
 			return
 		}
 	}
@@ -477,6 +524,10 @@ func (a *App) restoreTabs(w config.WindowTabs) {
 	if !a.config.RestoreTabs || len(w.Paths) < 2 || w.Active < 0 || w.Active >= len(w.Paths) {
 		return
 	}
+	if a.nativeTabsOn() {
+		a.restoreNativeTabs(w)
+		return
+	}
 	shown := a.tab
 	tabs := make([]*tab, 0, len(w.Paths))
 	for i, path := range w.Paths {
@@ -496,18 +547,47 @@ func (a *App) restoreTabs(w config.WindowTabs) {
 	a.relayoutWithViewportAnchor(nil) // below the tab bar
 }
 
-// rememberTabs records the window's tabs as it closes, for restoreTabs.
+// restoreNativeTabs restores tabs as restoreTabs does, each a window the
+// system gathers into this window's tabs, which opens its document when
+// first shown.
+func (a *App) restoreNativeTabs(w config.WindowTabs) {
+	order := make([]*App, 0, len(w.Paths))
+	for i, path := range w.Paths {
+		if i == w.Active {
+			order = append(order, a)
+			continue
+		}
+		tab, err := a.windowGroup().newWindow(a, "", 0)
+		if err != nil {
+			a.logf("cannot restore a tab for %q: %v", path, err)
+			continue
+		}
+		tab.pendingPath = path
+		tab.withTab(tab.tab, tab.rebindInstanceServer)
+		tab.setWindowTitle()
+		addNativeTab(a.window, tab.window)
+		order = append(order, tab)
+	}
+	for i, tab := range order {
+		moveNativeTab(tab.window, i)
+	}
+	selectNativeTab(a.window)
+	a.windowGroup().focus(a)
+}
+
+// rememberTabs records the window's tabs as it closes, for restoreTabs:
+// with native tabs, the windows of its tab group.
 func (a *App) rememberTabs() {
 	if !a.config.SessionDatabase {
 		return
 	}
 	w := config.WindowTabs{}
-	for _, t := range a.tabList() {
-		path := cmp.Or(t.docPath, t.pendingPath)
+	for _, u := range a.userTabs() {
+		path := cmp.Or(u.t.docPath, u.t.pendingPath)
 		if path == "" {
 			continue
 		}
-		if t == a.tab {
+		if u.w == a && u.t == a.tab {
 			w.Active = len(w.Paths)
 		}
 		w.Paths = append(w.Paths, path)
@@ -519,12 +599,13 @@ func (a *App) rememberTabs() {
 
 // Tabs describes the window's tabs, for onon.tabs.
 func (a *App) Tabs() []config.TabInfo {
-	tabs := a.tabList()
+	tabs := a.userTabs()
 	infos := make([]config.TabInfo, len(tabs))
-	for i, t := range tabs {
+	for i, u := range tabs {
+		t := u.t
 		infos[i] = config.TabInfo{
 			Path: cmp.Or(t.docPath, t.pendingPath), Name: t.tabName(), PageCount: t.pageCount,
-			Modified: t.unsaved, Active: t == a.tab,
+			Modified: t.unsaved, Active: u.w == a && t == a.tab,
 		}
 		if t.pageCount > 0 {
 			infos[i].Page = t.page + 1
@@ -535,9 +616,9 @@ func (a *App) Tabs() []config.TabInfo {
 
 // SelectTab shows the tab at index, for onon.tabs.select.
 func (a *App) SelectTab(index int) error {
-	if index < 0 || index >= len(a.tabList()) {
+	if index < 0 || index >= len(a.userTabs()) {
 		return fmt.Errorf("no tab %d", index+1)
 	}
-	a.selectTab(index)
+	a.showTab(index)
 	return nil
 }
