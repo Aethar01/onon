@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	commandmeta "onon/internal/commands"
 
@@ -137,9 +136,8 @@ func TestHelpUnderTheKeybindEditorShowsNewBindings(t *testing.T) {
 	keys := chooseAction(t, app, "overview")
 	keys.selected = 0 // add a key
 	app.activateUIView(keys)
-	start := time.Now()
 	app.viewKey(keys, keyDown(sdl.KeycodeZ, 0))
-	app.finishKeybindCapture(start.Add(time.Duration(app.config.SequenceTimeoutMS+1) * time.Millisecond))
+	app.finishKeybindCapture(app.captureDeadline())
 	for _, row := range help.rows {
 		if row.id == helpRowAction && row.text == "overview" {
 			if !strings.Contains(row.secondary, "z") || len(row.cells) != 2 || row.cells[1] != row.secondary {

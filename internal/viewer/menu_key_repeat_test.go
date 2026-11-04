@@ -161,7 +161,7 @@ func TestKeybindEditorCapturesChords(t *testing.T) {
 	if !app.keybindMenu.capturing || keys.rows[0].secondary != "z x …" {
 		t.Fatalf("bound before the chord's pause elapsed, row %+v", keys.rows[0])
 	}
-	app.finishKeybindCapture(start.Add(time.Duration(app.config.SequenceTimeoutMS+1) * time.Millisecond))
+	app.finishKeybindCapture(app.captureDeadline())
 	if app.keybindMenu.capturing {
 		t.Fatal("still capturing after the pause")
 	}
@@ -195,9 +195,8 @@ func TestKeybindCaptureKeepsItsRow(t *testing.T) {
 	app.activateUIView(keys)
 	keys.selected = 2 // the pointer passes over another row
 	code, name := freshKey(chosen, other)
-	start := time.Now()
 	app.viewKey(keys, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: code})
-	app.finishKeybindCapture(start.Add(time.Duration(app.config.SequenceTimeoutMS+1) * time.Millisecond))
+	app.finishKeybindCapture(app.captureDeadline())
 	if got := app.config.KeyBindings[name]; got != action {
 		t.Fatalf("%s bound to %q, want %s", name, got, action)
 	}
@@ -220,9 +219,8 @@ func TestKeybindCaptureIgnoresChoosingWhileCapturing(t *testing.T) {
 	keys.selected = 0 // the button
 	app.activateUIView(keys)
 	code, name := freshKey(chosen)
-	start := time.Now()
 	app.viewKey(keys, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: code})
-	app.finishKeybindCapture(start.Add(time.Duration(app.config.SequenceTimeoutMS+1) * time.Millisecond))
+	app.finishKeybindCapture(app.captureDeadline())
 	if app.config.KeyBindings[name] != "copy" {
 		t.Fatalf("%s bound to %q, want copy", name, app.config.KeyBindings[name])
 	}
