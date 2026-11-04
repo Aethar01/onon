@@ -110,3 +110,15 @@ double ononTabBarInset(void *windowPointer) {
     NSRect content = window.contentView.frame;
     return NSMaxY(content) - NSMaxY(window.contentLayoutRect);
 }
+
+void ononToggleTabBar(void *windowPointer) {
+    NSWindow *window = (__bridge NSWindow *)windowPointer;
+    if (window != nil) {
+        [window toggleTabBar:nil];
+    }
+}
+
+int ononTabBarVisible(void *windowPointer) {
+    NSWindow *window = (__bridge NSWindow *)windowPointer;
+    return window != nil && window.tabGroup != nil && window.tabGroup.isTabBarVisible ? 1 : 0;
+}

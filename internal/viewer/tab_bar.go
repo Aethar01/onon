@@ -19,14 +19,18 @@ const unsavedMark = "• "
 
 // tabBarState is the window's tab bar between frames.
 type tabBarState struct {
+	// shown is whether toggle_tab_bar showed or hid the bar, while
+	// tab_bar_visible is still shownFrom.
+	shown     *bool
+	shownFrom string
 	// scroll is how far the tabs are scrolled along the bar, and revealed
 	// what the scroll last brought the shown tab into view for.
 	scroll   float32
 	revealed tabReveal
 	// width is what the pointer dragged a bar at the side to, kept while
-	// tab_bar_width is still widthFrom.
+	// tab_width is still widthFrom.
 	width     *config.UISize
-	widthFrom config.UISize
+	widthFrom config.TabWidth
 	resizing  bool
 	drag      tabDrag
 }
@@ -47,12 +51,21 @@ type tabDrag struct {
 	moving bool    // the pointer has gone far enough to drag
 }
 
-// tabBarSide is the edge the tab bar is along.
+// tabBarSide is the edge the tab bar is along, the title row's being the
+// top.
 func (a *App) tabBarSide() string {
-	if slices.Contains(config.TabBarPositions, a.config.TabBarPosition) {
-		return a.config.TabBarPosition
+	if p := a.config.TabBarPosition; p != "title" && slices.Contains(config.TabBarPositions, p) {
+		return p
 	}
 	return "top"
+}
+
+// tabBarWantsTitleRow reports whether the tab bar is to share the row of
+// the window's buttons: as tab_bar_position = "title" asks, where there is
+// such a row, the system's title band on macOS or the buttons onon draws
+// on Windows.
+func (a *App) tabBarWantsTitleRow() bool {
+	return a.config.TabBarPosition == "title" && (windowTitleBand > 0 || a.titleBarActive())
 }
 
 // tabBarVertical reports whether the tabs sit one under another, in a bar
@@ -68,6 +81,9 @@ func (a *App) tabBarVertical() bool {
 func (a *App) tabBarShown() bool {
 	if a.nativeTabsOn() || a.presentation != nil || a.fontFace == nil {
 		return false
+	}
+	if shown := a.tabBar.shown; shown != nil && a.tabBar.shownFrom == a.config.TabBarVisible {
+		return *shown
 	}
 	switch a.config.TabBarVisible {
 	case "never":
@@ -94,23 +110,39 @@ func (a *App) tabBarThickness(rest sdl.FRect) float32 {
 	top, _, bottom, _ := a.insets(a.style(config.ElementTabBar).Padding.V)
 	h := a.tabRowHeight() + top + bottom
 	if a.tabBarSide() == "top" && rest.Y == 0 {
-		// Along the window's top: below the system's title band, and
-		// sharing the row of the window's buttons where onon draws them.
-		if a.titleBarActive() {
-			h = max(h, float32(a.titleBarLayout().height))
+		if a.tabBarWantsTitleRow() {
+			h = max(h, a.titleRowHeight()) // in the row of the window's buttons
+		} else {
+			h += a.titleRowHeight() // below it
 		}
-		h += float32(a.titleBand())
 	}
 	return float32(math.Round(float64(h)))
 }
 
-// tabBarWidth is the width of a bar at the side: as tab_bar_width says,
-// or as the pointer dragged it to since.
+// titleRowHeight is the height of the row of the window's buttons along
+// its top: the system's title band, or the title bar onon draws.
+func (a *App) titleRowHeight() float32 {
+	h := float32(a.titleBand())
+	if a.titleBarActive() {
+		h = max(h, float32(a.titleBarLayout().height))
+	}
+	return h
+}
+
+// tabBarWidth is the width of a bar at the side, as wide as its tabs: as
+// tab_width says, the tab element's max_width for fit and fill, or as the
+// pointer dragged it to since.
 func (a *App) tabBarWidth() config.UISize {
-	if w := a.tabBar.width; w != nil && a.tabBar.widthFrom == a.config.TabBarWidth {
+	if w := a.tabBar.width; w != nil && a.tabBar.widthFrom == a.config.TabWidth {
 		return *w
 	}
-	return a.config.TabBarWidth
+	if w := a.config.TabWidth; w.Mode == "" && w.Size.Value > 0 {
+		return w.Size
+	}
+	if most := a.style(config.ElementTab).MaxWidth.V; most > 0 {
+		return config.UISize{Value: most}
+	}
+	return config.UISize{Value: 200}
 }
 
 // titleBand is the height of the band the system keeps at the top of the
@@ -120,26 +152,30 @@ func (a *App) titleBand() int {
 }
 
 // tabBarBand is the band at the top of bar the tabs keep clear of the
-// window's title bar, when the bar reaches the window's top.
+// row of the window's buttons, when the bar reaches the window's top and
+// is not in that row.
 func (a *App) tabBarBand(bar sdl.FRect) float32 {
-	if bar.Y > 0 {
+	if bar.Y > 0 || a.tabBarInTitleRow() {
 		return 0
 	}
-	band := float32(a.titleBand())
-	if a.tabBarVertical() && a.titleBarActive() {
-		band = max(band, float32(a.titleBarLayout().height))
+	return a.titleRowHeight()
+}
+
+// tabBarInTitleRow reports whether the tab bar is in the row of the
+// window's buttons, as tab_bar_position = "title" asks, which it is while
+// nothing of lower order is along the window's top.
+func (a *App) tabBarInTitleRow() bool {
+	if !a.tabBarWantsTitleRow() || !a.tabBarShown() || a.tabBarSide() != "top" {
+		return false
 	}
-	return band
+	bar := a.layoutEdges().tabBar
+	return bar.H > 0 && bar.Y == 0
 }
 
 // tabBarSharesTitleRow reports whether the tab bar is in the row of the
 // window's buttons onon draws, which then stay shown.
 func (a *App) tabBarSharesTitleRow() bool {
-	if !a.titleBarActive() || !a.tabBarShown() || a.tabBarVertical() || a.tabBarSide() != "top" {
-		return false
-	}
-	bar := a.layoutEdges().tabBar
-	return bar.H > 0 && bar.Y == 0
+	return a.titleBarActive() && a.tabBarInTitleRow()
 }
 
 // tabBarLayout is where the tab bar and each tab are, in render pixels.
@@ -196,10 +232,17 @@ func (a *App) tabBarLayout() tabBarLayout {
 	gap := a.px(barStyle.Gap.V)
 	band := a.tabBarBand(bar)
 	l.area = sdl.FRect{X: bar.X + left, Y: bar.Y + band + top, W: max(bar.W-left-right, 0), H: max(bar.H-band-top-bottom, 0)}
-	if a.tabBarSharesTitleRow() {
-		// Leave the window's buttons their room at the right.
-		first := a.titleBarLayout().buttonRect(titleButtonMinimize)
-		l.area.W = max(min(l.area.W, first.X-l.area.X), 0)
+	if a.tabBarInTitleRow() {
+		// Leave the window's buttons their room, and room to drag the
+		// window by however many tabs there are.
+		lead := a.px(windowButtonsLeading)
+		l.area.X += lead
+		l.area.W -= lead
+		if a.titleBarActive() {
+			first := a.titleBarLayout().buttonRect(titleButtonMinimize)
+			l.area.W = min(l.area.W, first.X-l.area.X)
+		}
+		l.area.W = max(l.area.W-a.px(float64(a.config.TabBarDragSpace)), 0)
 	}
 	l.tabs = make([]sdl.FRect, len(tabs))
 	n := float32(len(tabs))
@@ -235,7 +278,8 @@ func (a *App) tabWidths(tabs []*tab, room, gap float32) []float32 {
 	least, most := a.px(st.MinWidth.V), a.px(st.MaxWidth.V)
 	share := (room - gap*float32(len(tabs)-1)) / float32(len(tabs))
 	widths := make([]float32, len(tabs))
-	if a.config.TabWidth == "fill" {
+	width := a.config.TabWidth
+	if width.Mode == "fill" {
 		for i := range widths {
 			widths[i] = max(share, least)
 		}
@@ -244,6 +288,9 @@ func (a *App) tabWidths(tabs []*tab, room, gap float32) []float32 {
 	total := gap * float32(len(tabs)-1)
 	for i, t := range tabs {
 		w := float32(measureText(a.fontFace, a.tabLabel(t))) + padLeft + padRight
+		if width.Mode == "" && width.Size.Value > 0 {
+			w = float32(math.Round(a.uiLength(width.Size, float64(a.winW))))
+		}
 		if most > 0 {
 			w = min(w, most)
 		}
@@ -516,7 +563,7 @@ func (a *App) resizeTabBar(x float32) {
 	}
 	size := config.UISize{Value: float64(max(width, a.px(60))) / float64(a.px(1))}
 	a.relayoutWithViewportAnchor(func() {
-		a.tabBar.width, a.tabBar.widthFrom = &size, a.config.TabBarWidth
+		a.tabBar.width, a.tabBar.widthFrom = &size, a.config.TabWidth
 		a.views.layoutGen++ // docked views sit beside it
 	})
 	a.pendingRedraw = true
@@ -541,4 +588,41 @@ func (a *App) handleTabBarWheel(e *sdl.MouseWheelEvent) bool {
 	a.tabBar.scroll = min(max(l.scroll+amount*step, 0), max(l.total-l.room(), 0))
 	a.pendingRedraw = true
 	return true
+}
+
+// toggleTabBar shows or hides the tab bar of this window: onon's, or with
+// native tabs the system's.
+func (a *App) toggleTabBar() {
+	if a.nativeTabsOn() {
+		toggleNativeTabBar(a.window)
+		return
+	}
+	shown := !a.tabBarShown()
+	a.relayoutWithViewportAnchor(func() {
+		a.tabBar.shown, a.tabBar.shownFrom = &shown, a.config.TabBarVisible
+		a.views.layoutGen++ // docked views sit beside it
+	})
+	a.pendingRedraw = true
+}
+
+// tabBarOn reports whether the window shows a tab bar, its own or the
+// system's.
+func (a *App) tabBarOn() bool {
+	if a.nativeTabsOn() {
+		return nativeTabBarVisible(a.window)
+	}
+	return a.tabBarShown()
+}
+
+// titleRowTakes reports whether the press at x, y, in render pixels, in
+// the row of the window's buttons is the tab bar's: over a tab, or with
+// anywhere, anywhere the tabs scroll, rather than room to drag the window.
+func (a *App) titleRowTakes(x, y float32, anywhere bool) bool {
+	if !a.tabBarInTitleRow() {
+		return false
+	}
+	if anywhere {
+		return pointIn(sdl.FPoint{X: x, Y: y}, a.tabBarLayout().area)
+	}
+	return a.tabAt(float64(x), float64(y)) >= 0
 }

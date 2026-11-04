@@ -11,6 +11,8 @@ void ononSelectTabbedWindow(void *window);
 void ononMoveTabbedWindow(void *window, int index);
 int ononSameTabGroup(void *a, void *b);
 double ononTabBarInset(void *window);
+void ononToggleTabBar(void *window);
+int ononTabBarVisible(void *window);
 */
 import "C"
 
@@ -60,6 +62,16 @@ func moveNativeTab(window *sdl.Window, index int) {
 
 func sameNativeTabGroup(a, b *sdl.Window) bool {
 	return C.ononSameTabGroup(cocoaWindow(a), cocoaWindow(b)) != 0
+}
+
+// toggleNativeTabBar shows or hides the system's tab bar.
+func toggleNativeTabBar(window *sdl.Window) {
+	C.ononToggleTabBar(cocoaWindow(window))
+}
+
+// nativeTabBarVisible reports whether the system shows the window's tab bar.
+func nativeTabBarVisible(window *sdl.Window) bool {
+	return C.ononTabBarVisible(cocoaWindow(window)) != 0
 }
 
 // nativeTabBarInset is how far the system's tab bar, and the title bar

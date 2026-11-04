@@ -186,3 +186,79 @@ func TestTurnSidesFacesTheDocument(t *testing.T) {
 		}
 	}
 }
+
+func TestTabWidthSetsTabsAndTheSideBar(t *testing.T) {
+	app := twoTabs(t)
+	setOption(t, app, "tab_width", "150")
+	l := app.tabBarLayout()
+	if want := app.px(150); l.tabs[0].W != want || l.tabs[1].W != want {
+		t.Fatalf("tabs %v and %v wide, want %v", l.tabs[0].W, l.tabs[1].W, want)
+	}
+	setOption(t, app, "tab_bar_position", "left")
+	if got, want := app.layoutEdges().tabBar.W, app.px(150); got != want {
+		t.Fatalf("side bar %v wide with tab_width = 150, want %v", got, want)
+	}
+	setOption(t, app, "tab_width", "fit")
+	if got, want := app.layoutEdges().tabBar.W, app.px(app.style(config.ElementTab).MaxWidth.V); got != want {
+		t.Fatalf("side bar %v wide with tab_width = fit, want max_width %v", got, want)
+	}
+	setOption(t, app, "tab_width", `"25%"`)
+	if got := app.layoutEdges().tabBar.W; int(got) != app.winW/4 {
+		t.Fatalf("side bar %v wide with tab_width = 25%%, want %d", got, app.winW/4)
+	}
+}
+
+func TestTabsInTheTitleRowLeaveRoomToDragTheWindow(t *testing.T) {
+	app := twoTabs(t)
+	setOption(t, app, "tab_bar_position", "title")
+	if !app.tabBarWantsTitleRow() {
+		t.Skip("no title row of onon's here")
+	}
+	for range 30 {
+		if err := app.OpenTab(testPages(t, 1)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	l := app.tabBarLayout()
+	if l.bar.Y != 0 || !app.tabBarInTitleRow() || l.area.Y > l.bar.Y+app.px(8) {
+		t.Fatalf("bar %v, area %v: want the tabs in the title row", l.bar, l.area)
+	}
+	space := app.px(app.config.TabBarDragSpace)
+	grab := l.area.X + l.area.W + space/2
+	y := l.area.Y + l.area.H/2
+	if app.titleRowTakes(grab, y, true) || !app.titleRowTakes(l.tabs[app.tabIndex()].X+2, y, false) {
+		t.Fatal("the drag space takes presses, or the shown tab does not")
+	}
+	if l.area.X < app.px(windowButtonsLeading) {
+		t.Fatalf("tabs start at %v, over the window's buttons", l.area.X)
+	}
+	setOption(t, app, "tab_bar_drag_space", "0")
+	if wider := app.tabBarLayout().area.W; wider-l.area.W != space {
+		t.Fatalf("no drag space widened the tabs by %v, want %v", wider-l.area.W, space)
+	}
+	setOption(t, app, "tab_bar_position", "top")
+	if top := app.tabBarLayout(); app.tabBarInTitleRow() || top.area.Y < app.titleRowHeight() {
+		t.Fatalf("tabs at %v with tab_bar_position = top, want them below the title row", top.area)
+	}
+}
+
+func TestTabBarToggles(t *testing.T) {
+	app := twoTabs(t)
+	app.runCommand(":tabbar off")
+	if app.tabBarShown() || app.tabBarThick() != 0 {
+		t.Fatal(":tabbar off left the bar")
+	}
+	app.runAction("toggle_tab_bar")
+	if !app.tabBarShown() {
+		t.Fatal("toggle_tab_bar did not show the bar again")
+	}
+	app.runCommand(":tabclose")
+	app.runCommand(":tabbar on")
+	if !app.tabBarShown() {
+		t.Fatal(":tabbar on hid the bar of one tab")
+	}
+	setOption(t, app, "tab_bar_visible", "never")
+	if app.tabBarShown() {
+		t.Fatal("tab_bar_visible changed, but the toggle still decides")
+	}
+}

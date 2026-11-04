@@ -19,4 +19,6 @@ func selectNativeTab(*sdl.Window)                   {}
 func moveNativeTab(*sdl.Window, int)                {}
 func sameNativeTabGroup(a, b *sdl.Window) bool      { return false }
 func nativeTabBarInset(*sdl.Window) float64         { return 0 }
+func toggleNativeTabBar(*sdl.Window)                {}
+func nativeTabBarVisible(*sdl.Window) bool          { return false }
 func cocoaWindow(*sdl.Window) unsafe.Pointer        { return nil }

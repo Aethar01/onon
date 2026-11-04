@@ -53,5 +53,36 @@ func cocoaWindow(window *sdl.Window) unsafe.Pointer {
 
 // windowTitleBand is the height, in logical pixels, of the band at the
 // top of the window that macOS keeps for its title bar, whose buttons onon
-// shows there and which drags the window: the tab bar is drawn below it.
+// shows there and which drags the window: the tab bar is drawn below it,
+// or in it with tab_bar_position = "title".
 const windowTitleBand = 28
+
+// windowButtonsLeading is the room, in logical pixels, the close, minimize
+// and zoom buttons take at the left of the title band, which tabs in that
+// row start after.
+const windowButtonsLeading = 76
+
+// ononTitleRowTakesPoint answers whether a press at x, y, in points from
+// the window's top left, in the title band is for the tab bar there rather
+// than dragging the window: over a tab, or with anywhere set, anywhere the
+// tabs are.
+//
+//export ononTitleRowTakesPoint
+func ononTitleRowTakesPoint(window unsafe.Pointer, x, y C.double, anywhere C.int) C.int {
+	if nativeApp == nil {
+		return 0
+	}
+	for _, w := range nativeApp.windowGroup().windows {
+		if w.window == nil || cocoaWindow(w.window) != window {
+			continue
+		}
+		density := float64(sdl.GetWindowPixelDensity(w.window))
+		if density <= 0 {
+			density = 1
+		}
+		if w.titleRowTakes(float32(float64(x)*density), float32(float64(y)*density), anywhere != 0) {
+			return 1
+		}
+	}
+	return 0
+}

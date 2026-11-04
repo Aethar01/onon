@@ -74,6 +74,7 @@ var registry = []Action{
 	{Name: "new_tab"},
 	{Name: "close_tab"},
 	{Name: "tabs_menu"}, // not tabs, which is onon.tabs in Lua
+	{Name: "toggle_tab_bar"},
 	{Name: "quit", Keys: []string{"q"}},
 }
 

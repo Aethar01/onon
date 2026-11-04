@@ -167,19 +167,32 @@ opens one, and `:tabnew` alone opens an empty tab with the recent files to
 choose from. A file dropped on the window, or sent by Finder or `open`, opens in
 a new tab; `open_documents` sets `window` or `replace` instead.
 
-onon's tab bar can sit along any edge: `tab_bar_position = "left"` (or
-`"right"`) gives a sidebar of tabs, one under another, `tab_bar_width` wide,
-whose inner edge can be dragged to resize it; `"bottom"` puts it above the
-status bar. `tab_bar_visible` is `"auto"` (two or more tabs), `"always"` or
-`"never"`. Tabs along the top or bottom are as wide as their names, or with
-`tab_width = "fill"` share the bar equally; the `tab` element's `min_width` and
-`max_width` bound them. Drag a tab to move it (`tab_drag = false` turns that
-off), middle-click to close it, and double-click the bar to open a new one.
+onon's tab bar can sit along any edge. By default it is in the title row,
+beside the window's own buttons, keeping `tab_bar_drag_space` (48) clear at
+its end to drag the window by however many tabs are open; `0` gives that up.
+`tab_bar_position = "top"` puts it in a row of its own below, and `"bottom"`
+above the status bar; `"left"` or `"right"` make a sidebar of tabs, one under
+another, whose inner edge drags to resize it. On Linux, where the system draws
+the title bar, `"title"` is the same as `"top"`.
+
+`tab_width` sizes tabs: `"fit"` (as wide as their names), `"fill"` (sharing the
+bar equally), or a width such as `160` or `"20%"`, which for a sidebar is its
+width. The `tab` element's `min_width` and `max_width` bound them, and a sidebar
+is `max_width` wide unless given a width. `tab_bar_visible` is `"auto"` (two or
+more tabs), `"always"` or `"never"`, and View ▸ Tab Bar, `toggle_tab_bar` or
+`:tabbar [on|off]` shows or hides it in a window, as the status bar's do. Drag
+a tab to move it (`tab_drag = false` turns that off), middle-click to close it,
+and double-click the bar to open a new one.
+
 Where the bar meets the status bar and docked panels is set by order, lower
 nearer the window's edge: `status_bar_order` (10), `tab_bar_order` (20), and a
 docked view's `order` (30). So `tab_bar_order = 5` with a sidebar makes it the
-window's full height, the status bar beside it. On macOS a position other than
-the top uses onon's bar instead of the system's tabs.
+window's full height, the status bar beside it.
+
+On macOS, `native_tabs = true` (the default) uses the system's tabs whatever
+the `tab_bar` options say, and the system can only draw them in a row of their
+own below the title bar; `toggle_tab_bar` shows or hides that bar.
+`native_tabs = false` uses onon's bar and its options.
 
 | Keys | Action |
 |---|---|

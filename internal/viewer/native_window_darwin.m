@@ -19,10 +19,60 @@ static void ononApplyMacOSWindowStyleProperties(NSWindow *window) {
     }
 }
 
-@interface OnonTitlebarDragView : NSView
+extern int ononTitleRowTakesPoint(void *window, double x, double y, int anywhere);
+
+// OnonTitlebarDragView drags the window by its title band, but for what
+// onon's tab bar there takes, which it hands to the content view below, as
+// SDL hears the pointer there.
+@interface OnonTitlebarDragView : NSView {
+    BOOL _forwarding; // a press it handed on, whose drags and release follow
+}
 @end
 
 @implementation OnonTitlebarDragView
+
+- (BOOL)takes:(NSEvent *)event anywhere:(BOOL)anywhere {
+    NSView *content = self.window.contentView;
+    if (content == nil) {
+        return NO;
+    }
+    NSPoint p = [content convertPoint:event.locationInWindow fromView:nil];
+    CGFloat y = content.isFlipped ? p.y : NSHeight(content.bounds) - p.y;
+    return ononTitleRowTakesPoint((__bridge void *)self.window, p.x, y, anywhere ? 1 : 0) != 0;
+}
+
+- (void)mouseDragged:(NSEvent *)event {
+    if (_forwarding) {
+        [self.window.contentView mouseDragged:event];
+    }
+}
+
+- (void)mouseUp:(NSEvent *)event {
+    if (_forwarding) {
+        _forwarding = NO;
+        [self.window.contentView mouseUp:event];
+    }
+}
+
+- (void)otherMouseDown:(NSEvent *)event {
+    if ([self takes:event anywhere:YES]) {
+        [self.window.contentView otherMouseDown:event];
+    }
+}
+
+- (void)otherMouseUp:(NSEvent *)event {
+    if ([self takes:event anywhere:YES]) {
+        [self.window.contentView otherMouseUp:event];
+    }
+}
+
+- (void)scrollWheel:(NSEvent *)event {
+    if ([self takes:event anywhere:YES]) {
+        [self.window.contentView scrollWheel:event];
+        return;
+    }
+    [super scrollWheel:event];
+}
 
 - (BOOL)isOpaque {
     return NO;
@@ -33,6 +83,12 @@ static void ononApplyMacOSWindowStyleProperties(NSWindow *window) {
 }
 
 - (void)mouseDown:(NSEvent *)event {
+    // A tab, or a double click where the tabs are, which opens one.
+    if ([self takes:event anywhere:event.clickCount > 1]) {
+        _forwarding = YES;
+        [self.window.contentView mouseDown:event];
+        return;
+    }
     [self.window performWindowDragWithEvent:event];
 }
 

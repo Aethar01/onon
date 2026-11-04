@@ -51,6 +51,7 @@ var specs = []Spec{
 	{Name: "search", Help: ":search <text> - Search document text"},
 	{Name: "set", Help: ":set [option[?]|option!|option=value] - Inspect or change options"},
 	{Name: "statusbar", ArgCompletions: []string{"on", "off"}, Help: ":statusbar [on|off] - Show or hide the status bar"},
+	{Name: "tabbar", ArgCompletions: []string{"on", "off"}, Help: ":tabbar [on|off] - Show or hide the tab bar"},
 	{Name: "tabclose", Help: ":tabclose [N], :tabc - Close the tab, or tab N; :tabclose! discards its unsaved edits"},
 	{Name: "tabdo", Help: ":tabdo <command> - Run a command in every tab, such as :tabdo write"},
 	{Name: "tabfirst", Help: ":tabfirst - Go to the first tab"},

@@ -72,12 +72,12 @@ type Config struct {
 	RecentFilesMax        int
 	RestoreTabs           bool
 	NativeTabs            bool
-	TabBarPosition        string // top, bottom, left or right
+	TabBarPosition        string // title, top, bottom, left or right
 	TabBarVisible         string // auto, always or never
-	TabBarWidth           UISize // across a bar at the left or right
 	TabBarResizable       bool
 	TabBarOrder           int
-	TabWidth              string // fit or fill
+	TabBarDragSpace       float64 // kept clear for dragging the window, in the title row
+	TabWidth              TabWidth
 	TabDrag               bool
 	StatusBarOrder        int
 	AutoReload            bool
@@ -242,8 +242,17 @@ const (
 	DockOrderPanel     = 30
 )
 
-// TabBarPositions are where the tab bar may sit.
-var TabBarPositions = []string{"top", "bottom", "left", "right"}
+// TabBarPositions are where the tab bar may sit: title is along the top,
+// in the row of the window's own buttons.
+var TabBarPositions = []string{"title", "top", "bottom", "left", "right"}
+
+// TabWidth is how wide tabs are: Mode fit, as wide as their names; fill,
+// sharing the bar; or empty, Size wide. A bar at the side is as wide as
+// its tabs.
+type TabWidth struct {
+	Mode string
+	Size UISize
+}
 
 // UIColumn is a column of a table of rows: its title, its width, or with
 // Fill a share of what the others leave, and how its cells align.

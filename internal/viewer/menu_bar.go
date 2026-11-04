@@ -57,6 +57,7 @@ var menuItemsWithoutDocument = map[string]bool{
 	"paste":             true,
 	"toggle_fullscreen": true,
 	"toggle_status_bar": true,
+	"toggle_tab_bar":    true,
 	"toggle_alt_colors": true,
 }
 
