@@ -50,8 +50,8 @@ func (a *App) handleSDLKeyDown(e *sdl.KeyboardEvent) {
 		if key, ok := keyToken(e); ok {
 			token := key.String()
 			prevMode := a.mode
-			a.actionKeycode = e.Key
-			defer func() { a.actionKeycode = 0 }()
+			a.actionKeycode, a.actionRepeated = e.Key, e.Repeat
+			defer func() { a.actionKeycode, a.actionRepeated = 0, false }()
 			if a.handleHintToken(token) {
 				return
 			}
@@ -409,7 +409,10 @@ func (a *App) runCountAction(token string) bool {
 	if !ok || !a.isCountableAction(action) {
 		return false
 	}
-	for range count {
+	repeated := a.actionRepeated
+	defer func() { a.actionRepeated = repeated }()
+	for i := range count {
+		a.actionRepeated = repeated || i > 0
 		a.runAction(action)
 	}
 	return true

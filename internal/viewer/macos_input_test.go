@@ -241,3 +241,18 @@ func TestMetricRelayoutKeepsPendingSmoothScrollDistance(t *testing.T) {
 	}
 	assertClose(t, app.scrollY, shiftedY+remaining)
 }
+
+func TestHeldAndCountedRotate(t *testing.T) {
+	app := testLayoutApp(5)
+	app.setKeyBindings(map[string]string{"r": "rotate_cw"})
+	app.handleSDLKeyDown(&sdl.KeyboardEvent{Key: sdl.KeycodeR})
+	app.handleSDLKeyDown(&sdl.KeyboardEvent{Key: sdl.KeycodeR, Repeat: true})
+	if app.rotation != 180 {
+		t.Fatalf("holding rotate_cw gave %v degrees, want 180", app.rotation)
+	}
+	app.handleSDLKeyDown(&sdl.KeyboardEvent{Key: sdl.Keycode2})
+	app.handleSDLKeyDown(&sdl.KeyboardEvent{Key: sdl.KeycodeR})
+	if app.rotation != 0 {
+		t.Fatalf("2r from 180 gave %v degrees, want 0", app.rotation)
+	}
+}

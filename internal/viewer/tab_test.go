@@ -553,3 +553,55 @@ func (a *App) tabBarThick() int {
 	}
 	return int(r.H)
 }
+
+// new_tab and close_tab repeat while their keys are held, but a held
+// close_tab stops at unsaved edits and at the window's last tab.
+func TestHeldTabKeysRepeat(t *testing.T) {
+	app := tabsApp(t, testPages(t, 2))
+	app.config.KeyBindings = map[string]string{"t": "new_tab", "w": "close_tab"} // kept by each new tab
+	app.setKeyBindings(app.config.KeyBindings)
+	press := func(key sdl.Keycode, repeats int) {
+		app.handleSDLKeyDown(&sdl.KeyboardEvent{Key: key})
+		for range repeats {
+			app.handleSDLKeyDown(&sdl.KeyboardEvent{Key: key, Repeat: true})
+		}
+	}
+
+	press(sdl.KeycodeT, 2)
+	if len(app.tabList()) != 4 || app.tabIndex() != 3 {
+		t.Fatalf("holding new_tab gave %s, want four tabs, the last shown", tabNames(app))
+	}
+
+	app.selectTab(1)
+	app.unsaved = true
+	app.selectTab(3)
+	press(sdl.KeycodeW, 5)
+	if len(app.tabList()) != 2 || app.tabIndex() != 1 || !app.discardWarned {
+		t.Fatalf("holding close_tab gave %s, want it stopped at the unsaved tab with a warning", tabNames(app))
+	}
+
+	press(sdl.KeycodeW, 3) // a fresh press discards, the held one stops at the last tab
+	if len(app.tabList()) != 1 || app.quit {
+		t.Fatalf("held close_tab gave %s, quit %v; want the last tab kept", tabNames(app), app.quit)
+	}
+	press(sdl.KeycodeW, 0)
+	if !app.quit {
+		t.Fatal("a fresh close_tab on the last tab did not close the window")
+	}
+}
+
+func TestHeldNextTabCycles(t *testing.T) {
+	app := tabsApp(t, testPages(t, 2))
+	for range 2 {
+		app.newEmptyTab()
+	}
+	app.selectTab(0)
+	app.config.KeyBindings = map[string]string{"<C-Tab>": "next_tab"}
+	app.setKeyBindings(app.config.KeyBindings)
+	app.handleSDLKeyDown(&sdl.KeyboardEvent{Key: sdl.KeycodeTab, Mod: sdl.KeymodLCtrl})
+	app.handleSDLKeyDown(&sdl.KeyboardEvent{Key: sdl.KeycodeTab, Mod: sdl.KeymodLCtrl, Repeat: true})
+	app.handleSDLKeyDown(&sdl.KeyboardEvent{Key: sdl.KeycodeTab, Mod: sdl.KeymodLCtrl, Repeat: true})
+	if app.tabIndex() != 0 {
+		t.Fatalf("holding next_tab through three tabs showed tab %d, want back to 0", app.tabIndex())
+	}
+}

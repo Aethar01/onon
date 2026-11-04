@@ -104,7 +104,7 @@ func init() {
 		"next_tab":          do(func(a *App) { a.cycleTab(1) }),
 		"prev_tab":          do(func(a *App) { a.cycleTab(-1) }),
 		"new_tab":           do((*App).newEmptyTab),
-		"close_tab":         do(func(a *App) { a.closeTab(a.userTabIndex(), false, "close_tab") }),
+		"close_tab":         do((*App).closeTabAction),
 		"tabs_menu":         do((*App).toggleTabsMenu),
 		"toggle_tab_bar":    do((*App).toggleTabBar),
 		"quit":              do(func(a *App) { a.windowGroup().quitAll("quit") }),
@@ -194,4 +194,14 @@ func (a *App) openFilePicker() error {
 		return err
 	}
 	return a.Open(path)
+}
+
+// closeTabAction closes the tab shown. Held down, or given a count, it
+// closes one tab after another but stops short of the window, and of
+// discarding unsaved edits: those take a press of their own.
+func (a *App) closeTabAction() {
+	if a.actionRepeated && (len(a.userTabs()) == 1 || a.unsaved && a.discardWarned) {
+		return
+	}
+	a.closeTab(a.userTabIndex(), false, "close_tab")
 }

@@ -57,8 +57,8 @@ func (a *App) viewKey(view *uiView, e *sdl.KeyboardEvent) {
 		return
 	}
 	// An action held down, as pan is, ends when this key is let go.
-	a.actionKeycode = e.Key
-	defer func() { a.actionKeycode = 0 }()
+	a.actionKeycode, a.actionRepeated = e.Key, e.Repeat
+	defer func() { a.actionKeycode, a.actionRepeated = 0, false }()
 	wasSearching := view.searching
 	a.runUIViewAction(view, action)
 	if !wasSearching && view.searching {
