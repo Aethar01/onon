@@ -165,8 +165,12 @@ func (a *App) closeViewMode() {
 }
 
 // captureViewState reports the view to persist; in the overview or
-// presentation mode, that is the view they will return to.
+// presentation mode, that is the view they will return to. Those modes
+// belong to the tab shown, so a tab in the background has its own view.
 func (a *App) captureViewState() viewState {
+	if a.background {
+		return a.currentViewState()
+	}
 	if a.overview != nil {
 		return a.overviewReturnState()
 	}

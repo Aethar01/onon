@@ -1,6 +1,8 @@
 package config
 
 import (
+	"fmt"
+
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -40,29 +42,44 @@ func (r *Runtime) tabsHost() (TabsHost, bool) {
 	return host, ok
 }
 
-// tabIndexArg reads the 1-based tab index at position n, the current tab
-// when it is absent, and returns it counting from 0.
-func (r *Runtime) tabIndexArg(L *lua.LState, n int, name string, tabs []TabInfo) int {
+// tabIndexArg reads the 1-based tab index at position n, or 0 when it is
+// absent, for the tab shown.
+func tabIndexArg(L *lua.LState, n int, name string) int {
 	if L.Get(n) == lua.LNil {
-		for i, tab := range tabs {
-			if tab.Active {
-				return i
-			}
-		}
 		return 0
 	}
 	index := L.CheckInt(n)
-	if index < 1 || index > len(tabs) {
-		L.RaiseError("tabs.%s: no tab %d of %d", name, index, len(tabs))
+	if index < 1 {
+		L.RaiseError("tabs.%s: no tab %d", name, index)
 	}
-	return index - 1
+	return index
+}
+
+// resolveTabIndex counts index, as tabIndexArg reads it, from 0 among the
+// tabs open now: when the call is made, which while Lua runs is once it
+// returns, so that calls made one after another see each other's tabs.
+func resolveTabIndex(index int, tabs []TabInfo) (int, error) {
+	if index == 0 {
+		for i, tab := range tabs {
+			if tab.Active {
+				return i, nil
+			}
+		}
+		return 0, nil
+	}
+	if index > len(tabs) {
+		return 0, fmt.Errorf("no tab %d of %d", index, len(tabs))
+	}
+	return index - 1, nil
 }
 
 // luaTabsList returns the window's tabs in order.
 //
 // # Returns
 //
-// A list of [Tab](#tab) tables, one for each tab, from the first.
+// A list of [Tab](#tab) tables, one for each tab, from the first. Tabs
+// that onon.tabs calls made earlier in the same Lua dispatch open, show or
+// close are not in it yet, as those calls take effect once it returns.
 //
 // # Example
 //
@@ -117,7 +134,8 @@ func luaTabsCurrent(rt *Runtime) lua.LGFunction {
 //
 // # Returns
 //
-// Nothing. The tab is shown after the current Lua dispatch.
+// Nothing. The tab is shown after the current Lua dispatch, once the calls
+// made before it have taken effect, so index counts the tabs they leave.
 //
 // # Errors
 //
@@ -132,8 +150,14 @@ func luaTabsSelect(rt *Runtime) lua.LGFunction {
 		if !ok {
 			L.RaiseError("tabs.select: viewer host unavailable")
 		}
-		index := rt.tabIndexArg(L, 1, "select", host.Tabs())
-		if err := rt.callHost("tabs.select", func(Host) error { return host.SelectTab(index) }); err != nil {
+		index := tabIndexArg(L, 1, "select")
+		if err := rt.callHost("tabs.select", func(Host) error {
+			i, err := resolveTabIndex(index, host.Tabs())
+			if err != nil {
+				return err
+			}
+			return host.SelectTab(i)
+		}); err != nil {
 			L.RaiseError("tabs.select: %v", err)
 		}
 		return 0
@@ -181,7 +205,8 @@ func luaTabsOpen(rt *Runtime) lua.LGFunction {
 //
 // # Returns
 //
-// Nothing. The tab closes after the current Lua dispatch.
+// Nothing. The tab closes after the current Lua dispatch, once the calls
+// made before it have taken effect, so index counts the tabs they leave.
 //
 // # Errors
 //
@@ -196,10 +221,14 @@ func luaTabsClose(rt *Runtime) lua.LGFunction {
 		if !ok {
 			L.RaiseError("tabs.close: viewer host unavailable")
 		}
-		index := rt.tabIndexArg(L, 1, "close", host.Tabs())
+		index := tabIndexArg(L, 1, "close")
 		force := L.OptBool(2, false)
 		if err := rt.callHost("tabs.close", func(Host) error {
-			host.CloseTab(index, force)
+			i, err := resolveTabIndex(index, host.Tabs())
+			if err != nil {
+				return err
+			}
+			host.CloseTab(i, force)
 			return nil
 		}); err != nil {
 			L.RaiseError("tabs.close: %v", err)

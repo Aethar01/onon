@@ -36,6 +36,9 @@ type tab struct {
 	// pendingPath is the document a tab restored from the last session
 	// opens when it is first shown; until then it has no document.
 	pendingPath string
+	// closeWhenSaved is set once a :wq upload to a remote host finished,
+	// for the tab to close when the window next looks.
+	closeWhenSaved bool
 }
 
 // newTab returns a tab with no document, starting at page.
@@ -536,6 +539,21 @@ func (a *App) pollBackgroundSaves() {
 			a.withTab(t, a.pollRemoteTask)
 		}
 	}
+	a.closeSavedTabs()
+}
+
+// closeSavedTabs closes the tabs that :wq saved to a remote host.
+func (a *App) closeSavedTabs() {
+	for _, t := range a.tabList() {
+		if !t.closeWhenSaved {
+			continue
+		}
+		t.closeWhenSaved = false
+		if i := slices.IndexFunc(a.userTabs(), func(u userTab) bool { return u.t == t }); i >= 0 {
+			a.closeTab(i, true, ":wq")
+		}
+		return // the list changed; the next loop closes any other
+	}
 }
 
 // loadPendingTab opens the document of a tab restored from the last
@@ -618,10 +636,16 @@ func (a *App) rememberTabs() {
 	w := config.WindowTabs{}
 	for _, u := range a.userTabs() {
 		path := cmp.Or(u.t.docPath, u.t.pendingPath)
+		shown := u.w == a && u.t == a.tab
 		if path == "" {
+			// A blank tab is not kept; the one before it shows in its place,
+			// or the one after when it was first.
+			if shown {
+				w.Active = max(len(w.Paths)-1, 0)
+			}
 			continue
 		}
-		if u.w == a && u.t == a.tab {
+		if shown {
 			w.Active = len(w.Paths)
 		}
 		w.Paths = append(w.Paths, path)

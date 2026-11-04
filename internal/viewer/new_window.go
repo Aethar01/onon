@@ -30,17 +30,18 @@ func (a *App) openInNewWindow(path string) error {
 // openWindowHere opens path in a new window of this process, or shows the
 // window and tab that has it open.
 func (a *App) openWindowHere(path string) error {
+	page := 0
 	if path != "" {
-		resolved, page, err := a.resolveDocumentArg(path)
+		resolved, at, err := a.resolveDocumentArg(path)
 		if err != nil {
 			return err
 		}
-		if a.showOpenDocument(resolved, page) {
+		if a.showOpenDocument(resolved, at) {
 			return nil
 		}
-		path = resolved
+		path, page = resolved, at
 	}
-	_, err := a.windowGroup().newWindow(a, path, 0)
+	_, err := a.windowGroup().newWindow(a, path, page)
 	return err
 }
 

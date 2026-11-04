@@ -183,7 +183,7 @@ func (a *App) finishRemoteTask(task *remoteTask, result remoteResult) {
 		}
 		a.message = "wrote " + config.DocumentName(info.URI) + " to " + remote.Host(info.URI)
 		if task.quitAfter && !a.unsaved {
-			a.quit = true
+			a.closeWhenSaved = true // :wq closes the tab, not the window
 		}
 	}
 }

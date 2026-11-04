@@ -153,6 +153,23 @@ func TestNewTabOpensAnotherBlankTabEachTime(t *testing.T) {
 	}
 }
 
+func TestBackgroundTabKeepsItsOwnViewForItsSession(t *testing.T) {
+	app := tabsApp(t, testPages(t, 6))
+	if err := app.OpenTab(testPages(t, 6)); err != nil {
+		t.Fatal(err)
+	}
+	app.alignPageToAnchor(4)
+	second := app.tab
+	app.selectTab(0)
+	app.alignPageToAnchor(2)
+	app.toggleOverview() // the shown tab's, saving page 3 to return to
+	var saved viewState
+	app.withTab(second, func() { saved = app.captureViewState() })
+	if saved.page != 4 {
+		t.Fatalf("the background tab would be saved at page %d; want its own, 4", saved.page)
+	}
+}
+
 func TestOpenTabOfAMissingFileAddsNoTab(t *testing.T) {
 	app := tabsApp(t, testPages(t, 1))
 	app.runCommand(":tabnew " + filepath.Join(t.TempDir(), "missing.pdf"))
@@ -480,6 +497,14 @@ func TestRestoredTabsOpenWhenFirstShown(t *testing.T) {
 	if !ok || w.Active != 0 || !slices.Equal(w.Paths, paths) {
 		t.Fatalf("remembered %+v, want %q with the first shown", w, paths)
 	}
+
+	// A blank tab is not kept, and the one before it is shown in its place.
+	app.selectTab(2)
+	app.newEmptyTab()
+	app.rememberTabs()
+	if w, _ := config.LastWindowTabs(); w.Active != 2 || !slices.Equal(w.Paths, paths) {
+		t.Fatalf("remembered %+v with a blank tab shown last, want the third shown", w)
+	}
 }
 
 func TestLuaTabsAPI(t *testing.T) {
@@ -501,14 +526,22 @@ assert(#tabs == 2, "two tabs")
 assert(tabs[1].index == 1 and tabs[1].page_count == 3 and not tabs[1].active)
 assert(tabs[2].active and tabs[2].page == 1 and tabs[2].page_count == 2)
 assert(onon.tabs.current() == 2)
-assert(not pcall(onon.tabs.select, 3), "selecting a tab that is not there fails")
+assert(not pcall(onon.tabs.select, 0), "there is no tab 0")
 onon.tabs.select(1)`)
 	if app.tabIndex() != 0 {
 		t.Fatalf("onon.tabs.select(1) left %s", tabNames(app))
 	}
-	eval(`onon.tabs.close(2)`)
-	if len(app.tabs) != 1 {
-		t.Fatalf("onon.tabs.close(2) left %s", tabNames(app))
+	if _, err := app.runtime.Eval(`onon.tabs.select(3)`); err == nil {
+		t.Fatal("selecting a tab that is not there did not fail")
+	}
+	// Calls take effect in order, each counting the tabs the last left.
+	eval(fmt.Sprintf("onon.tabs.open(%q); onon.tabs.select(1); onon.tabs.select(3)", testPages(t, 2)))
+	if len(app.tabs) != 3 || app.tabIndex() != 2 {
+		t.Fatalf("selecting the tab just opened left %s", tabNames(app))
+	}
+	eval(`onon.tabs.close(1); onon.tabs.close(1)`)
+	if len(app.tabs) != 1 || app.docPath != app.tabs[0].docPath || app.tabIndex() != 0 {
+		t.Fatalf("closing tab 1 twice left %s", tabNames(app))
 	}
 }
 
