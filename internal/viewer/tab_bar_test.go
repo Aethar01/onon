@@ -285,6 +285,12 @@ func TestPillThemesFloatTheirTabsOverThePage(t *testing.T) {
 	if !app.overTabBar(a.X+2, gap.Y) || app.overTabBar(gap.X, gap.Y) {
 		t.Fatal("the floating bar does not take a press on a tab, or takes one between tabs")
 	}
+	if app.tabBarInTitleRow() {
+		top := app.px(app.style(config.ElementTabBar).Margin.V.Top)
+		if a.Y < top-0.5 {
+			t.Fatalf("pills in the title row at %v, above their margin %v", a.Y, top)
+		}
+	}
 	setOption(t, app, "tab_bar_position", "left")
 	if l := app.layoutEdges(); l.doc.X != 0 || l.tabBar.W == 0 {
 		t.Fatalf("floating sidebar moved the document to %v", l.doc)

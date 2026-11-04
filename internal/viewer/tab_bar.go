@@ -113,12 +113,23 @@ func (a *App) tabBarThickness(rest sdl.FRect) float32 {
 	h := a.tabRowHeight() + top + bottom
 	if a.tabBarSide() == "top" && rest.Y == 0 {
 		if a.tabBarWantsTitleRow() {
-			// In the row of the window's buttons, and centred on it.
-			return float32(math.Round(float64(max(h, a.titleRowHeight()))))
+			// In the row of the window's buttons, at least as deep as it.
+			if a.tabBarFloats() {
+				return float32(math.Round(float64(max(a.titleRowTabsTop()+h+float32(margin.Bottom), a.titleRowHeight()))))
+			}
+			return float32(math.Round(float64(max(h+float32(margin.Top+margin.Bottom), a.titleRowHeight()))))
 		}
 		h += a.titleRowHeight() // below it
 	}
 	return float32(math.Round(float64(h) + margin.Top + margin.Bottom))
+}
+
+// titleRowTabsTop is how far below the window's top floating tabs in the
+// title row sit: their margin's top, but no higher than centred on the row
+// of the window's buttons.
+func (a *App) titleRowTabsTop() float32 {
+	centred := max((a.titleRowHeight()-a.tabRowHeight())/2, 0)
+	return max(float32(a.tabBarMargin().Top), centred)
 }
 
 // tabBarMargin is the tab bar's margin in render pixels, turned to its
@@ -257,9 +268,6 @@ func (a *App) tabBarLayout() tabBarLayout {
 	// floating fills that band, its tabs below it.
 	band := a.tabBarBand(strip)
 	m := a.tabBarMargin()
-	if inTitleRow {
-		m.Top, m.Bottom = 0, 0
-	}
 	bar := sdl.FRect{X: strip.X + float32(m.Left), Y: strip.Y + float32(m.Top), W: max(strip.W-float32(m.Left+m.Right), 0), H: max(strip.H-float32(m.Top+m.Bottom), 0)}
 	floats := a.tabBarFloats()
 	if floats {
@@ -270,9 +278,9 @@ func (a *App) tabBarLayout() tabBarLayout {
 	l.bar = bar
 	l.area = sdl.FRect{X: bar.X + left, Y: bar.Y + band + top, W: max(bar.W-left-right, 0), H: max(bar.H-band-top-bottom, 0)}
 	if inTitleRow && floats {
-		// Pills centred on the row of the window's buttons.
-		h := a.tabRowHeight()
-		l.area.Y, l.area.H = strip.Y+max((a.titleRowHeight()-h)/2, 0), h
+		// Pills set off from the window's top by their margin, or centred
+		// on the row of the window's buttons.
+		l.area.Y, l.area.H = strip.Y+a.titleRowTabsTop(), a.tabRowHeight()
 	}
 	if inTitleRow {
 		// Leave the window's buttons their room, and room to drag the
