@@ -103,21 +103,42 @@ func (a *App) tabRowHeight() float32 {
 // tabBarThickness is how deep the tab bar is from its edge of rest, what
 // the bars and views of lower order left.
 func (a *App) tabBarThickness(rest sdl.FRect) float32 {
+	margin := a.tabBarMargin()
 	if a.tabBarVertical() {
 		width := float32(math.Round(a.uiLength(a.tabBarWidth(), float64(a.winW))))
-		return min(max(width, a.px(60)), float32(math.Round(float64(rest.W)*maxDockShare)))
+		width = min(max(width, a.px(60)), float32(math.Round(float64(rest.W)*maxDockShare)))
+		return width + float32(margin.Left+margin.Right)
 	}
 	top, _, bottom, _ := a.insets(a.style(config.ElementTabBar).Padding.V)
 	h := a.tabRowHeight() + top + bottom
 	if a.tabBarSide() == "top" && rest.Y == 0 {
 		if a.tabBarWantsTitleRow() {
-			h = max(h, a.titleRowHeight()) // in the row of the window's buttons
-		} else {
-			h += a.titleRowHeight() // below it
+			// In the row of the window's buttons, and centred on it.
+			return float32(math.Round(float64(max(h, a.titleRowHeight()))))
 		}
+		h += a.titleRowHeight() // below it
 	}
-	return float32(math.Round(float64(h)))
+	return float32(math.Round(float64(h) + margin.Top + margin.Bottom))
 }
+
+// tabBarMargin is the tab bar's margin in render pixels, turned to its
+// side as its border is: its bottom faces the document.
+func (a *App) tabBarMargin() config.Insets {
+	top, right, bottom, left := a.insets(a.style(config.ElementTabBar).Margin.V)
+	m := config.Insets{Top: float64(top), Right: float64(right), Bottom: float64(bottom), Left: float64(left)}
+	switch a.tabBarSide() {
+	case "bottom":
+		m.Top, m.Bottom = m.Bottom, m.Top
+	case "left":
+		m = config.Insets{Left: m.Top, Right: m.Bottom, Top: m.Left, Bottom: m.Right}
+	case "right":
+		m = config.Insets{Right: m.Top, Left: m.Bottom, Top: m.Left, Bottom: m.Right}
+	}
+	return m
+}
+
+// tabBarFloats reports whether the tab bar floats over the page.
+func (a *App) tabBarFloats() bool { return a.style(config.ElementTabBar).Floating.V }
 
 // titleRowHeight is the height of the row of the window's buttons along
 // its top: the system's title band, or the title bar onon draws.
@@ -221,18 +242,39 @@ func (l tabBarLayout) room() float32 {
 }
 
 func (a *App) tabBarLayout() tabBarLayout {
-	bar := a.layoutEdges().tabBar
-	l := tabBarLayout{bar: bar, vertical: a.tabBarVertical()}
+	strip := a.layoutEdges().tabBar
+	l := tabBarLayout{bar: strip, vertical: a.tabBarVertical()}
 	tabs := a.tabList()
-	if bar.W == 0 || bar.H == 0 || len(tabs) == 0 {
+	if strip.W == 0 || strip.H == 0 || len(tabs) == 0 {
 		return l
 	}
 	barStyle := a.style(config.ElementTabBar)
 	top, right, bottom, left := a.insets(barStyle.Padding.V)
 	gap := a.px(barStyle.Gap.V)
-	band := a.tabBarBand(bar)
+	inTitleRow := a.tabBarInTitleRow()
+	// The bar is its strip less its margin and, for a floating one, the
+	// band kept clear of the window's title row; a bar that is not
+	// floating fills that band, its tabs below it.
+	band := a.tabBarBand(strip)
+	m := a.tabBarMargin()
+	if inTitleRow {
+		m.Top, m.Bottom = 0, 0
+	}
+	bar := sdl.FRect{X: strip.X + float32(m.Left), Y: strip.Y + float32(m.Top), W: max(strip.W-float32(m.Left+m.Right), 0), H: max(strip.H-float32(m.Top+m.Bottom), 0)}
+	floats := a.tabBarFloats()
+	if floats {
+		bar.Y += band
+		bar.H = max(bar.H-band, 0)
+		band = 0
+	}
+	l.bar = bar
 	l.area = sdl.FRect{X: bar.X + left, Y: bar.Y + band + top, W: max(bar.W-left-right, 0), H: max(bar.H-band-top-bottom, 0)}
-	if a.tabBarInTitleRow() {
+	if inTitleRow && floats {
+		// Pills centred on the row of the window's buttons.
+		h := a.tabRowHeight()
+		l.area.Y, l.area.H = strip.Y+max((a.titleRowHeight()-h)/2, 0), h
+	}
+	if inTitleRow {
 		// Leave the window's buttons their room, and room to drag the
 		// window by however many tabs there are.
 		lead := a.px(windowButtonsLeading)
@@ -356,9 +398,16 @@ func pointIn(p sdl.FPoint, r sdl.FRect) bool {
 	return p.X >= r.X && p.X < r.X+r.W && p.Y >= r.Y && p.Y < r.Y+r.H
 }
 
-// overTabBar reports whether x, y, in render pixels, is in the tab bar.
+// overTabBar reports whether x, y, in render pixels, is in the tab bar:
+// for one floating over the page, on a tab, the page showing between.
 func (a *App) overTabBar(x, y float32) bool {
-	return a.tabBarShown() && pointIn(sdl.FPoint{X: x, Y: y}, a.layoutEdges().tabBar)
+	if !a.tabBarShown() {
+		return false
+	}
+	if a.tabBarFloats() {
+		return a.tabAt(float64(x), float64(y)) >= 0
+	}
+	return pointIn(sdl.FPoint{X: x, Y: y}, a.layoutEdges().tabBar)
 }
 
 // tabBarEdgeAt reports whether x, y is at the inner edge of a bar at the
@@ -417,9 +466,10 @@ func (a *App) drawTabBar(renderer *sdl.Renderer) {
 	if a.drawBoxParts(renderer, &bar, l.bar, boxBody) {
 		defer a.drawBoxParts(renderer, &bar, l.bar, boxBorder)
 	}
-	clip := sdl.FRect{X: l.area.X, Y: l.bar.Y, W: l.area.W, H: l.bar.H}
+	// Tabs are clipped along the bar only, so the shadows of pills show.
+	clip := sdl.FRect{X: l.area.X, W: l.area.W, H: float32(a.winH)}
 	if l.vertical {
-		clip = sdl.FRect{X: l.bar.X, Y: l.area.Y, W: l.bar.W, H: l.area.H}
+		clip = sdl.FRect{Y: l.area.Y, W: float32(a.winW), H: l.area.H}
 	}
 	_ = a.withClip(renderer, clip, func() error {
 		dragged := -1

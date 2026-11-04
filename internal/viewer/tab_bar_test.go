@@ -262,3 +262,31 @@ func TestTabBarToggles(t *testing.T) {
 		t.Fatal("tab_bar_visible changed, but the toggle still decides")
 	}
 }
+
+func TestPillThemesFloatTheirTabsOverThePage(t *testing.T) {
+	app := tabsApp(t, testPages(t, 2))
+	if app.fontFace == nil {
+		t.Skip("no UI font")
+	}
+	setOption(t, app, "theme.status_bar_style", "pill")
+	_, alone := app.viewportSize()
+	if err := app.OpenTab(testPages(t, 2)); err != nil {
+		t.Fatal(err)
+	}
+	if !app.tabBarFloats() || !app.tabBarShown() {
+		t.Fatal("a pill theme's tab bar does not float")
+	}
+	if _, h := app.viewportSize(); h != alone {
+		t.Fatalf("viewport %d high under floating tabs, want all of it, %d", h, alone)
+	}
+	l := app.tabBarLayout()
+	a, b := l.tabs[0], l.tabs[1]
+	gap := sdl.FPoint{X: (a.X + a.W + b.X) / 2, Y: a.Y + a.H/2}
+	if !app.overTabBar(a.X+2, gap.Y) || app.overTabBar(gap.X, gap.Y) {
+		t.Fatal("the floating bar does not take a press on a tab, or takes one between tabs")
+	}
+	setOption(t, app, "tab_bar_position", "left")
+	if l := app.layoutEdges(); l.doc.X != 0 || l.tabBar.W == 0 {
+		t.Fatalf("floating sidebar moved the document to %v", l.doc)
+	}
+}

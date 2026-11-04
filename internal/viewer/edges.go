@@ -78,16 +78,16 @@ func (a *App) layoutEdges() edgeLayout {
 		rest.Y, rest.H = inset, max(rest.H-inset, 1)
 	}
 	var l edgeLayout
-	var floatStatus bool
+	var floating []edgeItem // laid over the document once it is known
 	for _, item := range a.edgeItems() {
+		if a.edgeFloats(item) {
+			floating = append(floating, item)
+			continue
+		}
 		var size float32
 		switch item.kind {
 		case edgeStatus:
 			size = float32(a.statusStripHeight())
-			if a.style(config.ElementStatus).Floating.V {
-				floatStatus = true // laid over the document once it is known
-				continue
-			}
 		case edgeTabBar:
 			size = a.tabBarThickness(rest)
 		case edgePanel:
@@ -110,11 +110,29 @@ func (a *App) layoutEdges() edgeLayout {
 		}
 	}
 	l.doc = sdl.FRect{X: rest.X, Y: rest.Y, W: max(rest.W, 1), H: max(rest.H, 1)}
-	if floatStatus {
-		h := float32(a.statusStripHeight())
-		l.status = sdl.FRect{X: rest.X, Y: rest.Y + rest.H - h, W: rest.W, H: h}
+	// What floats lies over the document's edges, in its order too.
+	over := l.doc
+	for _, item := range floating {
+		switch item.kind {
+		case edgeStatus:
+			l.status = takeEdge(&over, item.side, float32(a.statusStripHeight()))
+		case edgeTabBar:
+			l.tabBar = takeEdge(&over, item.side, a.tabBarThickness(over))
+		}
 	}
 	return l
+}
+
+// edgeFloats reports whether item floats over the document rather than
+// taking its side from it.
+func (a *App) edgeFloats(item edgeItem) bool {
+	switch item.kind {
+	case edgeStatus:
+		return a.style(config.ElementStatus).Floating.V
+	case edgeTabBar:
+		return a.style(config.ElementTabBar).Floating.V
+	}
+	return false
 }
 
 // takeEdge takes a strip size deep from side of rest, and returns it.
