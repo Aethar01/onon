@@ -61,3 +61,24 @@ func TestMenuItemStateNamesMenuActions(t *testing.T) {
 		}
 	}
 }
+
+// The menu bar is drawn again only when the bindings change, not each
+// time a tab is given the window's config.
+func TestMenuBarRedrawnOnlyForNewBindings(t *testing.T) {
+	draws := 0
+	drawMenuBar = func([]menubar.Menu, map[string]string) { draws++ }
+	menuBarBindings = nil
+	t.Cleanup(func() { drawMenuBar, menuBarBindings = setNativeMenuBar, nil })
+
+	app := tabsApp(t, testPages(t, 2))
+	app.installMenuBar()
+	app.newEmptyTab()
+	app.newEmptyTab()
+	if draws != 1 {
+		t.Fatalf("menu bar drawn %d times for two new tabs, want once", draws)
+	}
+	app.setKeyBindings(map[string]string{"x": "new_tab"})
+	if draws != 2 {
+		t.Fatalf("menu bar drawn %d times, want again for new bindings", draws)
+	}
+}

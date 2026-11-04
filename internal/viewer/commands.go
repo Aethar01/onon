@@ -214,6 +214,20 @@ func (a *App) RunCommand(command string) error {
 // applyConfigState applies cfg in full, view settings included, as at
 // startup and when a document opens.
 func (a *App) applyConfigState(cfg config.Config) {
+	a.applyTabConfigState(cfg)
+	// The UI font is the window's: loading it reads it from disk and
+	// drops every text texture, so it is kept unless it changed.
+	if a.fontFace == nil || a.uiFont != cfg.Theme.Font || a.uiScale != a.displayScale() {
+		a.loadUIFont()
+	} else {
+		a.masks.clear() // shapes drawn by Lua may draw differently
+	}
+}
+
+// applyTabConfigState applies cfg to the tab shown as applyConfigState
+// does, leaving the window's font and shapes as they are, for a new tab
+// given the config the window has already.
+func (a *App) applyTabConfigState(cfg config.Config) {
 	a.config = cfg
 	remote.SetHTTPHeaders(cfg.HTTPHeaders)
 	a.document.setRemotePolling(cfg.AutoReload)
@@ -228,7 +242,6 @@ func (a *App) applyConfigState(cfg config.Config) {
 	a.statusBarShown = cfg.StatusBarVisible
 	a.applyConfigSettings()
 	a.appliedConfig, a.configSeen = cfg, a.configGeneration
-	a.loadUIFont()
 }
 
 // applyConfig applies a changed config to the running viewer, only as far as
@@ -361,6 +374,7 @@ func (a *App) loadUIFont() {
 	a.closeUIFonts()
 	a.uiScale = a.displayScale()
 	font := a.config.Theme.Font
+	a.uiFont = font
 	var warning error
 	a.fontFace, a.headingFace, warning = loadUIFonts(font, int(math.Round(float64(font.Size)*a.uiScale)))
 	a.logf("load UI font family=%q path=%q size=%d scale=%.2f", font.Family, font.Path, font.Size, a.uiScale)

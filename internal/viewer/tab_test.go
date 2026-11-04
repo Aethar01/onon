@@ -605,3 +605,17 @@ func TestHeldNextTabCycles(t *testing.T) {
 		t.Fatalf("holding next_tab through three tabs showed tab %d, want back to 0", app.tabIndex())
 	}
 }
+
+// A new tab keeps the window's UI font rather than loading it again,
+// which is slow enough to lag a held new_tab.
+func TestNewTabKeepsUIFont(t *testing.T) {
+	app := tabsApp(t, testPages(t, 2))
+	face := app.fontFace
+	if face == nil {
+		t.Fatal("no UI font loaded")
+	}
+	app.newEmptyTab()
+	if app.fontFace != face {
+		t.Fatal("new_tab loaded the UI font again")
+	}
+}

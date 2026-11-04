@@ -1,6 +1,10 @@
 package viewer
 
-import "onon/internal/menubar"
+import (
+	"maps"
+
+	"onon/internal/menubar"
+)
 
 // On systems with a menu bar, the viewer shows the one menubar describes,
 // each item with a key bound to its action. setNativeMenuBar draws it again
@@ -13,10 +17,20 @@ func (a *App) installMenuBar() {
 	a.updateMenuBar()
 }
 
+// drawMenuBar draws the menu bar; tests replace it to count the draws.
+var drawMenuBar = setNativeMenuBar
+
+// menuBarBindings are the bindings the menu bar was last drawn with, for
+// the bar is the process's, and drawing it again replaces every menu in
+// it, which is slow enough to stutter a held key that opens a tab.
+var menuBarBindings map[string]string
+
 func (a *App) updateMenuBar() {
-	if a.menuBarShown {
-		setNativeMenuBar(menubar.Menus(), a.sequenceLookup)
+	if !a.menuBarShown || menuBarBindings != nil && maps.Equal(menuBarBindings, a.sequenceLookup) {
+		return
 	}
+	menuBarBindings = a.sequenceLookup
+	drawMenuBar(menubar.Menus(), a.sequenceLookup)
 }
 
 // menuItemState reports whether an item running action can be chosen now,

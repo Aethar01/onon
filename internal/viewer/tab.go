@@ -101,7 +101,7 @@ func (a *App) emptyTab() *tab {
 	t.zoom = a.clampZoom(1)
 	t.cache.byteLimit = pageCacheByteLimit(a.config)
 	t.appliedConfig, t.configSeen = a.config, a.configGeneration
-	a.withTab(t, func() { a.applyConfigState(a.config) })
+	a.withTab(t, func() { a.applyTabConfigState(a.config) })
 	return t
 }
 
