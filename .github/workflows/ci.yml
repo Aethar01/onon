@@ -60,7 +60,7 @@ jobs:
         run: go build ./...
 
       - name: Save Go cache
-        if: github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
+        if: (github.ref == 'refs/heads/main' || github.head_ref == 'faster-ci') && steps.go-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: |
@@ -140,7 +140,7 @@ jobs:
           env -u DYLD_LIBRARY_PATH "$app/Contents/MacOS/onon" -v
 
       - name: Save Go cache
-        if: github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
+        if: (github.ref == 'refs/heads/main' || github.head_ref == 'faster-ci') && steps.go-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: |
@@ -200,7 +200,7 @@ jobs:
         run: go build ./...
 
       - name: Save Go cache
-        if: github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
+        if: (github.ref == 'refs/heads/main' || github.head_ref == 'faster-ci') && steps.go-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: |
