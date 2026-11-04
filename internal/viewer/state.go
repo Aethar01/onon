@@ -257,8 +257,11 @@ type interactionState struct {
 	// actionKeycode is the key whose press is running the current action,
 	// or 0.
 	actionKeycode sdl.Keycode
-	lastKeyUpCode sdl.Keycode
-	lastKeyUpAt   time.Time
+	// actionRepeated is set while an action runs again without a fresh
+	// press: for a key held down, or after the first of a count.
+	actionRepeated bool
+	lastKeyUpCode  sdl.Keycode
+	lastKeyUpAt    time.Time
 }
 
 type uiState struct {
