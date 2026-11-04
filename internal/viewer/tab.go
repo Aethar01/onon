@@ -122,6 +122,12 @@ func (a *App) OpenTab(path string) error {
 	if a.showOpenDocument(path, page) {
 		return nil
 	}
+	return a.openNewTab(path, page)
+}
+
+// openNewTab opens path, already resolved, in a new tab after the one
+// shown, at page when page is above 0, even when another tab has it open.
+func (a *App) openNewTab(path string, page int) error {
 	if a.tabIsEmpty() {
 		return a.openInTab(path, page)
 	}

@@ -320,6 +320,11 @@ func TestLastWindowOpensDocumentsInNewTabs(t *testing.T) {
 	if app.tabIndex() != 0 {
 		t.Fatalf("run tabfirst left %s", tabNames(app))
 	}
+	// --tab without --unique: a new tab even though one shows the document.
+	sendWhilePolling(t, app, last.Address, instance.Request{Command: "open-tab", Path: config.AbsoluteDocumentPath(second)})
+	if len(app.tabs) != 3 || app.tabIndex() != 1 || app.docPath != config.AbsoluteDocumentPath(second) {
+		t.Fatalf("open-tab of an open document gave tabs %s, want a second tab of it", tabNames(app))
+	}
 }
 
 func TestDroppedFileOpensInANewTab(t *testing.T) {

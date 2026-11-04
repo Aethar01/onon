@@ -46,7 +46,7 @@ func run() error {
 	flag.BoolVar(&noPlugins, "no-plugins", false, "disable Lua plugin loading")
 	flag.BoolVar(&noConfig, "no-config", false, "start from built-in defaults, ignoring configuration files")
 	flag.BoolVar(&unique, "unique", false, "reuse the window already showing this document, if there is one")
-	flag.BoolVar(&newTab, "tab", false, "open the document in a new tab of the window focused last, or show the tab that has it open")
+	flag.BoolVar(&newTab, "tab", false, "open the document in a new tab of the window focused last; with --unique, show the tab that has it open instead")
 	flag.StringVar(&gotoSpec, "goto", "", "open at PAGE, or at X:Y points from the top-left corner of PAGE")
 	flag.StringVar(&command, "command", "", "run a viewer command, as typed after ':'")
 	flag.Parse()
@@ -119,11 +119,11 @@ func run() error {
 		log.Printf("startup config=%q page=%d doc=%q", cfgPath, startPage, docPath)
 	}
 
-	// With --unique or --tab, a tab already showing this document does the
-	// work and this process exits. Any other document is a different
-	// instance, which --tab opens in a new tab of the window focused last.
+	// With --unique, a tab already showing this document does the work and
+	// this process exits. --tab opens the document in a new tab of the
+	// window focused last, even when another tab shows it.
 	handOff := func() (bool, error) {
-		if unique || newTab {
+		if unique {
 			if docPath != "" {
 				handled, err := handOffToRunningInstance(docPath, target, command)
 				if handled && verbose {

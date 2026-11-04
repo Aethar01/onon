@@ -185,8 +185,18 @@ func (a *App) pollWindowCommands() bool {
 // applyInstanceOpenTab opens a document in a new tab, or shows the tab it
 // is open in, at the page asked for.
 func (a *App) applyInstanceOpenTab(request instance.Request) error {
-	if err := a.OpenTab(request.Path); err != nil {
-		return err
+	if request.Path == "" {
+		a.newEmptyTab()
+	} else {
+		// A new tab even when one shows the document: --unique, with
+		// --tab, has found any such tab before asking.
+		path, page, err := a.resolveDocumentArg(request.Path)
+		if err != nil {
+			return err
+		}
+		if err := a.openNewTab(path, page); err != nil {
+			return err
+		}
 	}
 	// With native tabs the tab is a window of its own, now the focused one.
 	w := a.windowGroup().focused

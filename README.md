@@ -206,10 +206,10 @@ With no window showing the document, `--unique` opens one and applies any
 `--goto` and `--command` as it starts. On macOS one onon process opens every window, so the
 system can gather them into tabs: a document named on the command line goes
 to the running onon, as one Finder sends does, and `open_documents` says
-where it opens. `--tab` also shows the tab that has the
-document open, and otherwise opens it in a new tab of the window focused last,
-started with the same `--config`, `--no-config` and `--no-plugins`; with no
-document it opens an empty tab there. A different document is a different
+where it opens. `--tab` opens the document in a new tab of
+the window focused last, started with the same `--config`, `--no-config` and
+`--no-plugins`, even when another tab shows it; with `--unique` too, the tab
+showing it wins. With no document, `--tab` opens an empty tab there. A different document is a different
 instance, so two files give two windows. The address follows the document: a
 tab that switches files becomes reachable under the new one.
 
