@@ -136,6 +136,23 @@ func TestOpenTabShowsTheTabAlreadyShowingIt(t *testing.T) {
 	}
 }
 
+func TestNewTabOpensAnotherBlankTabEachTime(t *testing.T) {
+	app := tabsApp(t, testPages(t, 2))
+	for range 3 {
+		app.newEmptyTab()
+	}
+	if len(app.tabList()) != 4 || app.tabIndex() != 3 || !app.tabIsEmpty() {
+		t.Fatalf("tabs %q; want the document and three blank tabs, the last shown", tabNames(app))
+	}
+	second := testPages(t, 2)
+	if err := app.OpenTab(second); err != nil {
+		t.Fatal(err)
+	}
+	if len(app.tabList()) != 4 || app.docPath != config.AbsoluteDocumentPath(second) {
+		t.Fatalf("tabs %q; want the document in the blank tab shown", tabNames(app))
+	}
+}
+
 func TestOpenTabOfAMissingFileAddsNoTab(t *testing.T) {
 	app := tabsApp(t, testPages(t, 1))
 	app.runCommand(":tabnew " + filepath.Join(t.TempDir(), "missing.pdf"))

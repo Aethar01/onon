@@ -226,22 +226,19 @@ func (a *App) showOpenDocument(path string, page int) bool {
 	return false
 }
 
-// newEmptyTab opens a blank tab, with no document; with tabs off, a blank
-// window.
+// newEmptyTab opens a blank tab, with no document, however many are open
+// already; with tabs off, a blank window.
 func (a *App) newEmptyTab() {
-	if !a.tabIsEmpty() {
-		if a.tabsOff() {
-			if err := a.openInNewWindow(""); err != nil {
-				a.message = err.Error()
-			}
-			return
+	switch {
+	case a.tabsOff():
+		if err := a.openInNewWindow(""); err != nil {
+			a.message = err.Error()
 		}
-		if a.nativeTabsOn() {
-			if _, err := a.openNativeTab("", 0); err != nil {
-				a.message = err.Error()
-			}
-			return
+	case a.nativeTabsOn():
+		if _, err := a.openNativeTab("", 0); err != nil {
+			a.message = err.Error()
 		}
+	default:
 		a.insertTab(a.emptyTab())
 	}
 }
