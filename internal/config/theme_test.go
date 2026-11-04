@@ -247,8 +247,8 @@ func TestThemeErrors(t *testing.T) {
 
 func TestStatusBarStyleNormalizes(t *testing.T) {
 	for raw, want := range map[string]string{"pill": "pill", " PILL ": "pill", "bar": "bar", "floating": "bar", "": "bar"} {
-		if got := NormalizeStatusBarStyle(raw); got != want {
-			t.Errorf("NormalizeStatusBarStyle(%q) = %q, want %q", raw, got, want)
+		if got := NormalizeBarStyle(raw); got != want {
+			t.Errorf("NormalizeBarStyle(%q) = %q, want %q", raw, got, want)
 		}
 	}
 }

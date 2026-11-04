@@ -268,7 +268,7 @@ func TestPillThemesFloatTheirTabsOverThePage(t *testing.T) {
 	if app.fontFace == nil {
 		t.Skip("no UI font")
 	}
-	setOption(t, app, "theme.status_bar_style", "pill")
+	setOption(t, app, "theme.tab_bar_style", "pill")
 	_, alone := app.viewportSize()
 	if err := app.OpenTab(testPages(t, 2)); err != nil {
 		t.Fatal(err)

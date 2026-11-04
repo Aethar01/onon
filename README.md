@@ -304,6 +304,7 @@ onon.theme = {
   alt = { accent = "#88aa88" }, -- colours for alternate-color mode
   font = { family = "Iosevka", size = 14 },
   status_bar_style = "pill",   -- float the status bar over the page
+  tab_bar_style = "pill",      -- and the tabs
   motion = { scale = 0 },      -- no animation
 }
 ```

@@ -93,7 +93,7 @@ var elementSpecs = [ElementCount]struct {
 	ElementTitleBar:          {"title_bar", noElement, slices.Concat(boxProps, []string{"text"}), "Behind the window buttons onon draws where the system draws no title bar, as on Windows. Its text colour draws the buttons' symbols."},
 	ElementTitleButton:       {"title_button", noElement, slices.Concat(boxProps, []string{"text"}), "A window button under the pointer, drawn a little fainter while pressed."},
 	ElementTitleClose:        {"title_close", ElementTitleButton, slices.Concat(boxProps, []string{"text"}), "The close button under the pointer."},
-	ElementTabBar:            {"tab_bar", noElement, slices.Concat(boxProps, []string{"padding", "margin", "gap", "floating"}), "onon's tab bar, where tab_bar_position puts it and tab_bar_visible shows it, wherever the system draws no tabs of its own. Its padding surrounds the tabs, margin sets it off the window's edges, gap is the space between tabs, and floating draws it over the page instead of beside it, as the status bar's does; a theme with status_bar_style = \"pill\" floats its tabs as pills. In the title row, floating tabs sit their top margin below the window's top, or centred on the window's buttons if that is lower. Border sides and margins are given as for a bar at the top, and turn with the bar: its bottom is the side facing the document."},
+	ElementTabBar:            {"tab_bar", noElement, slices.Concat(boxProps, []string{"padding", "margin", "gap", "floating"}), "onon's tab bar, where tab_bar_position puts it and tab_bar_visible shows it, wherever the system draws no tabs of its own. Its padding surrounds the tabs, margin sets it off the window's edges, gap is the space between tabs, and floating draws it over the page instead of beside it, as the status bar's does; a theme with tab_bar_style = \"pill\" floats its tabs as pills. In the title row, floating tabs sit their top margin below the window's top, or centred on the window's buttons if that is lower. Border sides and margins are given as for a bar at the top, and turn with the bar: its bottom is the side facing the document."},
 	ElementTab:               {"tab", noElement, slices.Concat(boxProps, textProps, []string{"min_width", "max_width"}), "A tab in the tab bar, named for its document. Its secondary colour marks a tab with unsaved edits, and its padding sets the bar's height. min_width and max_width bound its width in a bar at the top or bottom; tab_width = \"fill\" ignores max_width. Its sides turn with the bar, as tab_bar's do."},
 	ElementTabSelected:       {"tab_selected", ElementTab, slices.Concat(boxProps, textProps, []string{"min_width", "max_width"}), "The tab shown."},
 	ElementLoader:            {"loader", noElement, []string{"fill", "opacity", "draw"}, "The drops bouncing on a page still rendering; its box is the page."},
@@ -254,6 +254,7 @@ func elementDefaults(t *Theme, e Element) Style {
 		shadow = defaultShadow
 	}
 	pill := t.StatusBarStyle == "pill"
+	tabPills := t.TabBarStyle == "pill"
 	var s Style
 	switch e {
 	case ElementPanel:
@@ -372,9 +373,9 @@ func elementDefaults(t *Theme, e Element) Style {
 		s.Fill = some(Color{RGB: [3]uint8{0xc4, 0x2b, 0x1c}, Alpha: 1})
 		s.Text = some(Color{RGB: [3]uint8{0xff, 0xff, 0xff}, Alpha: 1})
 	case ElementTabBar:
-		// The tab bar follows the status bar: a bar, or pills floating
-		// over the page, set off from the window's edges as they are.
-		if pill {
+		// A bar, or pills floating over the page, set off from the
+		// window's edges as the status bar's are.
+		if tabPills {
 			s.Floating = some(true)
 			s.Margin = some(Insets{Top: 10, Right: 10, Left: 10})
 			s.Gap = some(8.0)
@@ -389,19 +390,18 @@ func elementDefaults(t *Theme, e Element) Style {
 		s.Padding = some(symmetric(line/2, textInset))
 		s.MinWidth = some(90.0)
 		s.MaxWidth = some(220.0)
-		if pill {
+		if tabPills {
 			if radius > 0 {
 				s.Shape = some(Shape{Kind: "pill"})
 			}
 			s.Fill = some(paletteColor("status_bar", 1))
 			s.BorderWidth = some(1.0)
 			s.Shadow = some(shadow)
-			s.Padding = some(symmetric(line/2, float64(t.StatusBarPadding)))
 		}
 	case ElementTabSelected:
 		s.Text = some(paletteColor("foreground", 1))
 		s.BorderColor = some(paletteColor("accent", 1))
-		if !pill {
+		if !tabPills {
 			// Open onto the pages below it, marked at its edge as the
 			// selected row is.
 			s.Fill = some(paletteColor("background", 1))
