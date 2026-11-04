@@ -178,7 +178,7 @@ func (a *App) noteTitleBarPointer(x, y float64, inWindow bool) {
 	in := inWindow && y >= 0 && y < l.height && x >= 0 && x < l.width
 	// A pressed button stays shown until released, wherever the pointer is,
 	// and the buttons stay in the tab bar while it shares their row.
-	changed := t.setShown(in || t.pressed != titleButtonNone || a.tabBarShown(), now)
+	changed := t.setShown(in || t.pressed != titleButtonNone || a.tabBarSharesTitleRow(), now)
 	hovered := titleButtonNone
 	if in {
 		hovered = l.buttonAt(x, y)
@@ -202,7 +202,7 @@ func (a *App) advanceTitleBar() {
 		return
 	}
 	t := a.titleBar
-	if a.tabBarShown() && t.setShown(true, time.Now()) {
+	if a.tabBarSharesTitleRow() && t.setShown(true, time.Now()) {
 		a.pendingRedraw = true // in the tab bar's row, the buttons stay
 	}
 	// A press the system took for its own, as Windows does the maximize

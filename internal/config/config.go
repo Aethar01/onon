@@ -72,6 +72,14 @@ type Config struct {
 	RecentFilesMax        int
 	RestoreTabs           bool
 	NativeTabs            bool
+	TabBarPosition        string // top, bottom, left or right
+	TabBarVisible         string // auto, always or never
+	TabBarWidth           UISize // across a bar at the left or right
+	TabBarResizable       bool
+	TabBarOrder           int
+	TabWidth              string // fit or fill
+	TabDrag               bool
+	StatusBarOrder        int
 	AutoReload            bool
 	AutoReloadDelayMS     int
 	LinkPreviewDelayMS    int
@@ -158,6 +166,9 @@ type UIOverlay struct {
 	// a box, Anchor being where it sits while that is not shown.
 	Attach *UIAttach
 	Dock   string
+	// Order places a docked view among the bars and views along the
+	// window's edges: lower is nearer the edge. See DockOrderPanel.
+	Order int
 	// Resizable lets the pointer drag a docked view's inner edge.
 	Resizable bool
 	// Stack opens a modal view over the menu open, which it returns to,
@@ -220,6 +231,19 @@ var (
 	UIAnchors = []string{"center", "top", "bottom", "left", "right", "top_left", "top_right", "bottom_left", "bottom_right"}
 	UIDocks   = []string{"left", "right", "top", "bottom"}
 )
+
+// The order of what lines the window's edges, unless set otherwise: each
+// takes its side of what those of lower order leave, so the status bar
+// spans the window below a tab bar at the left, and a panel docked at the
+// bottom sits above both.
+const (
+	DockOrderStatusBar = 10
+	DockOrderTabBar    = 20
+	DockOrderPanel     = 30
+)
+
+// TabBarPositions are where the tab bar may sit.
+var TabBarPositions = []string{"top", "bottom", "left", "right"}
 
 // UIColumn is a column of a table of rows: its title, its width, or with
 // Fill a share of what the others leave, and how its cells align.

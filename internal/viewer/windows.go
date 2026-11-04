@@ -192,8 +192,22 @@ func (g *windowGroup) closeQuitWindows() {
 		if !w.quit {
 			continue
 		}
+		var peer *App // a tab of the same tab group, which tells plugins
+		index := -1
+		if w.nativeTabsOn() {
+			index = w.userTabIndex()
+			for _, other := range w.nativeTabApps() {
+				if other != w && !other.quit {
+					peer = other
+					break
+				}
+			}
+		}
 		g.windows = slices.DeleteFunc(g.windows, func(other *App) bool { return other == w })
 		w.closeWindow()
+		if peer != nil {
+			defer peer.emitTabListChanged("closed", index)
+		}
 		if g.focused == w {
 			g.focus(g.windows[len(g.windows)-1])
 		}

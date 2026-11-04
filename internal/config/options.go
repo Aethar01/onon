@@ -146,6 +146,81 @@ func stringOption(description string, get func(*Config) string, set func(*Config
 
 // stringListOption holds a Lua array of strings. The :set form accepts
 // comma- or space-separated words.
+// choiceOption is a string option that takes one of choices. aliases, if
+// any, maps a boolean to the choice it stands for.
+func choiceOption(description string, choices []string, aliases map[bool]string, get func(*Config) string, set func(*Config, string)) optionDesc {
+	choose := func(cfg *Config, value string) error {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if !slices.Contains(choices, value) {
+			return fmt.Errorf("expected one of %s", strings.Join(choices, ", "))
+		}
+		set(cfg, value)
+		return nil
+	}
+	return optionDesc{
+		kind:        "string",
+		description: description,
+		get:         func(L *lua.LState, cfg *Config) lua.LValue { return lua.LString(get(cfg)) },
+		format:      func(cfg *Config) string { return strconv.Quote(get(cfg)) },
+		applyText: func(cfg *Config, raw string) error {
+			if b, err := parseBoolOption(raw); err == nil && aliases != nil {
+				return choose(cfg, aliases[b])
+			}
+			value, err := parseStringOption(raw)
+			if err != nil {
+				return err
+			}
+			return choose(cfg, value)
+		},
+		apply: func(cfg *Config, value lua.LValue) error {
+			if value.Type() == lua.LTBool && aliases != nil {
+				return choose(cfg, aliases[lua.LVAsBool(value)])
+			}
+			if value.Type() != lua.LTString {
+				return fmt.Errorf("expected one of %s", strings.Join(choices, ", "))
+			}
+			return choose(cfg, value.String())
+		},
+	}
+}
+
+// uiSizeOption is a length in logical pixels, or a percentage of the
+// window's as a string such as "20%".
+func uiSizeOption(description string, get func(*Config) UISize, set func(*Config, UISize)) optionDesc {
+	return optionDesc{
+		kind:        "number|string",
+		description: description,
+		get:         func(L *lua.LState, cfg *Config) lua.LValue { return uiSizeValue(get(cfg)) },
+		format: func(cfg *Config) string {
+			if size := get(cfg); size.Percent {
+				return strconv.Quote(uiSizeValue(size).String())
+			}
+			return uiSizeValue(get(cfg)).String()
+		},
+		applyText: func(cfg *Config, raw string) error {
+			raw = strings.TrimSpace(raw)
+			var value lua.LValue = lua.LString(strings.Trim(raw, `"'`))
+			if n, err := strconv.ParseFloat(raw, 64); err == nil {
+				value = lua.LNumber(n)
+			}
+			size, err := luaUISize(value)
+			if err != nil {
+				return err
+			}
+			set(cfg, size)
+			return nil
+		},
+		apply: func(cfg *Config, value lua.LValue) error {
+			size, err := luaUISize(value)
+			if err != nil {
+				return err
+			}
+			set(cfg, size)
+			return nil
+		},
+	}
+}
+
 func stringListOption(description string, get func(*Config) []string, set func(*Config, []string)) optionDesc {
 	return optionDesc{
 		kind:        "table",
@@ -669,6 +744,14 @@ var configOptions = map[string]optionDesc{
 	"overview_max_columns":   intOption("Most columns the page overview shows, whether fitted to the window or set with zoom_out.", func(c *Config) int { return c.OverviewMaxColumns }, func(c *Config, v int) { c.OverviewMaxColumns = max(1, v) }),
 	"overview_gap":           intOption("Gap in pixels between the page overview's cells.", func(c *Config) int { return c.OverviewGap }, func(c *Config, v int) { c.OverviewGap = max(0, v) }),
 	"native_tabs":            boolOption("On macOS, let the system gather windows into tabs, as other Mac apps do, with Merge All Windows and the tab bar's +; false draws onon's own tab bar, as on other systems. Applies to windows opened after it changes.", func(c *Config) bool { return c.NativeTabs }, func(c *Config, v bool) { c.NativeTabs = v }),
+	"tab_bar_position":       choiceOption("Where onon draws its tab bar: top, bottom, left or right. Anywhere but the top, macOS's own tabs give way to it, in windows opened after it changes.", TabBarPositions, nil, func(c *Config) string { return c.TabBarPosition }, func(c *Config, v string) { c.TabBarPosition = v }),
+	"tab_bar_visible":        choiceOption("When onon's tab bar shows: auto, while the window has more than one tab; always; or never, leaving gt, :tabs and the tabs menu. true is always and false never.", []string{"auto", "always", "never"}, map[bool]string{true: "always", false: "never"}, func(c *Config) string { return c.TabBarVisible }, func(c *Config, v string) { c.TabBarVisible = v }),
+	"tab_bar_width":          uiSizeOption("The width of a tab bar at the left or right, in logical pixels or as a percentage of the window's, such as \"20%\".", func(c *Config) UISize { return c.TabBarWidth }, func(c *Config, v UISize) { c.TabBarWidth = v }),
+	"tab_bar_resizable":      boolOption("Let the pointer drag the inner edge of a tab bar at the left or right to resize it.", func(c *Config) bool { return c.TabBarResizable }, func(c *Config, v bool) { c.TabBarResizable = v }),
+	"tab_bar_order":          intOption("Where the tab bar sits among the bars and docked views along the window's edges: each takes its side of what those of lower order leave. The status bar is 10 and docked views 30 unless they say, so by default a tab bar at the bottom sits above the status bar, and one at the left stops at it.", func(c *Config) int { return c.TabBarOrder }, func(c *Config, v int) { c.TabBarOrder = v }),
+	"tab_width":              choiceOption("How wide the tabs in a tab bar at the top or bottom are: fit, each as wide as its name, between the tab element's min_width and max_width; or fill, sharing the bar's width equally, no narrower than min_width.", []string{"fit", "fill"}, nil, func(c *Config) string { return c.TabWidth }, func(c *Config, v string) { c.TabWidth = v }),
+	"tab_drag":               boolOption("Let the pointer drag tabs in onon's tab bar to reorder them.", func(c *Config) bool { return c.TabDrag }, func(c *Config, v bool) { c.TabDrag = v }),
+	"status_bar_order":       intOption("Where the status bar sits among the bars and docked views along the window's edges, as tab_bar_order says; lower is nearer the edge.", func(c *Config) int { return c.StatusBarOrder }, func(c *Config, v int) { c.StatusBarOrder = v }),
 	"restore_tabs":           boolOption("Open the tabs the window had when onon last closed with several, when it starts with no document named, each loaded when first shown.", func(c *Config) bool { return c.RestoreTabs }, func(c *Config, v bool) { c.RestoreTabs = v }),
 	"recent_files_max":       intOption("Maximum recent files retained and displayed.", func(c *Config) int { return c.RecentFilesMax }, func(c *Config, v int) { c.RecentFilesMax = max(0, v) }),
 	"scroll_step":            intOption("Keyboard and mouse scroll distance in pixels.", func(c *Config) int { return c.ScrollStep }, func(c *Config, v int) { c.ScrollStep = v }),

@@ -522,6 +522,31 @@ top:show()`)
 	}
 }
 
+func TestLuaUIDockOrderPlacesItAmongTheBars(t *testing.T) {
+	app := luaUITestApp(t, "")
+	app.statusBarShown = true
+	app.config.StatusBarOrder = config.DockOrderStatusBar
+	evalLua(t, app, `
+inner = onon.ui.create({ dock = "left", width = 100, draw = function() end })
+outer = onon.ui.create({ dock = "left", width = 50, order = 0, draw = function() end })
+inner:show()
+outer:show()`)
+	l := app.layoutEdges()
+	var inner, outer sdl.FRect
+	for i, view := range l.views {
+		if view.place.order == 0 {
+			outer = l.panels[i]
+		} else {
+			inner = l.panels[i]
+		}
+	}
+	// order 0 is nearer the edge than the status bar, and than the view
+	// opened before it; the other stops at the status bar.
+	if outer.X != 0 || int(outer.H) != app.winH || inner.X != 50 || inner.Y+inner.H != l.status.Y || l.status.X != 50 {
+		t.Fatalf("outer %+v, inner %+v, status %+v", outer, inner, l.status)
+	}
+}
+
 func TestLuaUIDockMovesPageHitTesting(t *testing.T) {
 	app := luaUITestApp(t, "")
 	pages := testLayoutApp(1)

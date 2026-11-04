@@ -106,6 +106,21 @@ func (a *App) insertTab(t *tab) {
 	at := a.tabIndex() + 1
 	a.tabs = slices.Insert(a.tabList(), at, t)
 	a.selectTab(at)
+	a.emitTabListChanged("opened", at)
+}
+
+// emitTabListChanged tells plugins the window's tabs changed: one opened,
+// closed, moved, or modified or saved, the tab at index among userTabs
+// being the one it was, or where it was for one closed.
+func (a *App) emitTabListChanged(reason string, index int) {
+	if a.runtime == nil {
+		return
+	}
+	a.emitPluginEvent("tab_list_changed", map[string]any{
+		"reason": reason,
+		"index":  index + 1,
+		"count":  len(a.userTabs()),
+	})
 }
 
 // OpenTab opens path in a new tab after the one shown, as the :tabnew
@@ -340,6 +355,7 @@ func (a *App) removeTab(t, next *tab) {
 		a.leaveTab()
 	}
 	a.withTab(t, a.closeTabDocument)
+	at := slices.Index(a.tabList(), t)
 	a.tabs = slices.DeleteFunc(a.tabList(), func(other *tab) bool { return other == t })
 	if shown {
 		a.tab = next
@@ -348,6 +364,7 @@ func (a *App) removeTab(t, next *tab) {
 		a.relayoutWithViewportAnchor(nil) // the tab bar may have gone
 	}
 	a.pendingRedraw = true
+	a.emitTabListChanged("closed", at)
 }
 
 // closeTabDocument closes the document of the tab shown for good, saving
@@ -413,7 +430,9 @@ func (a *App) closeOtherTabs(force bool) {
 // moveTab moves the tab shown to index to, clamped to the tabs.
 func (a *App) moveTab(to int) {
 	if a.nativeTabsOn() {
-		moveNativeTab(a.window, clampInt(to, 0, len(a.userTabs())-1))
+		to = clampInt(to, 0, len(a.userTabs())-1)
+		moveNativeTab(a.window, to)
+		a.emitTabListChanged("moved", to)
 		return
 	}
 	from := a.tabIndex()
@@ -425,6 +444,7 @@ func (a *App) moveTab(to int) {
 	a.tabs = slices.Delete(a.tabList(), from, from+1)
 	a.tabs = slices.Insert(a.tabList(), to, t)
 	a.pendingRedraw = true
+	a.emitTabListChanged("moved", to)
 }
 
 // confirmQuit reports whether closing the window may go ahead: at once

@@ -342,13 +342,13 @@ func TestTabBarShowsWithTwoTabsAndTakesItsHeight(t *testing.T) {
 		t.Skip("no UI font")
 	}
 	_, alone := app.viewportSize()
-	if app.tabBarHeight() != 0 {
+	if app.tabBarThick() != 0 {
 		t.Fatal("a tab bar with one tab")
 	}
 	if err := app.OpenTab(testPages(t, 2)); err != nil {
 		t.Fatal(err)
 	}
-	bar := app.tabBarHeight()
+	bar := app.tabBarThick()
 	if bar <= 0 {
 		t.Fatal("no tab bar with two tabs")
 	}
@@ -359,7 +359,7 @@ func TestTabBarShowsWithTwoTabsAndTakesItsHeight(t *testing.T) {
 		t.Fatalf("document starts at %v, want below the bar at %d", y, bar)
 	}
 	app.runCommand(":tabclose")
-	if _, h := app.viewportSize(); h != alone || app.tabBarHeight() != 0 {
+	if _, h := app.viewportSize(); h != alone || app.tabBarThick() != 0 {
 		t.Fatalf("viewport %d high after closing back to one tab, want %d", h, alone)
 	}
 }
@@ -376,7 +376,7 @@ func TestClickingATabShowsIt(t *testing.T) {
 	l := app.tabBarLayout()
 	r := l.tabs[0]
 	x, y := float64(r.X+r.W/2), float64(r.Y+r.H/2)
-	if app.tabAt(x, y) != 0 || app.tabAt(x, float64(app.tabBarHeight()+5)) != -1 {
+	if app.tabAt(x, y) != 0 || app.tabAt(x, float64(app.tabBarThick()+5)) != -1 {
 		t.Fatal("tabAt does not find the first tab, or finds one below the bar")
 	}
 	press := func(button uint8) {
@@ -405,7 +405,7 @@ func TestTabBarSqueezesTabsAndKeepsTheShownOneInView(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	app.winW = int(app.px(tabMinWidth) * 4)
+	app.winW = int(app.px(app.style(config.ElementTab).MinWidth.V) * 4)
 	l := app.tabBarLayout()
 	shown := l.tabs[app.tabIndex()]
 	if shown.X < l.area.X || shown.X+shown.W > l.area.X+l.area.W+0.5 {
@@ -415,8 +415,8 @@ func TestTabBarSqueezesTabsAndKeepsTheShownOneInView(t *testing.T) {
 	_, padRight, _, padLeft := app.insets(tabStyle.Padding.V)
 	for i, r := range l.tabs {
 		natural := float32(measureText(app.fontFace, app.tabLabel(app.tabs[i]))) + padLeft + padRight
-		if r.W < min(natural, app.px(tabMinWidth))-0.5 {
-			t.Fatalf("a tab %v wide, under the least %v", r.W, min(natural, app.px(tabMinWidth)))
+		if least := app.px(app.style(config.ElementTab).MinWidth.V); r.W < least-0.5 {
+			t.Fatalf("a tab %v wide, under the least %v (%v natural)", r.W, least, natural)
 		}
 	}
 }
@@ -487,4 +487,13 @@ onon.tabs.select(1)`)
 	if len(app.tabs) != 1 {
 		t.Fatalf("onon.tabs.close(2) left %s", tabNames(app))
 	}
+}
+
+// tabBarThick is how deep the tab bar is from its edge, 0 while hidden.
+func (a *App) tabBarThick() int {
+	r := a.layoutEdges().tabBar
+	if a.tabBarVertical() {
+		return int(r.W)
+	}
+	return int(r.H)
 }

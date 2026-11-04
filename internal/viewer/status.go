@@ -46,8 +46,12 @@ func (a *App) layoutStatus() statusLayout {
 	_, leftPadR, _, leftPadL := a.insets(leftStyle.Padding.V)
 	_, rightPadR, _, rightPadL := a.insets(rightStyle.Padding.V)
 	gap := a.ipx(status.Gap.V)
-	x0, x1 := int(math.Round(float64(marginLeft))), a.winW-int(math.Round(float64(marginRight)))
-	y := a.winH - int(math.Round(float64(marginBottom))) - h
+	strip := a.layoutEdges().status
+	if strip.W == 0 {
+		strip = sdl.FRect{W: float32(a.winW), H: float32(a.winH)} // hidden, laid out for its prompt
+	}
+	x0, x1 := int(math.Round(float64(strip.X+marginLeft))), int(math.Round(float64(strip.X+strip.W-marginRight)))
+	y := int(math.Round(float64(strip.Y+strip.H-marginBottom))) - h
 	l := statusLayout{bar: sdl.FRect{X: float32(x0), Y: float32(y), W: float32(x1 - x0), H: float32(h)}}
 	input := a.promptInBar()
 	pads := int(leftPadL + leftPadR + rightPadL + rightPadR)

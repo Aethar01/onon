@@ -2,121 +2,283 @@ package viewer
 
 import (
 	"math"
+	"slices"
 
 	"onon/internal/config"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
 )
 
-// Tab widths in logical pixels: a tab is as wide as its name up to
-// tabMaxWidth, and tabs shrink to share a narrow bar down to tabMinWidth,
-// past which the bar scrolls to keep the tab shown in view.
-const (
-	tabMaxWidth = 220
-	tabMinWidth = 90
-)
+// onon draws its own tab bar wherever the system draws no tabs: along an
+// edge of the window, as tab_bar_position says, among the other bars and
+// docked views there as tab_bar_order says. Along the top or bottom tabs
+// sit side by side; at the left or right, one under another.
 
 // unsavedMark is drawn before the name of a tab with unsaved edits.
 const unsavedMark = "• "
 
-// tabBarShown reports whether the window draws its own tab bar: while it
-// has more than one tab, and not in presentation mode.
-func (a *App) tabBarShown() bool {
-	return !a.nativeTabsOn() && len(a.tabList()) > 1 && a.presentation == nil
+// tabBarState is the window's tab bar between frames.
+type tabBarState struct {
+	// scroll is how far the tabs are scrolled along the bar, and revealed
+	// what the scroll last brought the shown tab into view for.
+	scroll   float32
+	revealed tabReveal
+	// width is what the pointer dragged a bar at the side to, kept while
+	// tab_bar_width is still widthFrom.
+	width     *config.UISize
+	widthFrom config.UISize
+	resizing  bool
+	drag      tabDrag
 }
 
-// tabBarHeight is the height the tab bar takes from the top of the window,
-// or 0 while it is hidden. Where onon draws the window's buttons, the bar
-// shares their row, and is at least as tall.
-func (a *App) tabBarHeight() int {
-	if !a.tabBarShown() || a.fontFace == nil {
-		return 0
+type tabReveal struct {
+	t    *tab
+	n    int
+	room float32
+}
+
+// tabDrag is a tab pressed, which moving the pointer drags along the bar,
+// the other tabs making way.
+type tabDrag struct {
+	t      *tab    // nil when none is
+	from   float32 // where along the bar it was pressed
+	grab   float32 // how far into the tab
+	at     float32 // where along the bar the pointer is
+	moving bool    // the pointer has gone far enough to drag
+}
+
+// tabBarSide is the edge the tab bar is along.
+func (a *App) tabBarSide() string {
+	if slices.Contains(config.TabBarPositions, a.config.TabBarPosition) {
+		return a.config.TabBarPosition
 	}
-	barTop, _, barBottom, _ := a.insets(a.style(config.ElementTabBar).Padding.V)
-	tabTop, _, tabBottom, _ := a.insets(a.style(config.ElementTab).Padding.V)
-	h := a.uiLineHeight() + int(math.Round(float64(barTop+barBottom+tabTop+tabBottom)))
-	if a.titleBarActive() {
-		h = max(h, int(a.titleBarLayout().height))
+	return "top"
+}
+
+// tabBarVertical reports whether the tabs sit one under another, in a bar
+// at the left or right.
+func (a *App) tabBarVertical() bool {
+	side := a.tabBarSide()
+	return side == "left" || side == "right"
+}
+
+// tabBarShown reports whether the window draws its own tab bar: as
+// tab_bar_visible says, by default while it has more than one tab, and
+// not with the system's tabs or in presentation mode.
+func (a *App) tabBarShown() bool {
+	if a.nativeTabsOn() || a.presentation != nil || a.fontFace == nil {
+		return false
 	}
-	return a.titleBand() + h
+	switch a.config.TabBarVisible {
+	case "never":
+		return false
+	case "always":
+		return true
+	}
+	return len(a.tabList()) > 1
+}
+
+// tabRowHeight is the height of a tab: a line of text and its padding.
+func (a *App) tabRowHeight() float32 {
+	top, _, bottom, _ := a.insets(a.style(config.ElementTab).Padding.V)
+	return float32(a.uiLineHeight()) + top + bottom
+}
+
+// tabBarThickness is how deep the tab bar is from its edge of rest, what
+// the bars and views of lower order left.
+func (a *App) tabBarThickness(rest sdl.FRect) float32 {
+	if a.tabBarVertical() {
+		width := float32(math.Round(a.uiLength(a.tabBarWidth(), float64(a.winW))))
+		return min(max(width, a.px(60)), float32(math.Round(float64(rest.W)*maxDockShare)))
+	}
+	top, _, bottom, _ := a.insets(a.style(config.ElementTabBar).Padding.V)
+	h := a.tabRowHeight() + top + bottom
+	if a.tabBarSide() == "top" && rest.Y == 0 {
+		// Along the window's top: below the system's title band, and
+		// sharing the row of the window's buttons where onon draws them.
+		if a.titleBarActive() {
+			h = max(h, float32(a.titleBarLayout().height))
+		}
+		h += float32(a.titleBand())
+	}
+	return float32(math.Round(float64(h)))
+}
+
+// tabBarWidth is the width of a bar at the side: as tab_bar_width says,
+// or as the pointer dragged it to since.
+func (a *App) tabBarWidth() config.UISize {
+	if w := a.tabBar.width; w != nil && a.tabBar.widthFrom == a.config.TabBarWidth {
+		return *w
+	}
+	return a.config.TabBarWidth
 }
 
 // titleBand is the height of the band the system keeps at the top of the
-// window for its title bar, in render pixels, which the tab bar's tabs sit
-// below.
+// window for its title bar, in render pixels, which the tabs sit below.
 func (a *App) titleBand() int {
 	return int(math.Round(windowTitleBand * a.displayScale()))
 }
 
-// topInset is the height at the top of the window that the document is
-// laid out below.
-func (a *App) topInset() int {
-	if a.presentation != nil {
+// tabBarBand is the band at the top of bar the tabs keep clear of the
+// window's title bar, when the bar reaches the window's top.
+func (a *App) tabBarBand(bar sdl.FRect) float32 {
+	if bar.Y > 0 {
 		return 0
 	}
-	return a.tabBarHeight() + a.nativeInset
+	band := float32(a.titleBand())
+	if a.tabBarVertical() && a.titleBarActive() {
+		band = max(band, float32(a.titleBarLayout().height))
+	}
+	return band
+}
+
+// tabBarSharesTitleRow reports whether the tab bar is in the row of the
+// window's buttons onon draws, which then stay shown.
+func (a *App) tabBarSharesTitleRow() bool {
+	if !a.titleBarActive() || !a.tabBarShown() || a.tabBarVertical() || a.tabBarSide() != "top" {
+		return false
+	}
+	bar := a.layoutEdges().tabBar
+	return bar.H > 0 && bar.Y == 0
 }
 
 // tabBarLayout is where the tab bar and each tab are, in render pixels.
 type tabBarLayout struct {
-	bar  sdl.FRect
-	tabs []sdl.FRect // by tab index, clipped to the bar by drawing
-	area sdl.FRect   // the part of the bar the tabs scroll in
+	bar      sdl.FRect
+	area     sdl.FRect   // the part of the bar the tabs scroll in
+	tabs     []sdl.FRect // by tab index, clipped to the area by drawing
+	vertical bool
+	total    float32 // the tabs' length along the bar, gaps and all
+	scroll   float32
+}
+
+// along is the start and length of r along the bar.
+func (l tabBarLayout) along(r sdl.FRect) (float32, float32) {
+	if l.vertical {
+		return r.Y, r.H
+	}
+	return r.X, r.W
+}
+
+// at is where along the bar x, y is.
+func (l tabBarLayout) at(x, y float32) float32 {
+	if l.vertical {
+		return y
+	}
+	return x
+}
+
+// moved is r moved to start along the bar.
+func (l tabBarLayout) moved(r sdl.FRect, start float32) sdl.FRect {
+	if l.vertical {
+		r.Y = start
+	} else {
+		r.X = start
+	}
+	return r
+}
+
+// room is the length of the area the tabs scroll in.
+func (l tabBarLayout) room() float32 {
+	_, n := l.along(l.area)
+	return n
 }
 
 func (a *App) tabBarLayout() tabBarLayout {
-	h := float32(a.tabBarHeight())
-	l := tabBarLayout{bar: sdl.FRect{W: float32(a.winW), H: h}}
-	if h == 0 {
+	bar := a.layoutEdges().tabBar
+	l := tabBarLayout{bar: bar, vertical: a.tabBarVertical()}
+	tabs := a.tabList()
+	if bar.W == 0 || bar.H == 0 || len(tabs) == 0 {
 		return l
 	}
-	bar := a.style(config.ElementTabBar)
-	top, right, bottom, left := a.insets(bar.Padding.V)
-	gap := a.px(bar.Gap.V)
-	top += float32(a.titleBand())
-	l.area = sdl.FRect{X: left, Y: top, W: float32(a.winW) - left - right, H: h - top - bottom}
-	if a.titleBarActive() {
+	barStyle := a.style(config.ElementTabBar)
+	top, right, bottom, left := a.insets(barStyle.Padding.V)
+	gap := a.px(barStyle.Gap.V)
+	band := a.tabBarBand(bar)
+	l.area = sdl.FRect{X: bar.X + left, Y: bar.Y + band + top, W: max(bar.W-left-right, 0), H: max(bar.H-band-top-bottom, 0)}
+	if a.tabBarSharesTitleRow() {
 		// Leave the window's buttons their room at the right.
 		first := a.titleBarLayout().buttonRect(titleButtonMinimize)
-		l.area.W = min(l.area.W, first.X-l.area.X)
+		l.area.W = max(min(l.area.W, first.X-l.area.X), 0)
 	}
-	tabs := a.tabList()
-	tab := a.style(config.ElementTab)
-	_, padRight, _, padLeft := a.insets(tab.Padding.V)
-	widths := make([]float32, len(tabs))
-	total := gap * float32(len(tabs)-1)
-	for i, t := range tabs {
-		text := measureText(a.fontFace, a.tabLabel(t))
-		widths[i] = min(float32(text)+padLeft+padRight, a.px(tabMaxWidth))
-		total += widths[i]
-	}
-	if total > l.area.W {
-		// Share the bar, as far as the narrowest a tab may be.
-		share := max((l.area.W-gap*float32(len(tabs)-1))/float32(len(tabs)), a.px(tabMinWidth))
-		total = gap * float32(len(tabs)-1)
-		for i := range widths {
-			widths[i] = min(widths[i], share)
-			total += widths[i]
-		}
-	}
-	x := l.area.X
 	l.tabs = make([]sdl.FRect, len(tabs))
-	for i := range tabs {
-		l.tabs[i] = sdl.FRect{X: x, Y: l.area.Y, W: widths[i], H: l.area.H}
-		x += widths[i] + gap
+	n := float32(len(tabs))
+	if l.vertical {
+		h := a.tabRowHeight()
+		for i := range tabs {
+			l.tabs[i] = sdl.FRect{X: l.area.X, Y: l.area.Y + float32(i)*(h+gap), W: l.area.W, H: h}
+		}
+		l.total = n*h + gap*(n-1)
+	} else {
+		widths := a.tabWidths(tabs, l.area.W, gap)
+		x := l.area.X
+		for i, w := range widths {
+			l.tabs[i] = sdl.FRect{X: x, Y: l.area.Y, W: w, H: l.area.H}
+			x += w + gap
+		}
+		l.total = x - gap - l.area.X
 	}
-	// Scroll the tabs so the one shown is in the bar.
-	if total > l.area.W {
-		shown := l.tabs[max(0, a.tabIndex())]
-		shift := float32(0)
-		if end := shown.X + shown.W; end > l.area.X+l.area.W {
-			shift = end - (l.area.X + l.area.W)
-		}
-		for i := range l.tabs {
-			l.tabs[i].X -= shift
-		}
+	a.revealShownTab(&l)
+	l.scroll = min(max(a.tabBar.scroll, 0), max(l.total-l.room(), 0))
+	for i, r := range l.tabs {
+		start, _ := l.along(r)
+		l.tabs[i] = l.moved(r, start-l.scroll)
 	}
 	return l
+}
+
+// tabWidths is how wide each tab is in a bar at the top or bottom whose
+// tabs have room across, as tab_width says.
+func (a *App) tabWidths(tabs []*tab, room, gap float32) []float32 {
+	st := a.style(config.ElementTab)
+	_, padRight, _, padLeft := a.insets(st.Padding.V)
+	least, most := a.px(st.MinWidth.V), a.px(st.MaxWidth.V)
+	share := (room - gap*float32(len(tabs)-1)) / float32(len(tabs))
+	widths := make([]float32, len(tabs))
+	if a.config.TabWidth == "fill" {
+		for i := range widths {
+			widths[i] = max(share, least)
+		}
+		return widths
+	}
+	total := gap * float32(len(tabs)-1)
+	for i, t := range tabs {
+		w := float32(measureText(a.fontFace, a.tabLabel(t))) + padLeft + padRight
+		if most > 0 {
+			w = min(w, most)
+		}
+		widths[i] = max(w, least)
+		total += widths[i]
+	}
+	if total > room {
+		// Share the bar, as far as the narrowest a tab may be.
+		for i := range widths {
+			widths[i] = min(widths[i], max(share, least))
+		}
+	}
+	return widths
+}
+
+// revealShownTab scrolls the tabs so the one shown is in view, when it is
+// another tab than last time, or the bar has changed.
+func (a *App) revealShownTab(l *tabBarLayout) {
+	i := a.tabIndex()
+	reveal := tabReveal{t: a.tab, n: len(l.tabs), room: l.room()}
+	if i < 0 || a.tabBar.revealed == reveal {
+		return
+	}
+	a.tabBar.revealed = reveal
+	start, length := l.along(l.tabs[i])
+	areaStart, _ := l.along(l.area)
+	start -= areaStart // unscrolled, from the area's start
+	scroll := a.tabBar.scroll
+	if start < scroll {
+		scroll = start
+	}
+	if end := start + length; end > scroll+l.room() {
+		scroll = end - l.room()
+	}
+	a.tabBar.scroll = scroll
 }
 
 // tabLabel is what a tab shows: its name, marked when it has unsaved
@@ -131,80 +293,252 @@ func (a *App) tabLabel(t *tab) string {
 // tabAt is the index of the tab at x, y in render pixels, or -1.
 func (a *App) tabAt(x, y float64) int {
 	l := a.tabBarLayout()
-	if l.bar.H == 0 || y < float64(l.area.Y) || y >= float64(l.area.Y+l.area.H) ||
-		x < float64(l.area.X) || x >= float64(l.area.X+l.area.W) {
+	p := sdl.FPoint{X: float32(x), Y: float32(y)}
+	if !pointIn(p, l.area) {
 		return -1
 	}
 	for i, r := range l.tabs {
-		if x >= float64(r.X) && x < float64(r.X+r.W) {
+		if pointIn(p, r) {
 			return i
 		}
 	}
 	return -1
 }
 
-// overTabBar reports whether y, in render pixels, is in the tab bar.
-func (a *App) overTabBar(y float64) bool {
-	return y >= 0 && y < float64(a.tabBarHeight())
+func pointIn(p sdl.FPoint, r sdl.FRect) bool {
+	return p.X >= r.X && p.X < r.X+r.W && p.Y >= r.Y && p.Y < r.Y+r.H
 }
 
-// drawTabBar draws the tab bar across the top of the window.
+// overTabBar reports whether x, y, in render pixels, is in the tab bar.
+func (a *App) overTabBar(x, y float32) bool {
+	return a.tabBarShown() && pointIn(sdl.FPoint{X: x, Y: y}, a.layoutEdges().tabBar)
+}
+
+// tabBarEdgeAt reports whether x, y is at the inner edge of a bar at the
+// side that the pointer may drag to resize it.
+func (a *App) tabBarEdgeAt(x, y float32) bool {
+	if !a.config.TabBarResizable || !a.tabBarVertical() || !a.tabBarShown() {
+		return false
+	}
+	bar := a.layoutEdges().tabBar
+	edge := bar.X + bar.W
+	if a.tabBarSide() == "right" {
+		edge = bar.X
+	}
+	return abs32(x-edge) <= a.px(4) && y >= bar.Y && y <= bar.Y+bar.H
+}
+
+// turnSides turns the sides of a box styled for a bar at the top to the
+// bar's side, its bottom facing the document wherever the bar is.
+func turnSides(s config.Sides, side string) config.Sides {
+	if side == "top" {
+		return s
+	}
+	var turned config.Sides
+	for _, pair := range [4][2]config.Sides{
+		{config.SideTop, map[string]config.Sides{"bottom": config.SideBottom, "left": config.SideLeft, "right": config.SideRight}[side]},
+		{config.SideBottom, map[string]config.Sides{"bottom": config.SideTop, "left": config.SideRight, "right": config.SideLeft}[side]},
+		{config.SideLeft, map[string]config.Sides{"bottom": config.SideLeft, "left": config.SideTop, "right": config.SideTop}[side]},
+		{config.SideRight, map[string]config.Sides{"bottom": config.SideRight, "left": config.SideBottom, "right": config.SideBottom}[side]},
+	} {
+		if s&pair[0] != 0 {
+			turned |= pair[1]
+		}
+	}
+	return turned
+}
+
+// barStyle is element's style, its sides turned to the bar's side.
+func (a *App) barStyle(element config.Element) config.Style {
+	st := a.style(element)
+	if side := a.tabBarSide(); side != "top" {
+		st.BorderSides.V = turnSides(st.BorderSides.V, side)
+	}
+	return st
+}
+
+// drawTabBar draws the tab bar, a tab being dragged over the others.
 func (a *App) drawTabBar(renderer *sdl.Renderer) {
-	l := a.tabBarLayout()
-	if l.bar.H == 0 {
+	if !a.tabBarShown() {
 		return
 	}
-	bar := a.style(config.ElementTabBar)
-	parts := boxBody
-	if a.drawBoxParts(renderer, &bar, l.bar, parts) {
+	l := a.tabBarLayout()
+	if l.bar.W == 0 || l.bar.H == 0 {
+		return
+	}
+	bar := a.barStyle(config.ElementTabBar)
+	if a.drawBoxParts(renderer, &bar, l.bar, boxBody) {
 		defer a.drawBoxParts(renderer, &bar, l.bar, boxBorder)
 	}
-	clip := sdl.FRect{X: l.area.X, Y: 0, W: l.area.W, H: l.bar.H}
+	clip := sdl.FRect{X: l.area.X, Y: l.bar.Y, W: l.area.W, H: l.bar.H}
+	if l.vertical {
+		clip = sdl.FRect{X: l.bar.X, Y: l.area.Y, W: l.bar.W, H: l.area.H}
+	}
 	_ = a.withClip(renderer, clip, func() error {
-		baseline := int(l.area.Y) + a.statusBaselineOffset(int(l.area.H))
+		dragged := -1
 		for i, t := range a.tabList() {
-			r := l.tabs[i]
-			element := config.ElementTab
-			if t == a.tab {
-				element = config.ElementTabSelected
+			if a.tabBar.drag.moving && t == a.tabBar.drag.t {
+				dragged = i
+				continue
 			}
-			st := a.style(element)
-			a.drawBox(renderer, &st, r)
-			_, padRight, _, padLeft := a.insets(st.Padding.V)
-			x := int(r.X + padLeft)
-			room := int(r.W - padLeft - padRight)
-			if t.unsaved {
-				_ = a.drawTextFace(renderer, unsavedMark, x, baseline, a.textColor(&st, true), st.Bold.V)
-				mark := measureText(a.fontFace, unsavedMark)
-				x += mark
-				room -= mark
-			}
-			name := truncateText(a.fontFace, t.tabName(), room)
-			_ = a.drawTextFace(renderer, name, x, baseline, a.textColor(&st, false), st.Bold.V)
+			a.drawTab(renderer, t, l.tabs[i])
+		}
+		if dragged >= 0 {
+			a.drawTab(renderer, a.tabList()[dragged], a.draggedTabRect(l, dragged))
 		}
 		return nil
 	})
 }
 
-// handleTabBarButton shows the tab clicked, or closes the one clicked with
-// the middle button, reporting whether the press was the tab bar's.
+// draggedTabRect is where the tab at i is while the pointer drags it: at
+// the pointer, kept in the bar.
+func (a *App) draggedTabRect(l tabBarLayout, i int) sdl.FRect {
+	r := l.tabs[i]
+	_, length := l.along(r)
+	areaStart, room := l.along(l.area)
+	start := a.tabBar.drag.at - a.tabBar.drag.grab
+	return l.moved(r, min(max(start, areaStart), areaStart+max(room-length, 0)))
+}
+
+func (a *App) drawTab(renderer *sdl.Renderer, t *tab, r sdl.FRect) {
+	element := config.ElementTab
+	if t == a.tab {
+		element = config.ElementTabSelected
+	}
+	st := a.barStyle(element)
+	a.drawBox(renderer, &st, r)
+	_, padRight, _, padLeft := a.insets(st.Padding.V)
+	x := int(r.X + padLeft)
+	room := int(r.W - padLeft - padRight)
+	baseline := int(r.Y) + a.statusBaselineOffset(int(r.H))
+	if t.unsaved {
+		_ = a.drawTextFace(renderer, unsavedMark, x, baseline, a.textColor(&st, true), st.Bold.V)
+		mark := measureText(a.fontFace, unsavedMark)
+		x += mark
+		room -= mark
+	}
+	name := truncateText(a.fontFace, t.tabName(), room)
+	_ = a.drawTextFace(renderer, name, x, baseline, a.textColor(&st, false), st.Bold.V)
+}
+
+// handleTabBarButton takes a press in the tab bar: the left button shows
+// the tab and, with tab_drag, starts dragging it; the middle button closes
+// it; a double click on the bar between tabs opens a new one; and at the
+// inner edge of a bar at the side, the left button resizes the bar. It
+// reports whether the press was the tab bar's.
 func (a *App) handleTabBarButton(e *sdl.MouseButtonEvent) bool {
-	if !a.overTabBar(float64(e.Y)) {
+	s := &a.tabBar
+	if e.Type == sdl.EventMouseButtonUp {
+		if e.Button == uint8(sdl.ButtonLeft) && (s.resizing || s.drag.t != nil) {
+			s.resizing, s.drag = false, tabDrag{}
+			a.pendingRedraw = true
+			a.updateCursor()
+			return true
+		}
+		return a.overTabBar(e.X, e.Y)
+	}
+	if e.Button == uint8(sdl.ButtonLeft) && a.tabBarEdgeAt(e.X, e.Y) {
+		s.resizing = true
+		return true
+	}
+	if !a.overTabBar(e.X, e.Y) {
 		return false
 	}
-	if e.Type != sdl.EventMouseButtonDown {
-		return true
-	}
 	i := a.tabAt(float64(e.X), float64(e.Y))
-	if i < 0 {
-		return true
-	}
-	switch e.Button {
-	case uint8(sdl.ButtonLeft):
+	switch {
+	case i < 0:
+		if e.Button == uint8(sdl.ButtonLeft) && e.Clicks == 2 {
+			a.newEmptyTab()
+		}
+	case e.Button == uint8(sdl.ButtonLeft):
 		a.selectTab(i)
-	case uint8(sdl.ButtonMiddle):
+		if a.config.TabDrag {
+			l := a.tabBarLayout()
+			at := l.at(e.X, e.Y)
+			start, _ := l.along(l.tabs[i])
+			s.drag = tabDrag{t: a.tab, from: at, grab: at - start, at: at}
+		}
+	case e.Button == uint8(sdl.ButtonMiddle):
 		a.closeTab(i, false, "closing it")
 	}
+	a.pendingRedraw = true
+	return true
+}
+
+// handleTabBarMotion resizes the bar or drags a tab as the pointer moves
+// to x, y, reporting whether it did either.
+func (a *App) handleTabBarMotion(x, y float32) bool {
+	s := &a.tabBar
+	if s.resizing {
+		a.resizeTabBar(x)
+		return true
+	}
+	d := &s.drag
+	if d.t == nil {
+		return false
+	}
+	if d.t != a.tab || !a.tabBarShown() {
+		*d = tabDrag{}
+		return false
+	}
+	l := a.tabBarLayout()
+	d.at = l.at(x, y)
+	if !d.moving && abs32(d.at-d.from) < a.px(4) {
+		return true
+	}
+	d.moving = true
+	i := a.tabIndex()
+	_, length := l.along(l.tabs[i])
+	centre := d.at - d.grab + length/2 // where the pointer holds it, past the bar's ends too
+	to := i                            // the farthest tab whose middle the dragged one's has passed
+	for j, r := range l.tabs {
+		otherStart, otherLength := l.along(r)
+		switch mid := otherStart + otherLength/2; {
+		case j > i && centre > mid:
+			to = max(to, j)
+		case j < i && centre < mid:
+			to = min(to, j)
+		}
+	}
+	if to != i {
+		a.moveTab(to)
+	}
+	a.pendingRedraw = true
+	return true
+}
+
+// resizeTabBar drags the inner edge of a bar at the side to x.
+func (a *App) resizeTabBar(x float32) {
+	bar := a.layoutEdges().tabBar
+	width := x - bar.X
+	if a.tabBarSide() == "right" {
+		width = bar.X + bar.W - x
+	}
+	size := config.UISize{Value: float64(max(width, a.px(60))) / float64(a.px(1))}
+	a.relayoutWithViewportAnchor(func() {
+		a.tabBar.width, a.tabBar.widthFrom = &size, a.config.TabBarWidth
+		a.views.layoutGen++ // docked views sit beside it
+	})
+	a.pendingRedraw = true
+}
+
+// handleTabBarWheel scrolls the tabs with a wheel over the bar, reporting
+// whether it was.
+func (a *App) handleTabBarWheel(e *sdl.MouseWheelEvent) bool {
+	if !a.overTabBar(e.MouseX, e.MouseY) {
+		return false
+	}
+	dx, dy := e.X, e.Y
+	if e.Direction == sdl.MouseWheelFlipped {
+		dx, dy = -dx, -dy
+	}
+	l := a.tabBarLayout()
+	amount := -dy
+	if !l.vertical {
+		amount += dx
+	}
+	step := a.tabRowHeight()
+	a.tabBar.scroll = min(max(l.scroll+amount*step, 0), max(l.total-l.room(), 0))
 	a.pendingRedraw = true
 	return true
 }

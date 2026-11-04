@@ -285,6 +285,11 @@ var luaTableGroups = []luaTableGroup{
 				{"index", "integer", "The 1-based position of the tab now shown."},
 				{"previous", "integer", "The 1-based position of the tab shown before, or 0 when that tab was closed."},
 			}},
+			{"Tab list event", "`tab_list_changed`, when a tab of the window opens, closes or moves, or gains or loses unsaved edits, so a plugin drawing its own tabs can redraw them from `onon.tabs.list()`.", []luaField{
+				{"reason", "string", "`opened`, `closed`, `moved` or `modified`."},
+				{"index", "integer", "The 1-based position of the tab that changed: where it is now, or where it was for one closed."},
+				{"count", "integer", "How many tabs the window has now."},
+			}},
 			{"Option event", "`option_changed`, after Lua code changes options.", []luaField{
 				{"source", "string", "What ran the code that changed them: the event's name for an event callback, `ui_select`, `ui_click` and so on for a view's callback, or `action`, `command`, `set`, `theme` or `plugin operation`."},
 			}},
@@ -333,6 +338,7 @@ var luaTableLocations = map[string]string{
 	"Page event":         "`page_changed` callback",
 	"Zoom event":         "`zoom_changed` callback",
 	"Tab event":          "`tab_changed` callback",
+	"Tab list event":     "`tab_list_changed` callback",
 	"Option event":       "`option_changed` callback",
 }
 

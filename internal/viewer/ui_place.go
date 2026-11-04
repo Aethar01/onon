@@ -23,6 +23,7 @@ type viewPlacement struct {
 	at     *config.UIPoint
 	attach *attachment
 	dock   string
+	order  int // among what lines the edges, for a docked view
 	// fit narrows a list to what its rows take, its width being the most
 	// and least, if set, the least.
 	fit   bool
@@ -159,54 +160,17 @@ func (a *App) uiLength(size config.UISize, whole float64) float64 {
 	return size.Value * float64(a.px(1))
 }
 
-// documentRect is the document's part of the window: above the status
-// bar, and beside the docked views.
+// documentRect is the document's part of the window: inside the bars and
+// docked views along its edges.
 func (a *App) documentRect() sdl.FRect {
-	doc, _ := a.dockLayout(nil)
-	return doc
+	return a.layoutEdges().doc
 }
 
-// dockLayout lays out the docked views in the order they opened, each
-// taking its width or height from its side of what those before it left.
-// It returns what is left, the document's part of the window, and
-// target's place.
+// dockLayout returns the document's part of the window and target's
+// place, docked at its side.
 func (a *App) dockLayout(target *uiView) (doc, rect sdl.FRect) {
-	top := a.topInset()
-	h := a.winH - top
-	if a.statusVisible() {
-		h -= a.statusReservedHeight()
-	}
-	doc = sdl.FRect{Y: float32(top), W: float32(max(a.winW, 1)), H: float32(max(h, 1))}
-	for _, view := range a.views.panels {
-		if view.place.dock == "" || !view.visible {
-			continue
-		}
-		var r sdl.FRect
-		switch view.place.dock {
-		case "left", "right":
-			r = sdl.FRect{X: doc.X, Y: doc.Y, H: doc.H}
-			r.W = float32(math.Round(min(a.uiLength(view.place.width, float64(a.winW)), float64(doc.W)*maxDockShare)))
-			if view.place.dock == "right" {
-				r.X = doc.X + doc.W - r.W
-			} else {
-				doc.X += r.W
-			}
-			doc.W -= r.W
-		default:
-			r = sdl.FRect{X: doc.X, Y: doc.Y, W: doc.W}
-			r.H = float32(math.Round(min(a.uiLength(view.place.height, float64(a.winH)), float64(doc.H)*maxDockShare)))
-			if view.place.dock == "bottom" {
-				r.Y = doc.Y + doc.H - r.H
-			} else {
-				doc.Y += r.H
-			}
-			doc.H -= r.H
-		}
-		if view == target {
-			rect = r
-		}
-	}
-	return doc, rect
+	l := a.layoutEdges()
+	return l.doc, l.panel(target)
 }
 
 // hasDock reports whether a view is docked, moving the document from the
@@ -224,7 +188,11 @@ func (a *App) hasDock() bool {
 // anywhere but its top left corner: below the tab bar, or beside a docked
 // view.
 func (a *App) documentMoved() bool {
-	return a.topInset() > 0 || len(a.views.panels) > 0 && a.hasDock()
+	if a.edgesPlain() {
+		return false
+	}
+	r := a.documentRect()
+	return r.X != 0 || r.Y != 0
 }
 
 // withDocumentViewport draws with the document's part of the window as
@@ -289,8 +257,9 @@ func (a *App) viewGeometry(view *uiView) (sdl.FRect, int) {
 	if at := view.place.at; (at != nil && at.Page > 0) || view.place.attach != nil {
 		return a.placeView(view) // an attached view moves with what it is attached to
 	}
+	edges := a.layoutEdges()
 	key := viewGeometryKey{
-		winW: a.winW, winH: a.winH, status: a.statusVisible(), styles: a.styles, font: a.fontFace, scale: a.uiScale,
+		winW: a.winW, winH: a.winH, status: a.statusVisible(), doc: edges.doc, panel: edges.panel(view), styles: a.styles, font: a.fontFace, scale: a.uiScale,
 		panels: a.views.layoutGen, rows: len(view.visibleRows()), place: view.place,
 		headless: view.headless, titles: view.hasColumnTitles(), body: view.drawBody != nil,
 		content: a.listContentWidth(view),
@@ -309,6 +278,7 @@ func (a *App) viewGeometry(view *uiView) (sdl.FRect, int) {
 type viewGeometryKey struct {
 	winW, winH             int
 	status                 bool
+	doc, panel             sdl.FRect // what the bars and docked views leave, and its own place
 	styles                 *[config.ElementCount]config.Style
 	font                   font.Face
 	scale                  float64

@@ -167,6 +167,20 @@ opens one, and `:tabnew` alone opens an empty tab with the recent files to
 choose from. A file dropped on the window, or sent by Finder or `open`, opens in
 a new tab; `open_documents` sets `window` or `replace` instead.
 
+onon's tab bar can sit along any edge: `tab_bar_position = "left"` (or
+`"right"`) gives a sidebar of tabs, one under another, `tab_bar_width` wide,
+whose inner edge can be dragged to resize it; `"bottom"` puts it above the
+status bar. `tab_bar_visible` is `"auto"` (two or more tabs), `"always"` or
+`"never"`. Tabs along the top or bottom are as wide as their names, or with
+`tab_width = "fill"` share the bar equally; the `tab` element's `min_width` and
+`max_width` bound them. Drag a tab to move it (`tab_drag = false` turns that
+off), middle-click to close it, and double-click the bar to open a new one.
+Where the bar meets the status bar and docked panels is set by order, lower
+nearer the window's edge: `status_bar_order` (10), `tab_bar_order` (20), and a
+docked view's `order` (30). So `tab_bar_order = 5` with a sidebar makes it the
+window's full height, the status bar beside it. On macOS a position other than
+the top uses onon's bar instead of the system's tabs.
+
 | Keys | Action |
 |---|---|
 | `gt`, `Ctrl+Tab`, `Ctrl+PgDn` (macOS also `Cmd+Shift+]`) | Next tab |
@@ -182,7 +196,9 @@ The commands follow Vim's: `:tabnext [N]`, `:tabprevious`, `:tabfirst`,
 Started with no document named, onon opens the tabs the window last closed
 with, showing the same one; the others open their documents when first
 shown. `restore_tabs = false` opens only that one. In Lua, `onon.tabs` lists,
-opens, shows and closes tabs, and plugins hear `tab_changed`.
+opens, shows and closes tabs, and plugins hear `tab_changed` when another tab
+is shown and `tab_list_changed` when one opens, closes, moves or gains unsaved
+edits.
 
 ### Single instance
 

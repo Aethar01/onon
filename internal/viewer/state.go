@@ -307,6 +307,7 @@ type windowState struct {
 	// system's tab bar then covers its top, in render pixels.
 	nativeTabbing bool
 	nativeInset   int
+	tabBar        tabBarState
 	// background is set while withTab shows the viewer a tab other than
 	// the one on screen, so it leaves the window alone.
 	background bool

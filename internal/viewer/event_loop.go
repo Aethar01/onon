@@ -67,7 +67,8 @@ func (a *App) openWindow() error {
 	}
 	a.windowGroup().focus(a)
 	a.configureNativeWindow(window)
-	a.nativeTabbing = nativeTabsAvailable && a.config.NativeTabs
+	// The system's tabs sit along the top only.
+	a.nativeTabbing = nativeTabsAvailable && a.config.NativeTabs && a.tabBarSide() == "top"
 	configureNativeTabbing(window, a.nativeTabbing)
 	// Frames are presented in step with the display, so animations move
 	// once per refresh rather than when a timer happens to fire.
@@ -318,6 +319,9 @@ func (a *App) handleSDLEvent(event *sdl.Event) error {
 			break
 		}
 		e := event.Wheel()
+		if a.handleTabBarWheel(&e) {
+			break
+		}
 		a.handleAnimatedMouseWheel(&e)
 		redraw = false
 	case sdl.EventPinchBegin:
@@ -356,6 +360,10 @@ func (a *App) handleSDLEvent(event *sdl.Event) error {
 // needs drawing again.
 func (a *App) handleMouseMotionEvent(e *sdl.MouseMotionEvent) bool {
 	a.noteTitleBarPointer(float64(e.X), float64(e.Y), true)
+	if a.handleTabBarMotion(e.X, e.Y) {
+		a.updateCursor()
+		return true
+	}
 	if a.handleInputMouseMotion(e) {
 		return true
 	}

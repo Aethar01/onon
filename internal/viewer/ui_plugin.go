@@ -280,7 +280,7 @@ func (a *App) pluginPlacement(spec config.UIOverlay) viewPlacement {
 	p := viewPlacement{width: spec.Width, height: spec.Height, anchor: spec.Anchor}
 	switch att := spec.Attach; {
 	case spec.Dock != "": // docking outranks the rest, as it always has
-		p.dock = spec.Dock
+		p.dock, p.order = spec.Dock, spec.Order
 		return p
 	case att != nil && att.View != "":
 		menu := a.views.views[att.View]

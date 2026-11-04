@@ -97,6 +97,7 @@ func (a *App) openNativeTab(path string, page int) (*App, error) {
 		return nil, err
 	}
 	addNativeTab(a.window, w.window)
+	w.emitTabListChanged("opened", w.userTabIndex())
 	return w, nil
 }
 

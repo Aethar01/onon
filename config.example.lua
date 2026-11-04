@@ -59,8 +59,16 @@ onon.options.smooth_zoom = { mouse = true, trackpad = true, keyboard = true } --
 onon.options.smooth_zoom_dampening = 0.8 -- Catch-up factor for smooth zooming per animation frame; higher values are more responsive and less damped; clamped to 0.01 through 1.
 onon.options.spread_gap = 0 -- Horizontal spread gap; aliases page_gap_horizontal.
 onon.options.status_bar_left = "{modified}{message}" -- Left status bar template.
+onon.options.status_bar_order = 10 -- Where the status bar sits among the bars and docked views along the window's edges, as tab_bar_order says; lower is nearer the edge.
 onon.options.status_bar_right = "{document}  {label}/{total}  {zoom}" -- Right status bar template.
 onon.options.status_bar_visible = true -- Show the status bar.
+onon.options.tab_bar_order = 20 -- Where the tab bar sits among the bars and docked views along the window's edges: each takes its side of what those of lower order leave. The status bar is 10 and docked views 30 unless they say, so by default a tab bar at the bottom sits above the status bar, and one at the left stops at it.
+onon.options.tab_bar_position = "top" -- Where onon draws its tab bar: top, bottom, left or right. Anywhere but the top, macOS's own tabs give way to it, in windows opened after it changes.
+onon.options.tab_bar_resizable = true -- Let the pointer drag the inner edge of a tab bar at the left or right to resize it.
+onon.options.tab_bar_visible = "auto" -- When onon's tab bar shows: auto, while the window has more than one tab; always; or never, leaving gt, :tabs and the tabs menu. true is always and false never.
+onon.options.tab_bar_width = 200 -- The width of a tab bar at the left or right, in logical pixels or as a percentage of the window's, such as "20%".
+onon.options.tab_drag = true -- Let the pointer drag tabs in onon's tab bar to reorder them.
+onon.options.tab_width = "fit" -- How wide the tabs in a tab bar at the top or bottom are: fit, each as wide as its name, between the tab element's min_width and max_width; or fill, sharing the bar's width equally, no narrower than min_width.
 onon.options.trim_margins = false -- Lay pages out by their content, trimming blank margins.
 onon.options.trim_padding = 8 -- Margin in points kept around a page's content when trimming margins.
 onon.options.zoom_step = 1.15 -- Factor zoom_in multiplies the zoom by, and zoom_out divides it by; above 1.

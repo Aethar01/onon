@@ -325,6 +325,14 @@ func uiOverlayFromLuaSpec(L *lua.LState, rt *Runtime, spec *lua.LTable) UIOverla
 		}
 		overlay.Modal = false
 	}
+	overlay.Order = DockOrderPanel
+	switch order := spec.RawGetString("order").(type) {
+	case *lua.LNilType:
+	case lua.LNumber:
+		overlay.Order = int(order)
+	default:
+		L.RaiseError("ui.create: order is a number, lower nearer the window's edge")
+	}
 	for name, field := range map[string]*string{
 		"on_select":            &overlay.OnSelect,
 		"on_close":             &overlay.OnClose,

@@ -136,13 +136,13 @@ func (a *App) rowPageScreenOrigin(row rowLayout, pageIndex int) (float64, float6
 // viewportSize is the size of the document's part of the window: above
 // the status bar, and beside any docked views.
 func (a *App) viewportSize() (int, int) {
-	if len(a.views.panels) > 0 && a.hasDock() {
+	if !a.edgesPlain() {
 		r := a.documentRect()
 		return max(1, int(r.W)), max(1, int(r.H))
 	}
 	// Asked for many times a frame, as each row of pages is placed, the
-	// window less the status bar and the tab bar is worked out directly.
-	h := a.winH - a.topInset()
+	// window less the status bar is worked out directly.
+	h := a.winH
 	if a.statusVisible() {
 		h -= a.statusReservedHeight()
 	}

@@ -975,7 +975,7 @@ var PluginEvents = []string{
 	"document_reloaded", "config_reloaded",
 	"mouse_button_pre", "mouse_button",
 	"selection_changed", "page_changed", "zoom_changed", "option_changed",
-	"tab_changed",
+	"tab_changed", "tab_list_changed",
 	"shutdown",
 }
 
