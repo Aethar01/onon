@@ -51,7 +51,7 @@ jobs:
           restore-keys: go-${{ runner.os }}-${{ steps.go.outputs.version }}-
 
       - name: Test
-        run: go test ./...
+        run: go test -count=1 ./...
 
       - name: Check generated documentation
         run: go run ./cmd/builddocs -check
@@ -115,7 +115,7 @@ jobs:
         run: go build ./...
 
       - name: Test
-        run: go test ./...
+        run: go test -count=1 ./...
 
       - name: Test self-contained app bundle
         run: |
@@ -194,7 +194,7 @@ jobs:
           restore-keys: go-${{ runner.os }}-${{ steps.go.outputs.version }}-
 
       - name: Test
-        run: go test ./...
+        run: go test -count=1 ./...
 
       - name: Build
         run: go build ./...
