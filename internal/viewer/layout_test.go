@@ -720,6 +720,54 @@ func TestResizeKeepsConfiguredViewportAnchorPosition(t *testing.T) {
 	assertClose(t, y+ty-originY, targetY)
 }
 
+// resizedWindow is a window of 4 pages fitted to its width, centre
+// anchored, scrolled to scrollY, then made shorter as the system does,
+// in steps.
+func resizedWindow(scrollY float64) *App {
+	app := testLayoutApp(4)
+	app.winW, app.winH = 220, 400
+	app.fitMode = fitWidth
+	app.config.AnchorPosition = "center"
+	app.recomputeLayout(app.viewportSize())
+	app.scrollY = scrollY
+	app.clampScroll()
+	for h := 380; h >= 300; h -= 20 {
+		app.relayoutWithViewportAnchor(func() { app.winH = h })
+	}
+	return app
+}
+
+func TestResizingKeepsTheDocumentsStartInView(t *testing.T) {
+	if app := resizedWindow(0); app.scrollY != 0 {
+		t.Fatalf("scrolled to %v: want the document's start, in view as the window opened, still in view", app.scrollY)
+	}
+}
+
+func TestResizingKeepsTheDocumentsEndInView(t *testing.T) {
+	app := resizedWindow(1e9)
+	_, h := app.viewportSize()
+	if end := app.contentH - app.scrollY; math.Abs(end-float64(h)) > 0.5 {
+		t.Fatalf("document's end at %v, window %v: want it still at the window's bottom", end, h)
+	}
+}
+
+func TestResizingMidDocumentKeepsTheAnchor(t *testing.T) {
+	app := testLayoutApp(4)
+	app.winW, app.winH = 220, 400
+	app.fitMode = fitWidth
+	app.config.AnchorPosition = "center"
+	app.recomputeLayout(app.viewportSize())
+	app.scrollY = app.rows[1].pageY[0] + 40
+	anchor := app.captureViewportAnchor()
+	app.relayoutWithViewportAnchor(func() { app.winH = 300 })
+	x, y, _ := app.pageScreenOrigin(anchor.page)
+	tx, ty := transformPoint(anchor.point.X, anchor.point.Y, app.scale, app.rotation)
+	originX, originY := rotatedBoundsOrigin(app.pageMetrics[anchor.page].bounds, app.scale, app.rotation)
+	targetX, targetY := app.viewportAnchorScreenPoint()
+	assertClose(t, x+tx-originX, targetX)
+	assertClose(t, y+ty-originY, targetY)
+}
+
 func TestPageTransformRoundTripsAndStartsAtTheDrawnCorner(t *testing.T) {
 	bounds := mupdf.Rect{X1: 100, Y1: 200}
 	for _, rotation := range []float64{0, 90, 180, 270} {
