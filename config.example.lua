@@ -3,7 +3,7 @@
 
 onon.options.alt_colors = false -- Start with alternate colors: true, false, or "system" to follow the OS's dark mode as it changes.
 onon.options.alt_colors_keep_images = true -- Keep raster images in their own colors in alternate-color mode.
-onon.options.anchor_position = "center" -- Where the page stays when the window is resized or the zoom fits it again: center, top, or bottom. Bars and docked views shown or hidden leave the page where it is instead, moving it only to keep an end of the document in view.
+onon.options.anchor_position = "center" -- Where the page stays when the window is resized or the zoom fits it again: center, top, or bottom. An end of the document in view stays in view as the window is resized. Bars and docked views shown or hidden leave the page where it is instead, moving it only to keep an end of the document in view.
 onon.options.animation_frame_ms = 0 -- Animation timestep in milliseconds; 0 follows the display's refresh rate.
 onon.options.annotation_colors = {"#ffe066", "#8ce99a", "#74c0fc", "#ffa8a8"} -- Highlight colours offered by the highlight picker, as #RRGGBB.
 onon.options.anti_aliasing = 8 -- MuPDF antialiasing level from 0 through 8.

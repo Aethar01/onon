@@ -61,7 +61,9 @@ func (a *App) restoreViewportAnchorAt(anchor viewportAnchor, targetX, targetY fl
 // the content stays where it was in the window instead: a bar or docked
 // view shown covers the page rather than moving it, and one hidden shows
 // more of it. The page moves only so that an end of the document in view
-// stays in view, neither covered nor left with a gap beside it.
+// stays in view, neither covered nor left with a gap beside it. A window
+// resized keeps an end of the document in view in view too, as one the
+// system resizes as it opens keeps the document's start.
 func (a *App) relayoutWithViewportAnchor(update func()) {
 	fallbackPage := a.page
 	anchor := a.captureViewportAnchor()
@@ -85,6 +87,9 @@ func (a *App) relayoutWithViewportAnchor(update func()) {
 		return
 	}
 	a.restoreViewportAnchor(anchor)
+	if a.winW != winW || a.winH != winH {
+		a.keepDocumentEndsInView(ends)
+	}
 }
 
 // documentEnds is which ends of the document are in view: its start at
