@@ -153,7 +153,13 @@ func (a *App) drawUIViews(renderer *sdl.Renderer) error {
 	// Menus a menu was stacked over are drawn under it.
 	for _, under := range slices.Concat(a.views.panels, a.views.stack) {
 		p := a.animateFrom(tweenKey{kind: "panel in", view: under}, 0, 1, tr)
-		if err := a.faded(p, func() error { return a.drawUIView(renderer, under) }); err != nil {
+		draw := func() error { return a.faded(p, func() error { return a.drawUIView(renderer, under) }) }
+		if under.place.dock != "" {
+			_, rect := a.dockLayout(under)
+			inner := draw
+			draw = func() error { return a.drawOnEdge(edgeKey{kind: edgePanel, view: under}, rect, inner) }
+		}
+		if err := draw(); err != nil {
 			return err
 		}
 	}

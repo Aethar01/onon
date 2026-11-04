@@ -105,26 +105,24 @@ func TestStatusBarHeightFitsFont(t *testing.T) {
 	}
 }
 
-func TestToggleStatusBarKeepsConfiguredAnchorPosition(t *testing.T) {
+func TestToggleStatusBarLeavesThePageWhereItIs(t *testing.T) {
 	app := testLayoutApp(5)
 	app.winW = 800
 	app.winH = 600
 	app.fontFace = basicfont.Face7x13
 	app.recomputeLayout(app.viewportSize())
 	app.scrollY = 75
-	anchor := app.captureViewportAnchor()
+	x0, y0, _ := app.pageScreenOrigin(1)
 
-	if err := app.runBuiltinAction("toggle_status_bar"); err != nil {
-		t.Fatal(err)
+	for range 2 { // hidden, then shown again
+		if err := app.runBuiltinAction("toggle_status_bar"); err != nil {
+			t.Fatal(err)
+		}
+		x, y, ok := app.pageScreenOrigin(1)
+		if !ok {
+			t.Fatal("expected the page to remain placed")
+		}
+		assertClose(t, x, x0)
+		assertClose(t, y, y0)
 	}
-
-	x, y, ok := app.pageScreenOrigin(anchor.page)
-	if !ok {
-		t.Fatal("expected anchored page to remain placed")
-	}
-	tx, ty := transformPoint(anchor.point.X, anchor.point.Y, app.scale, app.rotation)
-	originX, originY := rotatedBoundsOrigin(app.pageMetrics[anchor.page].bounds, app.scale, app.rotation)
-	targetX, targetY := app.viewportAnchorScreenPoint()
-	assertClose(t, x+tx-originX, targetX)
-	assertClose(t, y+ty-originY, targetY)
 }

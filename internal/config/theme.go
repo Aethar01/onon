@@ -225,6 +225,7 @@ func buildThemeFields() []themeField {
 		themeField{"motion.prompt", transitionOption("The sides of the status bar growing and shrinking with their text, as a pill does when a prompt opens.", func(c *Config) *Transition { return &c.Theme.Motion.Prompt })},
 		themeField{"motion.message", transitionOption("Status messages fading in, and out when cleared.", func(c *Config) *Transition { return &c.Theme.Motion.Message })},
 		themeField{"motion.cursor", transitionOption("The prompt's cursor gliding to where it moves.", func(c *Config) *Transition { return &c.Theme.Motion.Cursor })},
+		themeField{"motion.edges", transitionOption("The status bar, tab bar and docked views sliding in along the window's edges as they are shown, the bars sliding out as they are hidden, the page moving with them only where it must.", func(c *Config) *Transition { return &c.Theme.Motion.Edges })},
 	)
 }
 

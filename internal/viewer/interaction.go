@@ -25,6 +25,13 @@ func (a *App) captureViewportAnchor() viewportAnchor {
 }
 
 func (a *App) restoreViewportAnchor(anchor viewportAnchor) {
+	targetX, targetY := a.viewportAnchorScreenPoint()
+	a.restoreViewportAnchorAt(anchor, targetX, targetY)
+}
+
+// restoreViewportAnchorAt scrolls anchor's content to targetX, targetY in
+// the document's part of the window, as far as the document's ends let it.
+func (a *App) restoreViewportAnchorAt(anchor viewportAnchor, targetX, targetY float64) {
 	if !anchor.valid || anchor.page < 0 || anchor.page >= len(a.pageToRow) || len(a.rows) == 0 {
 		a.clampScroll()
 		return
@@ -35,7 +42,6 @@ func (a *App) restoreViewportAnchor(anchor viewportAnchor) {
 		return
 	}
 	dx, dy := a.pageTransform(anchor.page).toScreen(anchor.point.X, anchor.point.Y)
-	targetX, targetY := a.viewportAnchorScreenPoint()
 	a.scrollX += pageX + dx - targetX
 	a.scrollY += pageY + dy - targetY
 	a.clampScroll()
@@ -49,19 +55,71 @@ func (a *App) restoreViewportAnchor(anchor viewportAnchor) {
 	}
 }
 
+// relayoutWithViewportAnchor lays the document out again after update,
+// keeping the content at the viewport's anchor there. When only what lines
+// the window's edges changed the document's part of it, at the same zoom,
+// the content stays where it was in the window instead: a bar or docked
+// view shown covers the page rather than moving it, and one hidden shows
+// more of it. The page moves only so that an end of the document in view
+// stays in view, neither covered nor left with a gap beside it.
 func (a *App) relayoutWithViewportAnchor(update func()) {
 	fallbackPage := a.page
 	anchor := a.captureViewportAnchor()
+	edges := a.snapshotEdges()
+	doc, winW, winH, scale := a.documentRect(), a.winW, a.winH, a.scale
+	anchorX, anchorY := a.viewportAnchorScreenPoint()
+	ends := a.documentEndsInView()
 	if update != nil {
 		update()
 	}
+	a.edgesChanged(edges)
 	a.recomputeLayout(a.viewportSize())
 	if !anchor.valid {
 		a.page = clampInt(fallbackPage, 0, max(0, a.pageCount-1))
 		a.clampScroll()
 		return
 	}
+	if now := a.documentRect(); now != doc && a.winW == winW && a.winH == winH && a.scale == scale {
+		a.restoreViewportAnchorAt(anchor, float64(doc.X-now.X)+anchorX, float64(doc.Y-now.Y)+anchorY)
+		a.keepDocumentEndsInView(ends)
+		return
+	}
 	a.restoreViewportAnchor(anchor)
+}
+
+// documentEnds is which ends of the document are in view: its start at
+// the left and top, and its end at the right and bottom.
+type documentEnds struct{ left, top, right, bottom bool }
+
+func (a *App) documentEndsInView() documentEnds {
+	viewportW, viewportH := a.viewportSize()
+	return documentEnds{
+		left: a.scrollX <= 0, top: a.scrollY <= 0,
+		right: a.scrollX >= a.contentW-float64(viewportW), bottom: a.scrollY >= a.contentH-float64(viewportH),
+	}
+}
+
+// keepDocumentEndsInView scrolls the ends of the document that were in
+// view back into it, the start first where both were.
+func (a *App) keepDocumentEndsInView(ends documentEnds) {
+	viewportW, viewportH := a.viewportSize()
+	scrollX, scrollY := a.scrollX, a.scrollY
+	switch {
+	case ends.left:
+		a.scrollX = 0
+	case ends.right:
+		a.scrollX = a.contentW - float64(viewportW)
+	}
+	switch {
+	case ends.top:
+		a.scrollY = 0
+	case ends.bottom:
+		a.scrollY = a.contentH - float64(viewportH)
+	}
+	a.clampScroll()
+	if a.renderMode == renderContinuous && (a.scrollX != scrollX || a.scrollY != scrollY) {
+		a.updateCurrentPageFromScroll()
+	}
 }
 
 func (a *App) viewportAnchorScreenPoint() (float64, float64) {

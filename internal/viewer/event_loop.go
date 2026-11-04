@@ -530,6 +530,7 @@ func (a *App) drawFrame() error {
 	}
 	a.frameStart = time.Now()
 	a.beginMotionFrame()
+	a.stepEdgeMotion()
 	a.drawing = true
 	defer func() { a.drawing, a.frameStatus = false, nil }()
 	message := a.message
@@ -539,8 +540,9 @@ func (a *App) drawFrame() error {
 		a.pendingRedraw = a.loaderVisible
 		a.drawLinkHints(a.renderer)
 	})
-	if a.statusVisible() {
-		if err := a.drawStatusBar(a.renderer); err != nil {
+	if a.statusVisible() || a.edgeGhost(edgeStatus) {
+		err := a.drawOnEdge(edgeKey{kind: edgeStatus}, a.layoutEdges().status, func() error { return a.drawStatusBar(a.renderer) })
+		if err != nil {
 			return err
 		}
 	}
@@ -549,7 +551,10 @@ func (a *App) drawFrame() error {
 			return err
 		}
 	}
-	a.drawTabBar(a.renderer)
+	_ = a.drawOnEdge(edgeKey{kind: edgeTabBar}, a.layoutEdges().tabBar, func() error {
+		a.drawTabBar(a.renderer)
+		return nil
+	})
 	if err := a.drawUIViews(a.renderer); err != nil {
 		return err
 	}

@@ -18,6 +18,7 @@ type Motion struct {
 	Prompt    Transition // the status bar's sides growing and shrinking
 	Message   Transition // messages fading in and out
 	Cursor    Transition // the prompt's cursor moving
+	Edges     Transition // bars and docked views sliding in and out
 }
 
 // Transition is how long a change takes and how it eases, as a CSS
@@ -55,6 +56,7 @@ var defaultMotion = Motion{
 	Prompt:    transition(100, "ease-out"),
 	Message:   transition(0, "ease-out"),
 	Cursor:    transition(50, "ease-out"),
+	Edges:     transition(0, "ease-out"),
 }
 
 // stillMotion is the default motion turned off, for the classic theme.

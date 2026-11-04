@@ -79,12 +79,13 @@ func (a *App) layoutEdges() edgeLayout {
 	}
 	var l edgeLayout
 	var floating []edgeItem // laid over the document once it is known
-	for _, item := range a.edgeItems() {
+	for _, item := range a.edgeItemsMoving() {
 		if a.edgeFloats(item) {
 			floating = append(floating, item)
 			continue
 		}
 		var size float32
+		in := float32(a.edgeIn(item)) // how far in it is, while the edges move
 		switch item.kind {
 		case edgeStatus:
 			size = float32(a.statusStripHeight())
@@ -98,7 +99,11 @@ func (a *App) layoutEdges() edgeLayout {
 				size = float32(math.Round(min(a.uiLength(view.place.height, float64(a.winH)), float64(rest.H)*maxDockShare)))
 			}
 		}
-		r := takeEdge(&rest, item.side, size)
+		// It is laid out where it rests, and drawn slid out as far as it is
+		// out; the document has what it leaves.
+		resting := rest
+		r := takeEdge(&resting, item.side, size)
+		takeEdge(&rest, item.side, size*in)
 		switch item.kind {
 		case edgeStatus:
 			l.status = r
@@ -172,7 +177,7 @@ func (a *App) statusStripHeight() int {
 // top left or narrows it but a status bar along the bottom, as is usual,
 // which the layout of every row of pages need not ask more about.
 func (a *App) edgesPlain() bool {
-	if a.tabBarShown() || (a.presentation == nil && a.nativeInset > 0) {
+	if a.tabBarShown() || a.edgeMotion.active || (a.presentation == nil && a.nativeInset > 0) {
 		return false
 	}
 	for _, view := range a.views.panels {

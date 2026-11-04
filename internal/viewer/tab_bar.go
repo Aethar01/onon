@@ -197,7 +197,11 @@ func (a *App) tabBarBand(bar sdl.FRect) float32 {
 // window's buttons, as tab_bar_position = "title" asks, which it is while
 // nothing of lower order is along the window's top.
 func (a *App) tabBarInTitleRow() bool {
-	if !a.tabBarWantsTitleRow() || !a.tabBarShown() || a.tabBarSide() != "top" {
+	shown := a.tabBarShown()
+	if !shown {
+		shown = a.edgeGhost(edgeTabBar) // sliding out, it keeps its place
+	}
+	if !a.tabBarWantsTitleRow() || !shown || a.tabBarSide() != "top" {
 		return false
 	}
 	bar := a.layoutEdges().tabBar
@@ -463,7 +467,7 @@ func (a *App) barStyle(element config.Element) config.Style {
 
 // drawTabBar draws the tab bar, a tab being dragged over the others.
 func (a *App) drawTabBar(renderer *sdl.Renderer) {
-	if !a.tabBarShown() {
+	if !a.tabBarShown() && !a.edgeGhost(edgeTabBar) {
 		return
 	}
 	l := a.tabBarLayout()
@@ -676,7 +680,7 @@ func (a *App) tabBarOn() bool {
 // the row of the window's buttons is the tab bar's: over a tab, or with
 // anywhere, anywhere the tabs scroll, rather than room to drag the window.
 func (a *App) titleRowTakes(x, y float32, anywhere bool) bool {
-	if !a.tabBarInTitleRow() {
+	if !a.tabBarShown() || !a.tabBarInTitleRow() {
 		return false
 	}
 	if anywhere {
