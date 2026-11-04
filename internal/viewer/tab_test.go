@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -249,13 +250,18 @@ func TestWriteAllSavesEveryEditedTab(t *testing.T) {
 // path, as socket paths are limited to about 100 bytes.
 func shortRuntimeDir(t *testing.T) {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "onon")
+	base := "/tmp" // shorter than macOS's per-user temporary directory
+	if runtime.GOOS == "windows" {
+		base = "" // the system's, which has no /tmp
+	}
+	dir, err := os.MkdirTemp(base, "onon")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	t.Setenv("TMPDIR", dir)
 	t.Setenv("XDG_RUNTIME_DIR", dir)
+	t.Setenv("LOCALAPPDATA", dir) // where sockets go on Windows
 }
 
 // sendWhilePolling sends request to address, polling the app's instance
