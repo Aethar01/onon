@@ -65,6 +65,37 @@ static BOOL ononItemMatches(NSMenuItem *item, NSEvent *event) {
 
 static OnonMenuBarTarget *ononMenuBarTarget;
 
+// OnonMainMenu is the menu bar. SDL hands every key press to the viewer,
+// which runs the action bound to it, so a key equivalent of one of the
+// viewer's items is claimed here without the menu running it again or
+// flashing its title: while such a key is held, the flash holds back its
+// repeats, and a held key's action runs only when it is let go.
+@interface OnonMainMenu : NSMenu
+@end
+
+@implementation OnonMainMenu
+
+static BOOL ononMenuHasActionKey(NSMenu *menu, NSEvent *event) {
+    for (NSMenuItem *item in menu.itemArray) {
+        if (item.submenu != nil && ononMenuHasActionKey(item.submenu, event)) {
+            return YES;
+        }
+        if (item.target == ononMenuBarTarget && ononItemMatches(item, event)) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+- (BOOL)performKeyEquivalent:(NSEvent *)event {
+    if (event.type == NSEventTypeKeyDown && ononMenuHasActionKey(self, event)) {
+        return YES;
+    }
+    return [super performKeyEquivalent:event];
+}
+
+@end
+
 // OnonRecentDocuments fills Open Recent with the documents macOS keeps
 // for onon each time it opens. NSDocumentController fills it only for
 // document-based applications. A document chosen goes to SDL's application
@@ -197,7 +228,7 @@ static void ononBuildMenuBar(NSData *data) {
         ononRecentDocuments = [[OnonRecentDocuments alloc] init];
     }
     NSString *appName = ononApplicationName();
-    NSMenu *mainMenu = [[[NSMenu alloc] init] autorelease];
+    NSMenu *mainMenu = [[[OnonMainMenu alloc] init] autorelease];
     NSMenu *servicesMenu = nil;
     NSMenu *windowsMenu = nil;
     NSMenu *helpMenu = nil;

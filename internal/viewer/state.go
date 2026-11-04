@@ -152,10 +152,11 @@ type sdlState struct {
 	cursor      cursorKind // the cursor currently shown
 	iconBytes   []byte
 	fontFace    font.Face
-	headingFace font.Face  // heavier, for titles; may be fontFace
-	uiScale     float64    // output pixels per logical pixel the UI font was loaded at
-	fontWarning string     // the last font warning logged, so a reload does not repeat it
-	clips       []sdl.Rect // the clip rects withClip has in place, innermost last
+	headingFace font.Face        // heavier, for titles; may be fontFace
+	uiScale     float64          // output pixels per logical pixel the UI font was loaded at
+	uiFont      config.ThemeFont // the font setting the UI font was loaded from
+	fontWarning string           // the last font warning logged, so a reload does not repeat it
+	clips       []sdl.Rect       // the clip rects withClip has in place, innermost last
 	textCache   textTextureCache
 	masks       maskCache                          // the theme's shapes, rasterised
 	styles      *[config.ElementCount]config.Style // the theme's styles, resolved; nil until drawn
