@@ -3,7 +3,7 @@
 
 onon.options.alt_colors = false -- Start with alternate colors: true, false, or "system" to follow the OS's dark mode as it changes.
 onon.options.alt_colors_keep_images = true -- Keep raster images in their own colors in alternate-color mode.
-onon.options.anchor_position = "center" -- Viewport anchor: center, top, or bottom.
+onon.options.anchor_position = "center" -- Where the page stays when the window is resized or the zoom fits it again: center, top, or bottom. Bars and docked views shown or hidden leave the page where it is instead, moving it only to keep an end of the document in view.
 onon.options.animation_frame_ms = 0 -- Animation timestep in milliseconds; 0 follows the display's refresh rate.
 onon.options.annotation_colors = {"#ffe066", "#8ce99a", "#74c0fc", "#ffa8a8"} -- Highlight colours offered by the highlight picker, as #RRGGBB.
 onon.options.anti_aliasing = 8 -- MuPDF antialiasing level from 0 through 8.
@@ -127,6 +127,7 @@ onon.options.zoom_step = 1.15 -- Factor zoom_in multiplies the zoom by, and zoom
 --     prompt = "100ms ease-out", -- The sides of the status bar growing and shrinking with their text, as a pill does when a prompt opens.
 --     message = "none", -- Status messages fading in, and out when cleared.
 --     cursor = "50ms ease-out", -- The prompt's cursor gliding to where it moves.
+--     edges = "none", -- The status bar, tab bar and docked views sliding in along the window's edges as they are shown, the bars sliding out as they are hidden, the page moving with them only where it must.
 --   },
 --   elements = {}, -- The style of each piece of the UI, such as panel or row_selected; see Elements in the reference.
 -- }

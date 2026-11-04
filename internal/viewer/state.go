@@ -312,6 +312,9 @@ type windowState struct {
 	nativeTabbing bool
 	nativeInset   int
 	tabBar        tabBarState
+	// edgeMotion is the bars and docked views moving in or out, as
+	// motion.edges says.
+	edgeMotion edgeMotion
 	// background is set while withTab shows the viewer a tab other than
 	// the one on screen, so it leaves the window alone.
 	background bool
