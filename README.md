@@ -158,13 +158,11 @@ Then `onon arxiv:2401.12345` or `:open papers:smith2024` opens it. A local file 
 ### Tabs
 
 A window holds several documents as tabs, each with its own view, edits and
-session. On macOS they are the system's own window tabs, with the tab bar's +,
-Merge All Windows and Move Tab to New Window in the Window menu, as in other
-Mac apps; `native_tabs = false` draws onon's tab bar there instead. On Linux
-and Windows onon draws a tab bar, styled by the theme's `tab_bar`, `tab` and
+session. onon draws a tab bar, styled by the theme's `tab_bar`, `tab` and
 `tab_selected` elements, while more than one document is open. `:tabnew file.pdf`
-opens one, and `:tabnew` alone opens a blank tab. A file dropped on the window, or sent by Finder or `open`, opens in
-a new tab; `open_documents` sets `window` or `replace` instead.
+opens one, and `:tabnew` alone opens a blank tab. A file dropped on the window,
+or sent by Finder or `open`, opens in a new tab; `open_documents` sets `window`
+or `replace` instead.
 
 onon's tab bar can sit along any edge. By default it is in the title row,
 beside the window's own buttons, keeping `tab_bar_drag_space` (48) clear at
@@ -178,8 +176,12 @@ the title bar, `"title"` is the same as `"top"`.
 bar equally), or a width such as `160` or `"20%"`, which for a sidebar is its
 width. The `tab` element's `min_width` and `max_width` bound them, and a sidebar
 is `max_width` wide unless given a width. `tab_bar_visible` is `"auto"` (two or
-more tabs), `"always"` or `"never"`, and View ▸ Tab Bar, `toggle_tab_bar` or
-`:tabbar [on|off]` shows or hides it in a window, as the status bar's do. Drag
+more tabs), `"always"` or `"never"`. `"never"` turns tabs off, and onon works
+as it did before it had them: a document Finder, `open` or the command line
+sends opens in a new window, one dropped on the window replaces its document,
+`:tabnew` and `Cmd+T`/`Ctrl+T` open a new window, and no tabs are restored.
+View ▸ Tab Bar, `toggle_tab_bar` or `:tabbar [on|off]` only shows or hides a
+window's bar, as the status bar's do, keeping its tabs. Drag
 a tab to move it (`tab_drag = false` turns that off), middle-click to close it,
 and double-click the bar to open a new one.
 
@@ -188,10 +190,11 @@ nearer the window's edge: `status_bar_order` (10), `tab_bar_order` (20), and a
 docked view's `order` (30). So `tab_bar_order = 5` with a sidebar makes it the
 window's full height, the status bar beside it.
 
-On macOS, `native_tabs = true` (the default) uses the system's tabs whatever
-the `tab_bar` options say, and the system can only draw them in a row of their
-own below the title bar; `toggle_tab_bar` shows or hides that bar.
-`native_tabs = false` uses onon's bar and its options.
+On macOS, `native_tabs = true` uses the system's window tabs instead, as other
+Mac apps do, with the tab bar's +, Merge All Windows and Move Tab to New Window
+in the Window menu, whatever the `tab_bar` options say. The system draws them
+in a row of their own below the title bar, and `toggle_tab_bar` shows or hides
+it. Restart onon for a change to `native_tabs` to take effect.
 
 | Keys | Action |
 |---|---|
