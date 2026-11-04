@@ -25,6 +25,9 @@ type windowGroup struct {
 	// server is where other processes ask for a document to open in a new
 	// tab of the focused window.
 	server *instance.Server
+	// nativeTabs is whether the system gathers the windows into tabs, as
+	// native_tabs said when the first opened.
+	nativeTabs *bool
 }
 
 // windowGroup returns the group a belongs to, a group of its own for an

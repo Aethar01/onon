@@ -68,8 +68,14 @@ func (a *App) openWindow() error {
 	a.windowGroup().focus(a)
 	a.configureNativeWindow(window)
 	// native_tabs outranks the tab_bar options, the system's tabs being
-	// along the top whatever they say.
-	a.nativeTabbing = nativeTabsAvailable && a.config.NativeTabs
+	// along the top whatever they say. It is read once, as the process
+	// opens its first window, so its windows never mix the two.
+	g := a.windowGroup()
+	if g.nativeTabs == nil {
+		on := nativeTabsAvailable && a.config.NativeTabs
+		g.nativeTabs = &on
+	}
+	a.nativeTabbing = *g.nativeTabs
 	configureNativeTabbing(window, a.nativeTabbing)
 	// Frames are presented in step with the display, so animations move
 	// once per refresh rather than when a timer happens to fire.
