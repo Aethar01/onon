@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"onon/internal/config"
@@ -140,9 +141,23 @@ func (a *App) OpenTab(path string) error {
 	return a.openNewTab(path, page)
 }
 
+// tabsOff reports whether tab_bar_visible = "never" turned tabs off, so
+// that what would open in a new tab opens in a new window, as before onon
+// had tabs. The system's tabs are windows already.
+func (a *App) tabsOff() bool {
+	return a.config.TabBarVisible == "never" && !a.nativeTabsOn()
+}
+
 // openNewTab opens path, already resolved, in a new tab after the one
 // shown, at page when page is above 0, even when another tab has it open.
+// With tabs off it opens in a new window.
 func (a *App) openNewTab(path string, page int) error {
+	if a.tabsOff() && !a.tabIsEmpty() {
+		if page > 0 {
+			path += "#page=" + strconv.Itoa(page)
+		}
+		return a.openInNewWindow(path)
+	}
 	if a.tabIsEmpty() {
 		return a.openInTab(path, page)
 	}
@@ -211,27 +226,23 @@ func (a *App) showOpenDocument(path string, page int) bool {
 	return false
 }
 
-// newEmptyTab opens a tab with no document, and the recent-files menu to
-// choose one from, or the file picker when there are no recent files.
+// newEmptyTab opens a blank tab, with no document; with tabs off, a blank
+// window.
 func (a *App) newEmptyTab() {
 	if !a.tabIsEmpty() {
-		if a.nativeTabsOn() {
-			w, err := a.openNativeTab("", 0)
-			if err != nil {
+		if a.tabsOff() {
+			if err := a.openInNewWindow(""); err != nil {
 				a.message = err.Error()
-				return
 			}
-			a = w // to choose a document in
-		} else {
-			a.insertTab(a.emptyTab())
+			return
 		}
-	}
-	if a.config.SessionDatabase && len(config.RecentFiles(1)) > 0 {
-		a.showRecentFiles()
-		return
-	}
-	if err := a.openFilePicker(); err != nil {
-		a.message = err.Error()
+		if a.nativeTabsOn() {
+			if _, err := a.openNativeTab("", 0); err != nil {
+				a.message = err.Error()
+			}
+			return
+		}
+		a.insertTab(a.emptyTab())
 	}
 }
 
@@ -547,7 +558,7 @@ func (a *App) loadPendingTab() {
 // the tab shown, which has the one that was shown then open. Each opens
 // its document when first shown.
 func (a *App) restoreTabs(w config.WindowTabs) {
-	if !a.config.RestoreTabs || len(w.Paths) < 2 || w.Active < 0 || w.Active >= len(w.Paths) {
+	if !a.config.RestoreTabs || a.tabsOff() || len(w.Paths) < 2 || w.Active < 0 || w.Active >= len(w.Paths) {
 		return
 	}
 	if a.nativeTabsOn() {

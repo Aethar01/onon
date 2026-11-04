@@ -145,7 +145,7 @@ func luaTabsSelect(rt *Runtime) lua.LGFunction {
 //
 // # Parameters
 //
-//   - path: A document path, URL or ssh host:path, as onon.open takes. Without one, an empty tab opens with the recent files to choose from.
+//   - path: A document path, URL or ssh host:path, as onon.open takes. Without one, a blank tab opens.
 //
 // # Returns
 //

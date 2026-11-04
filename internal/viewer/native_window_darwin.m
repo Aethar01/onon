@@ -78,6 +78,13 @@ extern int ononTitleRowTakesPoint(void *window, double x, double y, int anywhere
     return NO;
 }
 
+// The window server would otherwise move the window on any press here,
+// before mouseDown: decides, so that dragging a tab dragged the window too.
+// mouseDown: drags the window itself where nothing of onon's is.
+- (BOOL)mouseDownCanMoveWindow {
+    return NO;
+}
+
 - (void)drawRect:(NSRect)dirtyRect {
     (void)dirtyRect;
 }

@@ -484,10 +484,19 @@ func (a *App) handleDroppedFile(path string, windowID sdl.WindowID) {
 		return
 	}
 	var err error
+	where := a.config.OpenDocuments
+	if where == "tab" && a.tabsOff() {
+		// As before onon had tabs: a document the system sends in a new
+		// window, and one dropped on this window in place of its own.
+		where = "replace"
+		if windowID == 0 {
+			where = "window"
+		}
+	}
 	switch {
-	case a.tabIsEmpty() && len(a.tabList()) == 1, a.config.OpenDocuments == "replace":
+	case a.tabIsEmpty() && len(a.tabList()) == 1, where == "replace":
 		err = a.Open(path)
-	case a.config.OpenDocuments == "window":
+	case where == "window":
 		err = a.openInNewWindow(path)
 	default:
 		err = a.OpenTab(path)

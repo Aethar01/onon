@@ -319,3 +319,45 @@ func TestTextInputNeededOnlyForActiveTextEntry(t *testing.T) {
 		})
 	}
 }
+
+func TestTabsOffOpensDocumentsAsBeforeTabs(t *testing.T) {
+	var started [][]string
+	startProcess = func(cmd *exec.Cmd) error {
+		started = append(started, cmd.Args[1:])
+		return nil
+	}
+	t.Cleanup(func() { startProcess = (*exec.Cmd).Start })
+	inProcess := inProcessWindows
+	inProcessWindows = false // as on Linux and Windows
+	t.Cleanup(func() { inProcessWindows = inProcess })
+	path := filepath.Join(t.TempDir(), "requested.pdf")
+	tabsOff := func() *App {
+		started = nil
+		app := &App{tab: &tab{}, launchArgs: []string{"-config=/c.lua"}}
+		app.config.OpenDocuments = "tab"
+		app.config.TabBarVisible = "never"
+		app.docPath = "/shown.pdf"
+		return app
+	}
+	newWindow := []string{"-config=/c.lua", "--unique", "--", path}
+
+	app := tabsOff()
+	app.handleDroppedFile(path, 0)
+	if len(started) != 1 || !slices.Equal(started[0], newWindow) || len(app.tabList()) != 1 {
+		t.Fatalf("a document the system sent: started %q, %d tabs; want a new window", started, len(app.tabList()))
+	}
+	app = tabsOff()
+	app.handleDroppedFile(path, 1)
+	if len(started) != 0 || app.pendingOpen != path {
+		t.Fatalf("a dropped document: started %q, queued %q; want it in place of the one shown", started, app.pendingOpen)
+	}
+	app = tabsOff()
+	if err := app.openNewTab(path, 0); err != nil || len(started) != 1 || !slices.Equal(started[0], newWindow) {
+		t.Fatalf("a new tab: started %q (%v); want a new window", started, err)
+	}
+	app = tabsOff()
+	app.newEmptyTab()
+	if len(started) != 1 || !slices.Equal(started[0], []string{"-config=/c.lua", "--blank"}) || len(app.tabList()) != 1 {
+		t.Fatalf("an empty tab: started %q, %d tabs; want a new window", started, len(app.tabList()))
+	}
+}

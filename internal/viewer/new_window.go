@@ -53,7 +53,10 @@ func (a *App) openInNewProcess(path string) error {
 	if err != nil {
 		return fmt.Errorf("open in new window: %w", err)
 	}
-	args := append(append([]string{}, a.launchArgs...), "--unique", "--", path)
+	args := append(append([]string{}, a.launchArgs...), "--blank")
+	if path != "" {
+		args = append(a.launchArgs[:len(a.launchArgs):len(a.launchArgs)], "--unique", "--", path)
+	}
 	cmd := exec.Command(exe, args...)
 	if a.verbose {
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr

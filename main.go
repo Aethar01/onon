@@ -38,6 +38,7 @@ func run() error {
 	var noConfig bool
 	var unique bool
 	var newTab bool
+	var blank bool
 	var gotoSpec string
 	var command string
 	flag.StringVar(&cfgPath, "config", "", "path to config.lua")
@@ -47,6 +48,7 @@ func run() error {
 	flag.BoolVar(&noConfig, "no-config", false, "start from built-in defaults, ignoring configuration files")
 	flag.BoolVar(&unique, "unique", false, "reuse the window already showing this document, if there is one")
 	flag.BoolVar(&newTab, "tab", false, "open the document in a new tab of the window focused last; with --unique, show the tab that has it open instead")
+	flag.BoolVar(&blank, "blank", false, "open a window with no document, rather than the one or the tabs open last")
 	flag.StringVar(&gotoSpec, "goto", "", "open at PAGE, or at X:Y points from the top-left corner of PAGE")
 	flag.StringVar(&command, "command", "", "run a viewer command, as typed after ':'")
 	flag.Parse()
@@ -87,8 +89,8 @@ func run() error {
 		if launched := viewer.LaunchDocuments(verbose); len(launched) > 0 {
 			docPath = config.AbsoluteDocumentPath(launched[0])
 			named = true
-		} else if newTab {
-			// An empty tab, to choose a document in.
+		} else if newTab || blank {
+			// A blank tab or window.
 		} else if tabs, ok := config.LastWindowTabs(); ok {
 			// The window that closed last had several tabs; restore_tabs,
 			// once the configuration is loaded, says whether to open them

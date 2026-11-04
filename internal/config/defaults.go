@@ -66,7 +66,7 @@ func Default() Config {
 		CompletionMaxItems:    10,
 		RecentFilesMax:        20,
 		RestoreTabs:           true,
-		NativeTabs:            true,
+		NativeTabs:            false,
 		TabBarPosition:        "title",
 		TabBarVisible:         "auto",
 		TabBarResizable:       true,

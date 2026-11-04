@@ -163,8 +163,7 @@ Merge All Windows and Move Tab to New Window in the Window menu, as in other
 Mac apps; `native_tabs = false` draws onon's tab bar there instead. On Linux
 and Windows onon draws a tab bar, styled by the theme's `tab_bar`, `tab` and
 `tab_selected` elements, while more than one document is open. `:tabnew file.pdf`
-opens one, and `:tabnew` alone opens an empty tab with the recent files to
-choose from. A file dropped on the window, or sent by Finder or `open`, opens in
+opens one, and `:tabnew` alone opens a blank tab. A file dropped on the window, or sent by Finder or `open`, opens in
 a new tab; `open_documents` sets `window` or `replace` instead.
 
 onon's tab bar can sit along any edge. By default it is in the title row,
@@ -225,6 +224,7 @@ onon --unique --goto 42:100:250 f.pdf   # ... to a point on page 42
 onon --goto 42 file.pdf                 # always a new window, opened at 42
 onon --unique --command "reload-config" f.pdf   # run a command in that window
 onon --tab file.pdf                     # a new tab in the window focused last
+onon --blank                            # a window with no document
 ```
 
 `X` and `Y` are points from the page's top-left corner. `--command` takes a

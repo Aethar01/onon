@@ -57,7 +57,7 @@ var specs = []Spec{
 	{Name: "tabfirst", Help: ":tabfirst - Go to the first tab"},
 	{Name: "tablast", Help: ":tablast - Go to the last tab"},
 	{Name: "tabmove", Help: ":tabmove [N|+N|-N], :tabm - Move the tab to the end, after tab N (0 for first), or N places"},
-	{Name: "tabnew", Help: ":tabnew [filename], :tabe - Open a document in a new tab, or a new tab to choose one in"},
+	{Name: "tabnew", Help: ":tabnew [filename], :tabe - Open a document in a new tab, or a blank tab"},
 	{Name: "tabnext", Help: ":tabnext [N|+N|-N], :tabn - Go to the next tab, to tab N, or N tabs on"},
 	{Name: "tabonly", Help: ":tabonly, :tabo - Close every other tab; :tabonly! discards their unsaved edits"},
 	{Name: "tabprevious", Help: ":tabprevious [N], :tabp - Go to the previous tab, or N tabs back"},

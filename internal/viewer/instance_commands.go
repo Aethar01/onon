@@ -194,6 +194,10 @@ func (a *App) applyInstanceOpenTab(request instance.Request) error {
 		if err != nil {
 			return err
 		}
+		if a.tabsOff() && !a.tabIsEmpty() {
+			// A new window, which goes to the page as it opens.
+			return a.openNewTab(path, cmp.Or(request.Page, page))
+		}
 		if err := a.openNewTab(path, page); err != nil {
 			return err
 		}
