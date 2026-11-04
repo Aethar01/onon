@@ -252,6 +252,9 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          # A tag's cache can only be read by that same tag, so saving one
+          # costs time and quota for nothing.
+          cache: false
 
       - name: Build MuPDF
         # Linked statically, so the packages need no MuPDF from the system,
@@ -318,8 +321,10 @@ jobs:
             *) export ONON_PACKAGE_VERSION=0.0.0 ;;
           esac
           name="onon-${VERSION}-linux-x86_64"
+          # The released binary, rather than compiling nfpm with go run.
+          curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/${NFPM_VERSION}/nfpm_${NFPM_VERSION#v}_Linux_x86_64.tar.gz" | tar -xz nfpm
           for packager in deb rpm; do
-            go run "github.com/goreleaser/nfpm/v2/cmd/nfpm@${NFPM_VERSION}" package \
+            ./nfpm package \
               --config assets/linux/nfpm.yaml --packager "$packager" --target "${name}.${packager}"
           done
           cp -R dist/linux "$name"
