@@ -25,7 +25,11 @@ var macOSKeys = map[string][]string{
 	"open_file_picker":  {"<D-o>"},
 	"save":              {"<D-s>"},
 	"print":             {"<D-p>"},
-	"quit":              {"<D-q>", "<D-w>"},
+	"quit":              {"<D-q>"},
+	"new_tab":           {"<D-t>"},
+	"close_tab":         {"<D-w>"},
+	"next_tab":          {"<D-S-]>"},
+	"prev_tab":          {"<D-S-[>"},
 	"open_config":       {"<D-,>"},
 	"undo":              {"<D-z>"},
 	"redo":              {"<D-S-z>"},
@@ -48,7 +52,9 @@ var macOSKeys = map[string][]string{
 // desktopKeys are the Ctrl and function-key shortcuts Windows and Linux
 // desktop applications share. Ctrl-O stays Vim's jump back.
 var desktopKeys = map[string][]string{
-	"quit":              {"<C-q>", "<C-w>"},
+	"quit":              {"<C-q>"},
+	"new_tab":           {"<C-t>"},
+	"close_tab":         {"<C-w>"},
 	"undo":              {"<C-z>"},
 	"redo":              {"<C-y>", "<C-S-z>"},
 	"search_prompt":     {"<C-f>"},

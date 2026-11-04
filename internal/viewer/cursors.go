@@ -48,6 +48,10 @@ func (a *App) updateCursor() {
 		kind = a.autoscrollCursor()
 	case a.panning:
 		kind = cursorGrabbing
+	case a.tabBar.resizing || a.tabBarEdgeAt(a.pointer.X, a.pointer.Y):
+		kind = cursorResizeEW
+	case a.tabBar.drag.moving:
+		kind = cursorGrabbing
 	case a.links.overLink:
 		kind = cursorPointer
 	default:

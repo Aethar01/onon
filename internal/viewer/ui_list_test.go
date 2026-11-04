@@ -8,7 +8,7 @@ import (
 
 func TestBuiltinModalSelection(t *testing.T) {
 	selected := ""
-	app := &App{}
+	app := &App{tab: &tab{}}
 	app.showCoreList("test", "Files", []string{"one.pdf", "two.pdf"}, func(value string) { selected = value })
 	app.activeUIView().selected = 1
 	app.activateUIView(app.activeUIView())
@@ -18,7 +18,7 @@ func TestBuiltinModalSelection(t *testing.T) {
 }
 
 func TestKeybindViewHasItsHooks(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	view := app.newKeybindView()
 	if view.onSelect == nil || view.onAction == nil {
 		t.Fatalf("expected keybind hooks, view=%+v", view)
@@ -78,7 +78,7 @@ func TestModalWheelRowsHonorsFlippedDirection(t *testing.T) {
 }
 
 func TestModalListRowAtUsesRowsBelowHeaderOnly(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	rect := sdl.FRect{X: 10, Y: 20, W: 200, H: 160}
 
 	if _, ok := app.modalListRowAt(rect, 3, 30, 30, 50, 25); ok {

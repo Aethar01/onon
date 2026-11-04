@@ -101,7 +101,13 @@ func init() {
 		"print":             do(func(a *App) { a.printDocument("") }),
 		"reload_config":     do((*App).reloadConfig),
 		"open_config":       do((*App).openConfig),
-		"quit":              do(func(a *App) { a.quit = a.confirmDiscard("quit") }),
+		"next_tab":          do(func(a *App) { a.cycleTab(1) }),
+		"prev_tab":          do(func(a *App) { a.cycleTab(-1) }),
+		"new_tab":           do((*App).newEmptyTab),
+		"close_tab":         do(func(a *App) { a.closeTab(a.userTabIndex(), false, "close_tab") }),
+		"tabs_menu":         do((*App).toggleTabsMenu),
+		"toggle_tab_bar":    do((*App).toggleTabBar),
+		"quit":              do(func(a *App) { a.windowGroup().quitAll("quit") }),
 	}
 }
 

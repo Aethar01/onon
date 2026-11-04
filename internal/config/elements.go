@@ -42,6 +42,9 @@ const (
 	ElementTitleBar
 	ElementTitleButton
 	ElementTitleClose
+	ElementTabBar
+	ElementTab
+	ElementTabSelected
 	ElementLoader
 	ElementAutoscrollMarker
 	ElementPage
@@ -90,6 +93,9 @@ var elementSpecs = [ElementCount]struct {
 	ElementTitleBar:          {"title_bar", noElement, slices.Concat(boxProps, []string{"text"}), "Behind the window buttons onon draws where the system draws no title bar, as on Windows. Its text colour draws the buttons' symbols."},
 	ElementTitleButton:       {"title_button", noElement, slices.Concat(boxProps, []string{"text"}), "A window button under the pointer, drawn a little fainter while pressed."},
 	ElementTitleClose:        {"title_close", ElementTitleButton, slices.Concat(boxProps, []string{"text"}), "The close button under the pointer."},
+	ElementTabBar:            {"tab_bar", noElement, slices.Concat(boxProps, []string{"padding", "margin", "gap", "floating"}), "onon's tab bar, where tab_bar_position puts it and tab_bar_visible shows it, wherever the system draws no tabs of its own. Its padding surrounds the tabs, margin sets it off the window's edges, gap is the space between tabs, and floating draws it over the page instead of beside it, as the status bar's does; a theme with tab_bar_style = \"pill\" floats its tabs as pills. In the title row, floating tabs sit their top margin below the window's top, or centred on the window's buttons if that is lower. Border sides and margins are given as for a bar at the top, and turn with the bar: its bottom is the side facing the document."},
+	ElementTab:               {"tab", noElement, slices.Concat(boxProps, textProps, []string{"min_width", "max_width"}), "A tab in the tab bar, named for its document. Its secondary colour marks a tab with unsaved edits, and its padding sets the bar's height. min_width and max_width bound its width in a bar at the top or bottom; tab_width = \"fill\" ignores max_width. Its sides turn with the bar, as tab_bar's do."},
+	ElementTabSelected:       {"tab_selected", ElementTab, slices.Concat(boxProps, textProps, []string{"min_width", "max_width"}), "The tab shown."},
 	ElementLoader:            {"loader", noElement, []string{"fill", "opacity", "draw"}, "The drops bouncing on a page still rendering; its box is the page."},
 	ElementPage:              {"page", noElement, []string{"shape", "radius", "fill", "border", "shadow"}, "Each page of the document, its fill showing until the page renders. Pages turned other than by quarter turns are drawn plain."},
 	ElementAutoscrollMarker:  {"autoscroll_marker", noElement, []string{"fill", "border", "opacity", "width", "draw"}, "The marker where autoscroll started: its fill, its outline as its border, and its width."},
@@ -132,6 +138,8 @@ type Style struct {
 	Padding     Opt[Insets]
 	Margin      Opt[Insets]
 	Width       Opt[float64]
+	MinWidth    Opt[float64]
+	MaxWidth    Opt[float64]
 	Gap         Opt[float64]
 	Floating    Opt[bool]
 	// Draw draws the element's box in place of the default drawing.
@@ -224,6 +232,8 @@ func baseStyle() Style {
 		Padding:     some(Insets{}),
 		Margin:      some(Insets{}),
 		Width:       some(1.0),
+		MinWidth:    some(0.0),
+		MaxWidth:    some(0.0),
 		Gap:         some(0.0),
 		Floating:    some(false),
 		Draw:        some[*lua.LFunction](nil),
@@ -244,6 +254,7 @@ func elementDefaults(t *Theme, e Element) Style {
 		shadow = defaultShadow
 	}
 	pill := t.StatusBarStyle == "pill"
+	tabPills := t.TabBarStyle == "pill"
 	var s Style
 	switch e {
 	case ElementPanel:
@@ -361,6 +372,42 @@ func elementDefaults(t *Theme, e Element) Style {
 		// Windows' own close button red.
 		s.Fill = some(Color{RGB: [3]uint8{0xc4, 0x2b, 0x1c}, Alpha: 1})
 		s.Text = some(Color{RGB: [3]uint8{0xff, 0xff, 0xff}, Alpha: 1})
+	case ElementTabBar:
+		// A bar, or pills floating over the page, set off from the
+		// window's edges as the status bar's are.
+		if tabPills {
+			s.Floating = some(true)
+			s.Margin = some(Insets{Top: 10, Right: 10, Left: 10})
+			s.Gap = some(8.0)
+		} else {
+			s.Fill = some(paletteColor("status_bar", 1))
+			s.BorderWidth = some(1.0)
+			s.BorderSides = some(SideBottom)
+		}
+	case ElementTab:
+		s.Text = some(paletteColor("muted", 1))
+		s.Secondary = some(paletteColor("accent", 1))
+		s.Padding = some(symmetric(line/2, textInset))
+		s.MinWidth = some(90.0)
+		s.MaxWidth = some(220.0)
+		if tabPills {
+			if radius > 0 {
+				s.Shape = some(Shape{Kind: "pill"})
+			}
+			s.Fill = some(paletteColor("status_bar", 1))
+			s.BorderWidth = some(1.0)
+			s.Shadow = some(shadow)
+		}
+	case ElementTabSelected:
+		s.Text = some(paletteColor("foreground", 1))
+		s.BorderColor = some(paletteColor("accent", 1))
+		if !tabPills {
+			// Open onto the pages below it, marked at its edge as the
+			// selected row is.
+			s.Fill = some(paletteColor("background", 1))
+			s.BorderWidth = some(2.0)
+			s.BorderSides = some(SideBottom)
+		}
 	case ElementLoader:
 		s.Fill = some(paletteColor("muted", 1))
 	case ElementPage:
@@ -472,6 +519,8 @@ var styleProps = []styleProp{
 	insetsProp("padding", "Space between the box's edges and its contents in logical pixels: one number, { vertical, horizontal }, or { top, right, bottom, left }.", func(s *Style) *Opt[Insets] { return &s.Padding }),
 	insetsProp("margin", "Space around the box in logical pixels, written as padding is.", func(s *Style) *Opt[Insets] { return &s.Margin }),
 	numberProp("width", "Width in logical pixels.", func(s *Style) *Opt[float64] { return &s.Width }),
+	numberProp("min_width", "The narrowest the element may be, in logical pixels.", func(s *Style) *Opt[float64] { return &s.MinWidth }),
+	numberProp("max_width", "The widest the element may be, in logical pixels; 0 for no limit.", func(s *Style) *Opt[float64] { return &s.MaxWidth }),
 	numberProp("gap", "Space between the element's parts in logical pixels.", func(s *Style) *Opt[float64] { return &s.Gap }),
 	optProp("floating", "boolean", "Float over the page rather than take space from it.",
 		func(s *Style) *Opt[bool] { return &s.Floating }, boolFromLua, parseBoolOption, func(_ *lua.LState, v bool) lua.LValue { return lua.LBool(v) }, strconv.FormatBool),

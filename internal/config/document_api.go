@@ -83,6 +83,22 @@ type DocumentSelectionHost interface {
 	Selection() (DocumentSelection, error)
 }
 
+// DocumentBinder is an optional extension to Host for a viewer showing
+// one of several documents: what CurrentDocumentHost returns answers the
+// document calls of a plugin's job, which runs on after another document
+// is shown, for the document shown when it started.
+type DocumentBinder interface {
+	CurrentDocumentHost() any
+}
+
+// documentHost is what answers document calls asked for now.
+func (r *Runtime) documentHost() any {
+	if binder, ok := r.host.(DocumentBinder); ok {
+		return binder.CurrentDocumentHost()
+	}
+	return r.host
+}
+
 type DocumentPageTextHost interface {
 	PageText(page int) (string, error)
 }

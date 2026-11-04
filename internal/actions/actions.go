@@ -69,6 +69,12 @@ var registry = []Action{
 	{Name: "options_menu"}, // not options, which is onon.options in Lua
 	{Name: "pan", Keys: []string{"<Space>"}},
 	{Name: "autoscroll"},
+	{Name: "next_tab", Keys: []string{"gt", "<C-Tab>", "<C-PgDn>"}},
+	{Name: "prev_tab", Keys: []string{"gT", "<C-S-Tab>", "<C-PgUp>"}},
+	{Name: "new_tab"},
+	{Name: "close_tab"},
+	{Name: "tabs_menu"}, // not tabs, which is onon.tabs in Lua
+	{Name: "toggle_tab_bar"},
 	{Name: "quit", Keys: []string{"q"}},
 }
 

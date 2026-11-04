@@ -59,7 +59,7 @@ func BenchmarkVisibleOutlineIndicesCached(b *testing.B) {
 		}
 		outline[i] = mupdf.OutlineItem{Title: fmt.Sprintf("Item %d", i), Page: i, Parent: parent, Depth: depth, HasChildren: i%10 == 0}
 	}
-	app := &App{documentState: documentState{outline: outline}, uiState: uiState{outlineMenu: outlineMenuState{expanded: expanded}}}
+	app := &App{tab: &tab{documentState: documentState{outline: outline}}, uiState: uiState{outlineMenu: outlineMenuState{expanded: expanded}}}
 	_ = app.visibleOutlineIndices()
 	b.ReportAllocs()
 	b.ResetTimer()

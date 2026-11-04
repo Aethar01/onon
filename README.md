@@ -155,10 +155,70 @@ onon.register_scheme("papers", function(name) return "davs://cloud.example.com/d
 
 Then `onon arxiv:2401.12345` or `:open papers:smith2024` opens it. A local file of the same name wins.
 
+### Tabs
+
+A window holds several documents as tabs, each with its own view, edits and
+session. onon draws a tab bar, styled by the theme's `tab_bar`, `tab` and
+`tab_selected` elements, while more than one document is open. `:tabnew file.pdf`
+opens one, and `:tabnew` alone opens a blank tab. A file dropped on the window,
+or sent by Finder or `open`, opens in a new tab; `open_documents` sets `window`
+or `replace` instead.
+
+onon's tab bar can sit along any edge. By default it is in the title row,
+beside the window's own buttons, keeping `tab_bar_drag_space` (48) clear at
+its end to drag the window by however many tabs are open; `0` gives that up.
+`tab_bar_position = "top"` puts it in a row of its own below, and `"bottom"`
+above the status bar; `"left"` or `"right"` make a sidebar of tabs, one under
+another, whose inner edge drags to resize it. On Linux, where the system draws
+the title bar, `"title"` is the same as `"top"`.
+
+`tab_width` sizes tabs: `"fit"` (as wide as their names), `"fill"` (sharing the
+bar equally), or a width such as `160` or `"20%"`, which for a sidebar is its
+width. The `tab` element's `min_width` and `max_width` bound them, and a sidebar
+is `max_width` wide unless given a width. `tab_bar_visible` is `"auto"` (two or
+more tabs), `"always"` or `"never"`. `"never"` turns tabs off, and onon works
+as it did before it had them: a document Finder, `open` or the command line
+sends opens in a new window, one dropped on the window replaces its document,
+`:tabnew` and `Cmd+T`/`Ctrl+T` open a new window, and no tabs are restored.
+View ▸ Tab Bar, `toggle_tab_bar` or `:tabbar [on|off]` only shows or hides a
+window's bar, as the status bar's do, keeping its tabs. Drag
+a tab to move it (`tab_drag = false` turns that off), middle-click to close it,
+and double-click the bar to open a new one.
+
+Where the bar meets the status bar and docked panels is set by order, lower
+nearer the window's edge: `status_bar_order` (10), `tab_bar_order` (20), and a
+docked view's `order` (30). So `tab_bar_order = 5` with a sidebar makes it the
+window's full height, the status bar beside it.
+
+On macOS, `native_tabs = true` uses the system's window tabs instead, as other
+Mac apps do, with the tab bar's +, Merge All Windows and Move Tab to New Window
+in the Window menu, whatever the `tab_bar` options say. The system draws them
+in a row of their own below the title bar, and `toggle_tab_bar` shows or hides
+it. Restart onon for a change to `native_tabs` to take effect.
+
+| Keys | Action |
+|---|---|
+| `gt`, `Ctrl+Tab`, `Ctrl+PgDn` (macOS also `Cmd+Shift+]`) | Next tab |
+| `gT`, `Ctrl+Shift+Tab`, `Ctrl+PgUp` (macOS also `Cmd+Shift+[`) | Previous tab |
+| `Ctrl+T` (macOS `Cmd+T`) | New tab |
+| `Ctrl+W` (macOS `Cmd+W`) | Close the tab, and the window with its last |
+
+The commands follow Vim's: `:tabnext [N]`, `:tabprevious`, `:tabfirst`,
+`:tablast`, `:tabclose [N]`, `:tabonly`, `:tabmove [N|+N|-N]`, `:tabdo
+<command>` and `:tabs`, which lists the tabs to choose one. `:q` closes the tab,
+`:qa` quits, `:wa` saves every tab and `:wqa` saves them and quits.
+
+Started with no document named, onon opens the tabs the window last closed
+with, showing the same one; the others open their documents when first
+shown. `restore_tabs = false` opens only that one. In Lua, `onon.tabs` lists,
+opens, shows and closes tabs, and plugins hear `tab_changed` when another tab
+is shown and `tab_list_changed` when one opens, closes, moves or gains unsaved
+edits.
+
 ### Single instance
 
-Instances are per document. Each window is reachable by anything that opens the
-same file.
+Instances are per document. Each tab is reachable by anything that opens the
+same file, which brings that tab forward.
 
 ```bash
 onon --unique file.pdf                  # reuse the window showing file.pdf
@@ -166,6 +226,8 @@ onon --unique --goto 42 file.pdf        # ... and go to page 42
 onon --unique --goto 42:100:250 f.pdf   # ... to a point on page 42
 onon --goto 42 file.pdf                 # always a new window, opened at 42
 onon --unique --command "reload-config" f.pdf   # run a command in that window
+onon --tab file.pdf                     # a new tab in the window focused last
+onon --blank                            # a window with no document
 ```
 
 `X` and `Y` are points from the page's top-left corner. `--command` takes a
@@ -173,9 +235,15 @@ viewer command as typed after `:`, including commands registered by plugins,
 and exits non-zero if the command is unrecognised.
 
 With no window showing the document, `--unique` opens one and applies any
-`--goto` and `--command` as it starts. A different document is a different
+`--goto` and `--command` as it starts. On macOS one onon process opens every window, so the
+system can gather them into tabs: a document named on the command line goes
+to the running onon, as one Finder sends does, and `open_documents` says
+where it opens. `--tab` opens the document in a new tab of
+the window focused last, started with the same `--config`, `--no-config` and
+`--no-plugins`, even when another tab shows it; with `--unique` too, the tab
+showing it wins. With no document, `--tab` opens an empty tab there. A different document is a different
 instance, so two files give two windows. The address follows the document: a
-window that switches files becomes reachable under the new one.
+tab that switches files becomes reachable under the new one.
 
 Sockets live under `$XDG_RUNTIME_DIR/onon` on Linux, the per-user temporary
 directory on macOS, and `%LOCALAPPDATA%\onon` on Windows. They are mode 0600
@@ -236,6 +304,7 @@ onon.theme = {
   alt = { accent = "#88aa88" }, -- colours for alternate-color mode
   font = { family = "Iosevka", size = 14 },
   status_bar_style = "pill",   -- float the status bar over the page
+  tab_bar_style = "pill",      -- and the tabs
   motion = { scale = 0 },      -- no animation
 }
 ```

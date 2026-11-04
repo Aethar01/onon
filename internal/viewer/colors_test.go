@@ -11,10 +11,13 @@ import (
 )
 
 func TestColorHelpersUseNormalAndAltPalettes(t *testing.T) {
-	app := &App{config: config.Config{Theme: config.Theme{
-		Palette: config.Palette{Background: [3]uint8{1, 2, 3}, Page: [3]uint8{4, 5, 6}, Foreground: [3]uint8{7, 8, 9}, StatusBar: [3]uint8{10, 11, 12}},
-		Alt:     config.Palette{Background: [3]uint8{13, 14, 15}, Page: [3]uint8{16, 17, 18}, Foreground: [3]uint8{19, 20, 21}, StatusBar: [3]uint8{22, 23, 24}},
-	}}}
+	app := &App{
+		tab: &tab{},
+		config: config.Config{Theme: config.Theme{
+			Palette: config.Palette{Background: [3]uint8{1, 2, 3}, Page: [3]uint8{4, 5, 6}, Foreground: [3]uint8{7, 8, 9}, StatusBar: [3]uint8{10, 11, 12}},
+			Alt:     config.Palette{Background: [3]uint8{13, 14, 15}, Page: [3]uint8{16, 17, 18}, Foreground: [3]uint8{19, 20, 21}, StatusBar: [3]uint8{22, 23, 24}},
+		}},
+	}
 
 	if app.statusVisible() {
 		t.Fatal("expected status bar hidden in normal mode unless explicitly shown")

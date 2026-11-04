@@ -137,6 +137,16 @@ static NSMenuItem *ononSystemItem(NSString *role, NSString *title, NSMenu **serv
     } else if ([role isEqualToString:@"front"]) {
         action = @selector(arrangeInFront:);
         target = NSApp;
+    } else if ([role isEqualToString:@"merge_windows"]) {
+        action = @selector(mergeAllWindows:); // to the key window, as each acts on its own
+    } else if ([role isEqualToString:@"move_tab_to_window"]) {
+        action = @selector(moveTabToNewWindow:);
+    } else if ([role isEqualToString:@"tab_overview"]) {
+        action = @selector(toggleTabOverview:);
+        key = @"\\";
+        modifiers |= NSEventModifierFlagShift;
+    } else if ([role isEqualToString:@"tab_bar"]) {
+        action = @selector(toggleTabBar:);
     } else if (![role isEqualToString:@"services"] && ![role isEqualToString:@"recent_documents"]) {
         return nil; // a role macOS has no item for
     }

@@ -975,6 +975,7 @@ var PluginEvents = []string{
 	"document_reloaded", "config_reloaded",
 	"mouse_button_pre", "mouse_button",
 	"selection_changed", "page_changed", "zoom_changed", "option_changed",
+	"tab_changed", "tab_list_changed",
 	"shutdown",
 }
 
@@ -1013,7 +1014,7 @@ func (r *Runtime) emitPluginEventCallbacks(event string, payload map[string]any)
 			top := r.state.GetTop()
 			err := r.callPluginLua(id, lua.P{Fn: subscription.fn, NRet: 1, Protect: true}, luaTableFromMap(r.state, payload))
 			if err != nil {
-				r.deferredOpen = ""
+				r.deferred = nil
 				r.logf("plugin %s event %s: %v", id, event, err)
 			}
 			if r.state.GetTop() > top {

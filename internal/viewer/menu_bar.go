@@ -41,6 +41,11 @@ func (a *App) menuItemState(action string) (enabled, checked bool) {
 // document open; the others are disabled then.
 var menuItemsWithoutDocument = map[string]bool{
 	"quit":              true,
+	"new_tab":           true,
+	"close_tab":         true,
+	"next_tab":          true,
+	"prev_tab":          true,
+	"tabs_menu":         true,
 	"open_file_picker":  true,
 	"show_recent_files": true,
 	"help":              true,
@@ -52,6 +57,7 @@ var menuItemsWithoutDocument = map[string]bool{
 	"paste":             true,
 	"toggle_fullscreen": true,
 	"toggle_status_bar": true,
+	"toggle_tab_bar":    true,
 	"toggle_alt_colors": true,
 }
 
@@ -59,6 +65,8 @@ var menuItemsWithoutDocument = map[string]bool{
 // some of the time.
 var menuItemEnabled = map[string]func(*App) bool{
 	"save":           func(a *App) bool { return a.unsaved },
+	"next_tab":       func(a *App) bool { return len(a.userTabs()) > 1 },
+	"prev_tab":       func(a *App) bool { return len(a.userTabs()) > 1 },
 	"undo":           func(a *App) bool { return a.editPos > 0 },
 	"redo":           func(a *App) bool { return a.editPos < a.editEnd },
 	"search_next":    func(a *App) bool { return len(a.search.order) > 0 },

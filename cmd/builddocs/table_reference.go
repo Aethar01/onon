@@ -29,7 +29,7 @@ type luaTableGroup struct {
 var luaTableGroups = []luaTableGroup{
 	{
 		name:  "Document and platform",
-		intro: "`onon.platform`, `onon.document` and its functions, and a plugin's `document`, give these. Coordinates are in unrotated PDF points from the page's top left.",
+		intro: "`onon.platform`, `onon.document` and its functions, `onon.tabs`, and a plugin's `document`, give these. Coordinates are in unrotated PDF points from the page's top left.",
 		tables: []luaTable{
 			{"Platform", "`onon.platform`, also `require(\"onon.platform\")`. Directories are absolute when the system gives one, and empty when it does not.", []luaField{
 				{"os", "string", "`linux`, `macos` or `windows`."},
@@ -51,6 +51,15 @@ var luaTableGroups = []luaTableGroup{
 				{"outline()", "function", "Returns its outline: a list of [Outline entry](#outline-entry) tables, empty when it has none."},
 				{"page_info(page)", "function", "Returns [Page info](#page-info) for a 1-based page; an out-of-range page raises an error."},
 				{"selection()", "function", "Returns the current [Selection](#selection)."},
+			}},
+			{"Tab", "One of the window's tabs, as `onon.tabs.list()` gives them.", []luaField{
+				{"index", "integer", "Its 1-based position, as `onon.tabs.select` and `onon.tabs.close` take."},
+				{"path", "string", "The path or URL of its document; empty for an empty tab."},
+				{"name", "string", "The name it shows."},
+				{"page", "integer", "The 1-based page it shows; 0 before its document opens."},
+				{"page_count", "integer", "Its document's number of pages; 0 before it opens."},
+				{"modified", "boolean", "Whether it has unsaved edits."},
+				{"active", "boolean", "Whether it is the tab shown."},
 			}},
 			{"Rectangle", "An area of a page.", []luaField{
 				{"x0", "number", "Left edge."},
@@ -270,6 +279,17 @@ var luaTableGroups = []luaTableGroup{
 				{"previous_scale", "number", "The zoom before."},
 				{"percent", "number", "The zoom now as a percentage."},
 			}},
+			{"Tab event", "`tab_changed`, when the window shows another tab.", []luaField{
+				{"document", "table", "`path`, `name`, and `page_count` of the document the tab now shown has open; `path` is empty when it has none."},
+				{"generation", "integer", "A number that changes whenever a document is opened or reloaded."},
+				{"index", "integer", "The 1-based position of the tab now shown."},
+				{"previous", "integer", "The 1-based position of the tab shown before, or 0 when that tab was closed."},
+			}},
+			{"Tab list event", "`tab_list_changed`, when a tab of the window opens, closes or moves, or gains or loses unsaved edits, so a plugin drawing its own tabs can redraw them from `onon.tabs.list()`.", []luaField{
+				{"reason", "string", "`opened`, `closed`, `moved` or `modified`."},
+				{"index", "integer", "The 1-based position of the tab that changed: where it is now, or where it was for one closed."},
+				{"count", "integer", "How many tabs the window has now."},
+			}},
 			{"Option event", "`option_changed`, after Lua code changes options.", []luaField{
 				{"source", "string", "What ran the code that changed them: the event's name for an event callback, `ui_select`, `ui_click` and so on for a view's callback, or `action`, `command`, `set`, `theme` or `plugin operation`."},
 			}},
@@ -283,6 +303,7 @@ var luaTableGroups = []luaTableGroup{
 var luaTableLocations = map[string]string{
 	"Platform":           "`onon.platform`",
 	"Document":           "`onon.document`",
+	"Tab":                "`onon.tabs.list()`",
 	"Rectangle":          "page bounds and selection geometry",
 	"Document metadata":  "`onon.document.metadata()`",
 	"Outline entry":      "`onon.document.outline()`",
@@ -316,6 +337,8 @@ var luaTableLocations = map[string]string{
 	"Selection event":    "`selection_changed` callback",
 	"Page event":         "`page_changed` callback",
 	"Zoom event":         "`zoom_changed` callback",
+	"Tab event":          "`tab_changed` callback",
+	"Tab list event":     "`tab_list_changed` callback",
 	"Option event":       "`option_changed` callback",
 }
 

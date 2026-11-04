@@ -8,8 +8,8 @@ import (
 
 func TestZoomUsesConfiguredBounds(t *testing.T) {
 	app := &App{
-		config:          config.Config{MinZoom: 1, MaxZoom: 8},
-		viewStateFields: viewStateFields{zoom: 1, scale: 1, fitMode: fitManual},
+		tab:    &tab{viewStateFields: viewStateFields{zoom: 1, scale: 1, fitMode: fitManual}},
+		config: config.Config{MinZoom: 1, MaxZoom: 8},
 	}
 
 	if got := app.clampZoom(0.5); got != 1 {

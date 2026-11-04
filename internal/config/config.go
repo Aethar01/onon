@@ -63,13 +63,23 @@ type Config struct {
 	AutoscrollSpeedFactor float64
 	AutoscrollMaxSpeed    float64
 	SessionDatabase       bool
-	OpenInNewWindow       bool
+	OpenDocuments         string // tab, window or replace
 	AntiAliasing          int
 	OutlineInitialDepth   int
 	OutlineWidthPercent   int
 	OutlineHeightPercent  int
 	CompletionMaxItems    int
 	RecentFilesMax        int
+	RestoreTabs           bool
+	NativeTabs            bool
+	TabBarPosition        string // title, top, bottom, left or right
+	TabBarVisible         string // auto, always or never
+	TabBarResizable       bool
+	TabBarOrder           int
+	TabBarDragSpace       float64 // kept clear for dragging the window, in the title row
+	TabWidth              TabWidth
+	TabDrag               bool
+	StatusBarOrder        int
 	AutoReload            bool
 	AutoReloadDelayMS     int
 	LinkPreviewDelayMS    int
@@ -79,14 +89,16 @@ type Config struct {
 
 type Runtime struct {
 	luaGeneration
-	explicitPath     string
-	docPath          string
-	docName          string
-	docMeta          documentMeta
-	host             Host
-	uiSeq            int
-	luaCallDepth     int
-	deferredOpen     string
+	explicitPath string
+	docPath      string
+	docName      string
+	docMeta      documentMeta
+	host         Host
+	uiSeq        int
+	luaCallDepth int
+	// deferred are viewer calls Lua made, such as onon.open, run once the
+	// Lua that made them returns, as they may replace the Lua state.
+	deferred         []func() error
 	assigned         map[string]bool // built-in options assigned since ConsumeDirty
 	verbose          bool
 	pluginPaths      []string
@@ -154,6 +166,9 @@ type UIOverlay struct {
 	// a box, Anchor being where it sits while that is not shown.
 	Attach *UIAttach
 	Dock   string
+	// Order places a docked view among the bars and views along the
+	// window's edges: lower is nearer the edge. See DockOrderPanel.
+	Order int
 	// Resizable lets the pointer drag a docked view's inner edge.
 	Resizable bool
 	// Stack opens a modal view over the menu open, which it returns to,
@@ -181,7 +196,7 @@ var (
 	MenuViews = map[string]string{
 		"annotation": "annotation-menu", "choice": "form-choice", "colors": "color-picker", "help": "help",
 		"keybind_keys": "core:keybind-keys", "keybinds": "core:keybinds", "matches": "matches", "options": "options",
-		"outline": "core:outline", "print": "print", "printers": "printers", "recent": "recent-files", "themes": "themes",
+		"outline": "core:outline", "print": "print", "printers": "printers", "recent": "recent-files", "tabs": "tabs", "themes": "themes",
 	}
 	MenuNames = slices.Sorted(maps.Keys(MenuViews))
 )
@@ -216,6 +231,28 @@ var (
 	UIAnchors = []string{"center", "top", "bottom", "left", "right", "top_left", "top_right", "bottom_left", "bottom_right"}
 	UIDocks   = []string{"left", "right", "top", "bottom"}
 )
+
+// The order of what lines the window's edges, unless set otherwise: each
+// takes its side of what those of lower order leave, so the status bar
+// spans the window below a tab bar at the left, and a panel docked at the
+// bottom sits above both.
+const (
+	DockOrderStatusBar = 10
+	DockOrderTabBar    = 20
+	DockOrderPanel     = 30
+)
+
+// TabBarPositions are where the tab bar may sit: title is along the top,
+// in the row of the window's own buttons.
+var TabBarPositions = []string{"title", "top", "bottom", "left", "right"}
+
+// TabWidth is how wide tabs are: Mode fit, as wide as their names; fill,
+// sharing the bar; or empty, Size wide. A bar at the side is as wide as
+// its tabs.
+type TabWidth struct {
+	Mode string
+	Size UISize
+}
 
 // UIColumn is a column of a table of rows: its title, its width, or with
 // Fill a share of what the others leave, and how its cells align.

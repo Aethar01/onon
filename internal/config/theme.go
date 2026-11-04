@@ -22,6 +22,7 @@ type Theme struct {
 	Shadow           bool
 	StatusBarStyle   string // bar or pill
 	StatusBarPadding int    // horizontal status bar padding in logical pixels
+	TabBarStyle      string // bar or pill
 	Motion           Motion
 	// Elements are the styles the elements table sets, over the ones the
 	// fields above give.
@@ -84,7 +85,7 @@ var themes = map[string]Theme{
 			Selection: hex("#4f6b45"), Search: hex("#7a6a32"), SearchCurrent: hex("#9a6430"),
 			HintForeground: hex("#1c1f1c"), Presentation: hex("#0f110f"),
 		},
-		Font: defaultThemeFont, Radius: 3, Padding: 8, Shadow: true, StatusBarStyle: "bar", StatusBarPadding: 10,
+		Font: defaultThemeFont, Radius: 3, Padding: 8, Shadow: true, StatusBarStyle: "bar", StatusBarPadding: 10, TabBarStyle: "bar",
 		Motion: defaultMotion,
 	},
 	// Cream paper with a bark-brown accent; dark wood when dark.
@@ -101,7 +102,7 @@ var themes = map[string]Theme{
 			Selection: hex("#6b5233"), Search: hex("#7a6430"), SearchCurrent: hex("#9a5f2c"),
 			HintForeground: hex("#211d18"), Presentation: hex("#12100d"),
 		},
-		Font: defaultThemeFont, Radius: 3, Padding: 8, Shadow: true, StatusBarStyle: "bar", StatusBarPadding: 10,
+		Font: defaultThemeFont, Radius: 3, Padding: 8, Shadow: true, StatusBarStyle: "bar", StatusBarPadding: 10, TabBarStyle: "bar",
 		Motion: defaultMotion,
 	},
 	// The flat grey look of earlier releases: greys, with yellow for
@@ -119,7 +120,7 @@ var themes = map[string]Theme{
 			Selection: hex("255,224,102"), Search: hex("255,224,102"), SearchCurrent: hex("255,150,50"),
 			HintForeground: hex("0,0,0"), Presentation: hex("0,0,0"),
 		},
-		Font: defaultThemeFont, Radius: 0, Padding: 4, Shadow: false, StatusBarStyle: "bar", StatusBarPadding: 8,
+		Font: defaultThemeFont, Radius: 0, Padding: 4, Shadow: false, StatusBarStyle: "bar", StatusBarPadding: 8, TabBarStyle: "bar",
 		Motion:   stillMotion,
 		Elements: classicElements(),
 	},
@@ -215,8 +216,9 @@ func buildThemeFields() []themeField {
 		themeField{"radius", intOption("Corner radius of panels, menu rows and the status pill in logical pixels; 0 gives square corners.", func(c *Config) int { return c.Theme.Radius }, func(c *Config, v int) { c.Theme.Radius = max(0, v) })},
 		themeField{"padding", intOption("Space around UI text in menu rows, panels and the status bar, in logical pixels.", func(c *Config) int { return c.Theme.Padding }, func(c *Config, v int) { c.Theme.Padding = max(0, v) })},
 		themeField{"shadow", boolOption("Draw a soft shadow under floating panels.", func(c *Config) bool { return c.Theme.Shadow }, func(c *Config, v bool) { c.Theme.Shadow = v })},
-		themeField{"status_bar_style", stringOption("Status bar layout: bar along the bottom of the window, or pill, floating over the page.", func(c *Config) string { return c.Theme.StatusBarStyle }, func(c *Config, v string) { c.Theme.StatusBarStyle = NormalizeStatusBarStyle(v) })},
+		themeField{"status_bar_style", stringOption("Status bar layout: bar along the bottom of the window, or pill, floating over the page.", func(c *Config) string { return c.Theme.StatusBarStyle }, func(c *Config, v string) { c.Theme.StatusBarStyle = NormalizeBarStyle(v) })},
 		themeField{"status_bar_padding", intOption("Horizontal status bar padding in logical pixels.", func(c *Config) int { return c.Theme.StatusBarPadding }, func(c *Config, v int) { c.Theme.StatusBarPadding = max(0, v) })},
+		themeField{"tab_bar_style", stringOption("Tab bar layout: bar, along the window's edge, or pill, tabs floating over the page as pills.", func(c *Config) string { return c.Theme.TabBarStyle }, func(c *Config, v string) { c.Theme.TabBarStyle = NormalizeBarStyle(v) })},
 		themeField{"motion.scale", floatOption("Speed of every transition: 1 as given, 2 twice as slow, 0 for no motion at all, as when the OS is set to reduce motion.", func(c *Config) float64 { return c.Theme.Motion.Scale }, func(c *Config, v float64) { c.Theme.Motion.Scale = max(0, v) })},
 		themeField{"motion.panel", transitionOption("Menus and completion fading in as they open, and menus fading out as they close.", func(c *Config) *Transition { return &c.Theme.Motion.Panel })},
 		themeField{"motion.selection", transitionOption("The selected row's highlight gliding to the next row selected.", func(c *Config) *Transition { return &c.Theme.Motion.Selection })},
@@ -520,7 +522,9 @@ func FormatColor(c [3]uint8) string {
 	return fmt.Sprintf("#%02x%02x%02x", c[0], c[1], c[2])
 }
 
-func NormalizeStatusBarStyle(s string) string {
+// NormalizeBarStyle reads a status_bar_style or tab_bar_style: pill, or
+// bar for anything else.
+func NormalizeBarStyle(s string) string {
 	if strings.ToLower(strings.TrimSpace(s)) == "pill" {
 		return "pill"
 	}

@@ -20,11 +20,13 @@ func testStyleApp(style string) *App {
 	cfg.StatusBarLeft = "{message}"
 	cfg.StatusBarRight = "{page}/{total}"
 	return &App{
-		config:          cfg,
-		viewStateFields: viewStateFields{statusBarShown: true},
-		layoutState:     layoutState{winW: 800, winH: 600},
-		documentState:   documentState{pageCount: 9},
-		sdlState:        sdlState{fontFace: basicfont.Face7x13},
+		tab: &tab{
+			viewStateFields: viewStateFields{statusBarShown: true},
+			documentState:   documentState{pageCount: 9},
+		},
+		config:      cfg,
+		sdlState:    sdlState{fontFace: basicfont.Face7x13},
+		windowState: windowState{winW: 800, winH: 600},
 	}
 }
 
@@ -138,7 +140,7 @@ func TestIsLight(t *testing.T) {
 }
 
 func TestBorderMaskIsTheShapesEdge(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	rect := boxShape{Shape: config.Shape{Kind: "rect"}}
 	img, _ := app.rasterMask(maskSpec{shape: rect, w: 20, h: 10, border: 2, sides: config.SidesAll}, 0)
 	for _, p := range []struct{ x, y, want int }{{0, 5, 255}, {1, 5, 255}, {2, 5, 0}, {10, 5, 0}, {10, 9, 255}, {19, 0, 255}} {
@@ -155,7 +157,7 @@ func TestBorderMaskIsTheShapesEdge(t *testing.T) {
 }
 
 func TestShadowMaskBlursPastTheBox(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	spec := maskSpec{shape: boxShape{Shape: config.Shape{Kind: "rect"}}, w: 40, h: 40, blur: 8}
 	pad := blurMargin(spec.blur)
 	img, _ := app.rasterMask(spec, pad)
@@ -169,7 +171,7 @@ func TestShadowMaskBlursPastTheBox(t *testing.T) {
 }
 
 func TestCutShadowMaskIsHollow(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	shape := boxShape{Shape: config.Shape{Kind: "rect"}, radius: [4]float32{6, 6, 6, 6}}
 	for _, c := range []struct {
 		name string
@@ -190,7 +192,7 @@ func TestCutShadowMaskIsHollow(t *testing.T) {
 }
 
 func TestPathShapeMask(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	// A triangle filling the top left half of the box.
 	shape := boxShape{Shape: config.Shape{Kind: "path", Path: "M0,0 L100%,0 L0,100% Z"}, scale: 1}
 	img, _ := app.rasterMask(maskSpec{shape: shape, w: 20, h: 20}, 0)
@@ -200,7 +202,7 @@ func TestPathShapeMask(t *testing.T) {
 }
 
 func TestBoxShapeFitsRadii(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	st := config.Style{Shape: config.Opt[config.Shape]{V: config.Shape{Kind: "rect"}, Set: true}, Radius: config.Opt[config.Corners]{V: config.Corners{30, 30, 0, 0}, Set: true}}
 	if got := app.boxShape(&st, sdl.Rect{W: 40, H: 100}).radius; got != [4]float32{20, 20, 0, 0} {
 		t.Fatalf("radii %v should shrink to fit a 40 pixel width", got)
@@ -230,7 +232,7 @@ func TestStatusElementPlacesTheBar(t *testing.T) {
 }
 
 func TestStrokeMaskFollowsThePath(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	shape := boxShape{Shape: config.Shape{Kind: "path", Path: "M0,10 H100%"}, scale: 1}
 	img, pad := app.rasterMask(maskSpec{shape: shape, w: 40, h: 20, stroke: 4}, 0)
 	if pad < 2 {
@@ -243,7 +245,7 @@ func TestStrokeMaskFollowsThePath(t *testing.T) {
 }
 
 func TestPathReachingPastItsBoxIsPadded(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	// A tail pointing up out of the box.
 	shape := boxShape{Shape: config.Shape{Kind: "path", Path: "M0,0 L5,-6 L10,0 H100% V100% H0 Z"}, scale: 1}
 	img, pad := app.rasterMask(maskSpec{shape: shape, w: 20, h: 10}, 0)
@@ -394,7 +396,7 @@ func TestDrawnPathIsFittedToItsBounds(t *testing.T) {
 }
 
 func TestFittedStrokeMaskFollowsThePath(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	ops, _ := config.ParsePath("M0,10 H40")
 	fitted, bounds := fitPath(ops, 100, 50, 1)
 	var keys pathKeys

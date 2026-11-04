@@ -10,15 +10,17 @@ import (
 
 func TestFormatStatusBarReplacesTemplateTokens(t *testing.T) {
 	app := &App{
-		config: config.Default(),
-		documentState: documentState{
-			page:      2,
-			pageCount: 9,
-			docName:   "paper.pdf",
+		tab: &tab{
+			documentState: documentState{
+				page:      2,
+				pageCount: 9,
+				docName:   "paper.pdf",
+			},
+			viewStateFields: viewStateFields{renderMode: renderContinuous, fitMode: fitWidth, rotation: 90, zoom: 1.25},
+			search:          searchState{query: "term", current: 0, order: []searchHitRef{{page: 2}}},
 		},
-		viewStateFields: viewStateFields{renderMode: renderContinuous, fitMode: fitWidth, rotation: 90, zoom: 1.25},
-		inputState:      inputState{message: "ready"},
-		uiState:         uiState{search: searchState{query: "term", current: 0, order: []searchHitRef{{page: 2}}}},
+		config:     config.Default(),
+		inputState: inputState{message: "ready"},
 	}
 
 	got := app.formatStatusBar("{document} {message} {page}/{total} {mode} {fit} {rot} {zoom} {dual} {cover} {search} $$")
@@ -45,7 +47,7 @@ func TestFormatStatusBarUsesInputModeMessage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := &App{inputState: inputState{mode: tt.mode, input: textInput{Value: tt.input}}}
+			app := &App{tab: &tab{}, inputState: inputState{mode: tt.mode, input: textInput{Value: tt.input}}}
 			if tt.back {
 				app.searchInput = searchModeBackward
 			}
@@ -58,14 +60,18 @@ func TestFormatStatusBarUsesInputModeMessage(t *testing.T) {
 
 func TestFormatStatusBarShowsDualPageSpread(t *testing.T) {
 	app := &App{
-		documentState:   documentState{page: 1, pageCount: 4},
-		viewStateFields: viewStateFields{dualPage: true},
-		layoutState: layoutState{rows: []rowLayout{
-			{pages: []int{0}},
-			{pages: []int{1, 2}},
-			{pages: []int{3}},
+		tab: &tab{
+			documentState:   documentState{page: 1, pageCount: 4},
+			viewStateFields: viewStateFields{dualPage: true},
+			layoutState: layoutState{
+				rows: []rowLayout{
+					{pages: []int{0}},
+					{pages: []int{1, 2}},
+					{pages: []int{3}},
+				},
+				pageToRow: []int{0, 1, 1, 2},
+			},
 		},
-			pageToRow: []int{0, 1, 1, 2}},
 	}
 
 	if got := app.formatStatusBar("{page}/{total}"); got != "2-3/4" {
@@ -84,9 +90,9 @@ func TestFormatStatusBarUsesPageLabels(t *testing.T) {
 
 func TestStatusBarHeightFitsFont(t *testing.T) {
 	app := &App{
-		sdlState:        sdlState{fontFace: basicfont.Face7x13},
-		layoutState:     layoutState{winW: 800, winH: 600},
-		viewStateFields: viewStateFields{statusBarShown: true},
+		tab:         &tab{viewStateFields: viewStateFields{statusBarShown: true}},
+		sdlState:    sdlState{fontFace: basicfont.Face7x13},
+		windowState: windowState{winW: 800, winH: 600},
 	}
 
 	metrics := basicfont.Face7x13.Metrics()

@@ -154,7 +154,7 @@ func TestSearchPageOrderWrapsFromStartPage(t *testing.T) {
 }
 
 func TestSearchStatusStrings(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	if got := app.searchStatusMessage(); got != "" {
 		t.Fatalf("expected empty message without query, got %q", got)
 	}
@@ -272,7 +272,7 @@ func TestRepeatSearchHonorsOriginalSearchDirection(t *testing.T) {
 }
 
 func TestClearSearchResetsSearchState(t *testing.T) {
-	app := &App{inputState: inputState{message: "match 1/2 /needle"}}
+	app := &App{tab: &tab{}, inputState: inputState{message: "match 1/2 /needle"}}
 	app.search = searchState{
 		query:      "needle",
 		matches:    map[int][]mupdf.SearchHit{0: {{}}},

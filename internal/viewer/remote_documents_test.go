@@ -198,6 +198,22 @@ func TestRemoteDocumentSavesBackOverSSH(t *testing.T) {
 	} else {
 		doc.Close()
 	}
+
+	// :wq closes only its tab once the upload is done, leaving the window
+	// and another tab's edits alone.
+	other := testPages(t, 2)
+	if err := app.OpenTab(other); err != nil {
+		t.Fatal(err)
+	}
+	app.markEdited()
+	app.showTab(0)
+	app.markEdited()
+	app.runCommand(":wq")
+	waitForRemoteTask(t, app)
+	app.pollBackgroundSaves()
+	if app.quit || len(app.tabList()) != 1 || app.docPath != config.AbsoluteDocumentPath(other) || !app.unsaved {
+		t.Fatalf("after :wq quit=%t tabs %q unsaved=%t; want the other tab left, still edited", app.quit, tabNames(app), app.unsaved)
+	}
 }
 
 func mustRead(t *testing.T, path string) []byte {

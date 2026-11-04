@@ -134,3 +134,11 @@ func ononTitleBarMaximizePress(down C.int) {
 	a.pressTitleBarButton(titleButtonMaximize, down != 0)
 	a.wakeLoop()
 }
+
+// windowTitleBand is the height, in logical pixels, of a title bar band
+// inside the window: none, as onon's own buttons share the tab bar's row.
+const windowTitleBand = 0
+
+// windowButtonsLeading is the room the window's buttons take at the left
+// of its title row: none, here.
+const windowButtonsLeading = 0

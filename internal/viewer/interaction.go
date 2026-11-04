@@ -136,7 +136,7 @@ func (a *App) rowPageScreenOrigin(row rowLayout, pageIndex int) (float64, float6
 // viewportSize is the size of the document's part of the window: above
 // the status bar, and beside any docked views.
 func (a *App) viewportSize() (int, int) {
-	if len(a.views.panels) > 0 && a.hasDock() {
+	if !a.edgesPlain() {
 		r := a.documentRect()
 		return max(1, int(r.W)), max(1, int(r.H))
 	}
@@ -349,15 +349,15 @@ func (a *App) linksForPage(page int) ([]mupdf.Link, error) {
 	return a.linksForPageLocked(page)
 }
 
-func (a *App) linksForPageLocked(page int) ([]mupdf.Link, error) {
-	if links, ok := a.pageLinks[page]; ok {
+func (t *tab) linksForPageLocked(page int) ([]mupdf.Link, error) {
+	if links, ok := t.pageLinks[page]; ok {
 		return links, nil
 	}
-	links, err := a.doc.Links(page)
+	links, err := t.doc.Links(page)
 	if err != nil {
 		return nil, err
 	}
-	a.pageLinks[page] = links
+	t.pageLinks[page] = links
 	return links, nil
 }
 

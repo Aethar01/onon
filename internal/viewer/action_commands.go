@@ -38,6 +38,7 @@ var toggleCommands = map[string]toggleCommand{
 	"cover":      {action: "toggle_first_page_offset", on: func(a *App) bool { return a.firstPageOffset }},
 	"trim":       {action: "toggle_trim_margins", on: func(a *App) bool { return a.trimMargins }},
 	"statusbar":  {action: "toggle_status_bar", on: func(a *App) bool { return a.statusBarShown }},
+	"tabbar":     {action: "toggle_tab_bar", on: (*App).tabBarOn},
 }
 
 // runToggleCommand sets toggle as its command's argument asks.

@@ -1,7 +1,10 @@
 package viewer
 
 import (
+	"cmp"
 	"fmt"
+	"os"
+	"slices"
 	"strings"
 
 	"onon/internal/instance"
@@ -24,7 +27,35 @@ func (a *App) raiseWindow() {
 // switching files hands the old address back and claims the new one.
 func (a *App) EnableSingleInstance() {
 	a.singleInstance = true
-	a.rebindInstanceServer()
+	for _, t := range a.tabList() {
+		a.withTab(t, a.rebindInstanceServer)
+	}
+	g := a.windowGroup()
+	if g.server != nil {
+		return // the process listens already
+	}
+	address, err := instance.WindowAddressFor(os.Getpid())
+	if err == nil {
+		g.server, err = instance.Listen(address)
+	}
+	if err != nil {
+		a.logf("not listening for new tabs: %v", err)
+		return
+	}
+	a.noteLastWindow()
+}
+
+// noteLastWindow records this window as the one focused last, which
+// --tab opens documents in.
+func (a *App) noteLastWindow() {
+	server := a.windowGroup().server
+	if server == nil {
+		return
+	}
+	last := instance.LastWindow{Address: server.Address(), Args: a.launchArgs}
+	if err := instance.NoteLastWindow(last); err != nil {
+		a.logf("cannot record the last window: %v", err)
+	}
 }
 
 // rebindInstanceServer points the listener at the current document. Losing the
@@ -37,8 +68,8 @@ func (a *App) rebindInstanceServer() {
 	// Work out what this document needs before touching the current listener,
 	// so an unchanged document keeps the address it already holds.
 	wanted := ""
-	if a.docPath != "" {
-		address, err := instance.AddressFor(a.docPath)
+	if path := cmp.Or(a.docPath, a.pendingPath); path != "" {
+		address, err := instance.AddressFor(path)
 		if err != nil {
 			a.logf("single instance unavailable: %v", err)
 		} else {
@@ -67,26 +98,42 @@ func (a *App) rebindInstanceServer() {
 	a.logf("listening for instance commands on %q", address)
 }
 
-// CloseInstanceServer releases the address at shutdown.
+// CloseInstanceServer releases every tab's address at shutdown.
 func (a *App) CloseInstanceServer() {
-	if a.instanceServer != nil {
-		a.instanceServer.Close()
-		a.instanceServer = nil
-		a.instanceAddress = ""
+	g := a.windowGroup()
+	g.server.Close()
+	g.server = nil
+	for _, t := range a.tabList() {
+		if t.instanceServer != nil {
+			t.instanceServer.Close()
+			t.instanceServer = nil
+			t.instanceAddress = ""
+		}
 	}
 }
 
-// pollInstanceCommands applies anything another process asked for. It runs on
-// the main thread from the event loop, which is what makes it safe to touch
-// viewer state directly. It reports whether anything changed.
+// pollInstanceCommands applies anything another process asked for. Each
+// tab listens for its own document, so a request shows the tab it reached
+// before it is applied. It runs on the main thread from the event loop,
+// which is what makes it safe to touch viewer state directly. It reports
+// whether anything changed.
 func (a *App) pollInstanceCommands() bool {
-	if a.instanceServer == nil {
-		return false
-	}
-	changed := false
-	for {
-		select {
-		case delivery := <-a.instanceServer.Deliveries():
+	// The process's own address asks the focused window.
+	changed := a == a.windowGroup().focused && a.pollWindowCommands()
+	for _, t := range slices.Clone(a.tabList()) {
+		for t.instanceServer != nil {
+			var delivery instance.Delivery
+			select {
+			case delivery = <-t.instanceServer.Deliveries():
+			default:
+			}
+			if delivery.Request.Command == "" {
+				break
+			}
+			if i := slices.Index(a.tabList(), t); i >= 0 {
+				a.selectTab(i)
+			}
+			a.loadPendingTab() // a restored tab in a window of its own
 			err := a.applyInstanceRequest(delivery.Request)
 			delivery.Reply(err)
 			if err != nil {
@@ -96,10 +143,96 @@ func (a *App) pollInstanceCommands() bool {
 					remote.Display(delivery.Request.Path), delivery.Request.Page)
 			}
 			changed = true
+		}
+	}
+	return changed
+}
+
+// pollWindowCommands applies what other processes asked of the window
+// rather than of a document: opening one in a new tab, and running a
+// command in the tab that shows it.
+func (a *App) pollWindowCommands() bool {
+	server := a.windowGroup().server
+	if server == nil {
+		return false
+	}
+	changed := false
+	for {
+		select {
+		case delivery := <-server.Deliveries():
+			var err error
+			switch request := delivery.Request; request.Command {
+			case "open-tab":
+				err = a.applyInstanceOpenTab(request)
+			case "open-document":
+				err = a.applyInstanceOpenDocument(request)
+			case "run":
+				err = a.applyInstanceRun(request.Text)
+			default:
+				err = fmt.Errorf("unknown command %q", request.Command)
+			}
+			delivery.Reply(err)
+			if err != nil {
+				a.logf("window command %q failed: %v", delivery.Request.Command, err)
+			}
+			changed = true
 		default:
 			return changed
 		}
 	}
+}
+
+// applyInstanceOpenTab opens a document in a new tab, or shows the tab it
+// is open in, at the page asked for.
+func (a *App) applyInstanceOpenTab(request instance.Request) error {
+	if request.Path == "" {
+		a.newEmptyTab()
+	} else {
+		// A new tab even when one shows the document: --unique, with
+		// --tab, has found any such tab before asking.
+		path, page, err := a.resolveDocumentArg(request.Path)
+		if err != nil {
+			return err
+		}
+		if a.tabsOff() && !a.tabIsEmpty() {
+			// A new window, which goes to the page as it opens.
+			return a.openNewTab(path, cmp.Or(request.Page, page))
+		}
+		if err := a.openNewTab(path, page); err != nil {
+			return err
+		}
+	}
+	// With native tabs the tab is a window of its own, now the focused one.
+	w := a.windowGroup().focused
+	w.raiseWindow()
+	if request.Page <= 0 {
+		w.pendingRedraw = true
+		return nil
+	}
+	jump := instanceJump{page: request.Page, x: request.X, y: request.Y, hasPoint: request.HasPoint}
+	if w.pageCount == 0 {
+		w.pendingInstanceJump = &jump
+		return nil
+	}
+	return w.applyInstanceJump(jump)
+}
+
+// applyInstanceOpenDocument opens a document as one the system sends is,
+// where open_documents says, and goes to the page asked for there.
+func (a *App) applyInstanceOpenDocument(request instance.Request) error {
+	a.handleDroppedFile(request.Path, 0)
+	w := a.windowGroup().focused
+	w.raiseWindow()
+	if request.Page <= 0 {
+		w.pendingRedraw = true
+		return nil
+	}
+	jump := instanceJump{page: request.Page, x: request.X, y: request.Y, hasPoint: request.HasPoint}
+	if w.pageCount == 0 {
+		w.pendingInstanceJump = &jump
+		return nil
+	}
+	return w.applyInstanceJump(jump)
 }
 
 func (a *App) applyInstanceRequest(request instance.Request) error {

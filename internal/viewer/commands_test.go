@@ -190,7 +190,7 @@ func TestLuaCommandAppliesChangedOptions(t *testing.T) {
 }
 
 func TestRunCommandSearchAndOpenMessages(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	app.runCommand(":search needle")
 	if app.message != "no document open" {
 		t.Fatalf("expected search without document message, got %q", app.message)
@@ -220,7 +220,7 @@ func TestRunCommandSearchAndOpenMessages(t *testing.T) {
 }
 
 func TestRecentFilesCommandReportsDisabledDatabase(t *testing.T) {
-	app := &App{config: config.Config{SessionDatabase: false}}
+	app := &App{tab: &tab{}, config: config.Config{SessionDatabase: false}}
 	app.runCommand(":recent")
 	if app.message != "session database disabled" {
 		t.Fatalf("expected disabled database message, got %q", app.message)

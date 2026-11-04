@@ -35,7 +35,7 @@ func TestBuiltinPromptActionsEnterExpectedModes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.action, func(t *testing.T) {
-			app := &App{inputState: inputState{input: textInput{Value: "stale", Cursor: 5}, searchInput: searchModeBackward}}
+			app := &App{tab: &tab{}, inputState: inputState{input: textInput{Value: "stale", Cursor: 5}, searchInput: searchModeBackward}}
 			if err := app.runBuiltinAction(tt.action); err != nil {
 				t.Fatal(err)
 			}
@@ -48,7 +48,7 @@ func TestBuiltinPromptActionsEnterExpectedModes(t *testing.T) {
 		})
 	}
 
-	app := &App{}
+	app := &App{tab: &tab{}}
 	if err := app.runBuiltinAction("quit"); err != nil {
 		t.Fatal(err)
 	}

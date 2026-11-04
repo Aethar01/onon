@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"strings"
 
 	_ "embed"
@@ -36,6 +37,8 @@ func run() error {
 	var noPlugins bool
 	var noConfig bool
 	var unique bool
+	var newTab bool
+	var blank bool
 	var gotoSpec string
 	var command string
 	flag.StringVar(&cfgPath, "config", "", "path to config.lua")
@@ -44,6 +47,8 @@ func run() error {
 	flag.BoolVar(&noPlugins, "no-plugins", false, "disable Lua plugin loading")
 	flag.BoolVar(&noConfig, "no-config", false, "start from built-in defaults, ignoring configuration files")
 	flag.BoolVar(&unique, "unique", false, "reuse the window already showing this document, if there is one")
+	flag.BoolVar(&newTab, "tab", false, "open the document in a new tab of the window focused last; with --unique, show the tab that has it open instead")
+	flag.BoolVar(&blank, "blank", false, "open a window with no document, rather than the one or the tabs open last")
 	flag.StringVar(&gotoSpec, "goto", "", "open at PAGE, or at X:Y points from the top-left corner of PAGE")
 	flag.StringVar(&command, "command", "", "run a viewer command, as typed after ':'")
 	flag.Parse()
@@ -71,6 +76,10 @@ func run() error {
 	}
 
 	var docPath string
+	var restoreTabs config.WindowTabs
+	// named is whether the document was named, on the command line or by
+	// the system, rather than remembered from the last session.
+	named := flag.NArg() > 0
 	// An argument that may be a scheme from config.lua, such as arxiv:id,
 	// waits until the configuration that would register it is loaded.
 	var schemeArg string
@@ -79,6 +88,18 @@ func run() error {
 		// arguments. The window shows one document, so the first wins.
 		if launched := viewer.LaunchDocuments(verbose); len(launched) > 0 {
 			docPath = config.AbsoluteDocumentPath(launched[0])
+			named = true
+		} else if newTab || blank {
+			// A blank tab or window.
+		} else if tabs, ok := config.LastWindowTabs(); ok {
+			// The window that closed last had several tabs; restore_tabs,
+			// once the configuration is loaded, says whether to open them
+			// all. The one it showed opens either way.
+			restoreTabs = tabs
+			docPath = tabs.Paths[tabs.Active]
+			if session, ok := config.GetDocumentSession(docPath); !pageSet && ok {
+				startPage = session.Page + 1
+			}
 		} else if recent := config.RecentFiles(1); len(recent) > 0 {
 			docPath = recent[0]
 			if session, ok := config.GetDocumentSession(docPath); !pageSet && ok {
@@ -100,15 +121,38 @@ func run() error {
 		log.Printf("startup config=%q page=%d doc=%q", cfgPath, startPage, docPath)
 	}
 
-	// With --unique, a window already showing this document does the work and
-	// this process exits. Any other document is a different instance.
+	// With --unique, a tab already showing this document does the work and
+	// this process exits. --tab opens the document in a new tab of the
+	// window focused last, even when another tab shows it.
 	handOff := func() (bool, error) {
-		if !unique || docPath == "" {
+		if unique {
+			if docPath != "" {
+				handled, err := handOffToRunningInstance(docPath, target, command)
+				if handled && verbose {
+					log.Printf("handed %q to the running instance", remote.Display(docPath))
+				}
+				if handled || err != nil {
+					return handled, err
+				}
+			}
+		}
+		// On macOS one process opens every window, so that the system can
+		// gather them into tabs: a document named on the command line goes
+		// to the running onon, as one Finder sends does.
+		request := "open-tab"
+		switch {
+		case newTab:
+		case runtime.GOOS == "darwin" && named:
+			if handled, err := handOffToRunningInstance(docPath, target, command); handled || err != nil {
+				return handled, err
+			}
+			request = "open-document"
+		default:
 			return false, nil
 		}
-		handled, err := handOffToRunningInstance(docPath, target, command)
+		handled, err := handOffToLastWindow(request, docPath, target, command)
 		if handled && verbose {
-			log.Printf("handed %q to the running instance", remote.Display(docPath))
+			log.Printf("opened %q in a new tab of the running window", remote.Display(docPath))
 		}
 		return handled, err
 	}
@@ -144,7 +188,7 @@ func run() error {
 	defer config.CloseSessionDatabase() // after the viewer saves its session
 	defer remote.Close()                // ends any SSH connections
 
-	app, err := viewer.New(docPath, runtime, startPage-1, iconBMP, viewer.NewOptions{Verbose: verbose, StartPageExplicit: pageSet, LaunchArgs: launchArgs()})
+	app, err := viewer.New(docPath, runtime, startPage-1, iconBMP, viewer.NewOptions{Verbose: verbose, StartPageExplicit: pageSet, LaunchArgs: launchArgs(), RestoreTabs: restoreTabs})
 	if err != nil {
 		return fmt.Errorf("start viewer: %w", err)
 	}
@@ -184,6 +228,34 @@ func handOffToRunningInstance(docPath string, target *instance.Request, command 
 	// The command runs after the open so it acts on the requested document.
 	if command != "" {
 		if _, err := instance.Send(address, instance.Request{Command: "run", Text: command}); err != nil {
+			return false, fmt.Errorf("run %q: %w", command, err)
+		}
+	}
+	return true, nil
+}
+
+// handOffToLastWindow asks the window focused last to open docPath, with
+// the request named by kind: in a new tab, or an empty tab with none, for
+// "open-tab"; as a document the system sends for "open-document". It then
+// runs command there. A window whose
+// process loaded another configuration, from other flags, is not asked.
+func handOffToLastWindow(kind, docPath string, target *instance.Request, command string) (bool, error) {
+	last, ok := instance.ReadLastWindow()
+	if !ok || !last.SameArgs(launchArgs()) {
+		return false, nil
+	}
+	if _, err := instance.Send(last.Address, instance.Request{Command: "ping"}); err != nil {
+		return false, nil
+	}
+	request := instance.Request{Command: kind, Path: docPath}
+	if target != nil {
+		request.Page, request.X, request.Y, request.HasPoint = target.Page, target.X, target.Y, target.HasPoint
+	}
+	if _, err := instance.Send(last.Address, request); err != nil {
+		return false, fmt.Errorf("open in a tab of the running onon: %w", err)
+	}
+	if command != "" {
+		if _, err := instance.Send(last.Address, instance.Request{Command: "run", Text: command}); err != nil {
 			return false, fmt.Errorf("run %q: %w", command, err)
 		}
 	}

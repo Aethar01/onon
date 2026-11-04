@@ -90,6 +90,7 @@ func newLuaModule(L *lua.LState, rt *Runtime, cfg *Config) *lua.LTable {
 	mod := L.NewTable()
 	L.SetField(mod, "document", newLuaDocumentTable(L, rt))
 	L.SetField(mod, "cache", newLuaCacheTable(L, rt))
+	L.SetField(mod, "tabs", newLuaTabsTable(L, rt))
 	L.SetField(mod, "ui", newLuaViewAPI(L, rt))
 	L.SetField(mod, "plugin", newLuaPluginAPI(L, rt))
 	L.SetField(mod, "platform", NewLuaPlatformModule(L))
@@ -323,6 +324,14 @@ func uiOverlayFromLuaSpec(L *lua.LState, rt *Runtime, spec *lua.LTable) UIOverla
 			L.RaiseError("ui.create: unknown dock %q; use one of %s", overlay.Dock, strings.Join(UIDocks, ", "))
 		}
 		overlay.Modal = false
+	}
+	overlay.Order = DockOrderPanel
+	switch order := spec.RawGetString("order").(type) {
+	case *lua.LNilType:
+	case lua.LNumber:
+		overlay.Order = int(order)
+	default:
+		L.RaiseError("ui.create: order is a number, lower nearer the window's edge")
 	}
 	for name, field := range map[string]*string{
 		"on_select":            &overlay.OnSelect,

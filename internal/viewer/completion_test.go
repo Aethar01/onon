@@ -14,11 +14,11 @@ import (
 )
 
 func TestShowCompletionAcceptsUniqueCommand(t *testing.T) {
-	a := &App{inputState: inputState{mode: modeCommand, input: textInput{Value: "qui", Cursor: 3}}, config: config.Default()}
+	a := &App{tab: &tab{}, inputState: inputState{mode: modeCommand, input: textInput{Value: "versi", Cursor: 5}}, config: config.Default()}
 	a.showCompletion()
 
-	if a.input.Value != "quit" {
-		t.Fatalf("expected quit completion, got %q", a.input.Value)
+	if a.input.Value != "version" {
+		t.Fatalf("expected version completion, got %q", a.input.Value)
 	}
 	if a.completion.view != nil && a.completion.view.visible {
 		t.Fatal("expected unique completion to close menu")
@@ -26,7 +26,7 @@ func TestShowCompletionAcceptsUniqueCommand(t *testing.T) {
 }
 
 func TestShowCompletionCyclesCommandMenu(t *testing.T) {
-	a := &App{inputState: inputState{mode: modeCommand}, config: config.Default()}
+	a := &App{tab: &tab{}, inputState: inputState{mode: modeCommand}, config: config.Default()}
 	a.showCompletion()
 
 	if a.completion.view == nil || !a.completion.view.visible {
@@ -51,7 +51,7 @@ func TestOpenPathCompletionsUseDocumentDirectory(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, "paper.pdf"))
 	mustWrite(t, filepath.Join(dir, "notes.txt"))
 
-	a := &App{documentState: documentState{docPath: filepath.Join(dir, "current.pdf")}}
+	a := &App{tab: &tab{documentState: documentState{docPath: filepath.Join(dir, "current.pdf")}}}
 	items := a.openPathCompletions("")
 	got := completionValues(items)
 	want := []string{"docs" + pathSeparator(), "current.pdf", "notes.txt", "paper.pdf"}
@@ -74,7 +74,7 @@ func TestOpenPathCompletionsPreserveRelativePrefixes(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, "sub", "file.pdf"))
 	mustWrite(t, filepath.Join(dir, "parent", "paper.pdf"))
 
-	a := &App{documentState: documentState{docPath: filepath.Join(dir, "sub", "current.pdf")}}
+	a := &App{tab: &tab{documentState: documentState{docPath: filepath.Join(dir, "sub", "current.pdf")}}}
 	items := a.openPathCompletions("." + pathSeparator())
 	got := completionValues(items)
 	want := []string{"." + pathSeparator() + "file.pdf"}
@@ -94,7 +94,7 @@ func TestOpenPathCompletionsEscapeSpaces(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "Lancer - Core Book.pdf"))
 
-	a := &App{documentState: documentState{docPath: filepath.Join(dir, "current.pdf")}}
+	a := &App{tab: &tab{documentState: documentState{docPath: filepath.Join(dir, "current.pdf")}}}
 	items := a.openPathCompletions("Lancer")
 	got := completionValues(items)
 	want := []string{`Lancer\ -\ Core\ Book.pdf`}
@@ -110,7 +110,7 @@ func TestOpenPathCompletionsEscapeSpaces(t *testing.T) {
 }
 
 func TestDotPathCompletionsAddSeparator(t *testing.T) {
-	a := &App{}
+	a := &App{tab: &tab{}}
 	if got := completionValues(a.openPathCompletions(".")); !reflect.DeepEqual(got, []string{"." + pathSeparator()}) {
 		t.Fatalf("expected ./ completion, got %v", got)
 	}
@@ -147,7 +147,7 @@ func TestExpandHomePathAcceptsSlashSeparator(t *testing.T) {
 }
 
 func TestDeleteInputWord(t *testing.T) {
-	a := &App{inputState: inputState{input: textInput{Value: "open ../some file.pdf", Cursor: len([]rune("open ../some file"))}}}
+	a := &App{tab: &tab{}, inputState: inputState{input: textInput{Value: "open ../some file.pdf", Cursor: len([]rune("open ../some file"))}}}
 	a.input.DeleteWordLeft()
 	if a.input.Value != "open ../some .pdf" || a.input.Cursor != len([]rune("open ../some ")) {
 		t.Fatalf("expected previous word deleted, input=%q cursor=%d", a.input.Value, a.input.Cursor)
@@ -188,6 +188,7 @@ func TestCompletionAcceptCloseAndRows(t *testing.T) {
 		{display: "paper.pdf", value: "paper.pdf"},
 	}
 	app := &App{
+		tab:        &tab{},
 		inputState: inputState{input: textInput{Value: "open par", Cursor: 8}},
 		config:     config.Config{CompletionMaxItems: 3},
 		uiState: uiState{completion: completionState{

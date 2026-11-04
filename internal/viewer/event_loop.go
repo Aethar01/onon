@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"time"
 
+	"onon/internal/config"
 	"onon/internal/remote"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
@@ -31,25 +32,51 @@ func initSDL() error {
 	return nil
 }
 
+// Run opens the window and runs the event loop until every window of the
+// process has closed.
 func (a *App) Run() error {
 	a.logf("init SDL")
 	if err := initSDL(); err != nil {
 		return err
 	}
 	sdl.SetHint("SDL_RENDER_SCALE_QUALITY", "2")
+	g := a.windowGroup()
+	g.waker = newLoopWaker()
+	if err := a.openWindow(); err != nil {
+		sdl.Quit()
+		return err
+	}
+	a.installMenuBar()
+	if a.runtime != nil {
+		a.emitPluginEvent("app_ready", a.documentEventPayload())
+		a.flushPendingInstanceCommand()
+	}
+	return g.run()
+}
+
+// openWindow creates the window and its renderer and opens its document.
+func (a *App) openWindow() error {
 	window := sdl.CreateWindow("onon", 1400, 900, sdl.WindowResizable|sdl.WindowHighPixelDensity)
 	if window == nil {
-		sdl.Quit()
 		return fmt.Errorf("SDL window creation failed: %s", sdl.GetError())
 	}
 	renderer, rendererNote := createRenderer(window, a.config.Renderer)
 	if renderer == nil {
 		sdl.DestroyWindow(window)
-		sdl.Quit()
 		return fmt.Errorf("SDL renderer creation failed: %s", sdl.GetError())
 	}
-	nativeApp = a
+	a.windowGroup().focus(a)
 	a.configureNativeWindow(window)
+	// native_tabs outranks the tab_bar options, the system's tabs being
+	// along the top whatever they say. It is read once, as the process
+	// opens its first window, so its windows never mix the two.
+	g := a.windowGroup()
+	if g.nativeTabs == nil {
+		on := nativeTabsAvailable && a.config.NativeTabs
+		g.nativeTabs = &on
+	}
+	a.nativeTabbing = *g.nativeTabs
+	configureNativeTabbing(window, a.nativeTabbing)
 	// Frames are presented in step with the display, so animations move
 	// once per refresh rather than when a timer happens to fire.
 	if !sdl.SetRenderVSync(renderer, 1) {
@@ -60,8 +87,7 @@ func (a *App) Run() error {
 	a.renderer = renderer
 	a.updateDisplayFrame()
 	a.loadUIFont() // again, now the display scale is known
-	a.waker = newLoopWaker()
-	a.installMenuBar()
+	a.waker = a.windowGroup().waker
 	// Only Linux needs the window icon set. macOS takes the app icon from the
 	// bundle and Windows from the exe's icon resource, and setting one here
 	// would replace them: the Dock's adaptive icon, or the .ico's small sizes.
@@ -95,67 +121,40 @@ func (a *App) Run() error {
 	a.recomputeLayout(a.viewportSize())
 	a.pendingRedraw = true
 	a.syncTextInput()
-	if a.runtime != nil {
-		a.emitPluginEvent("app_ready", a.documentEventPayload())
-		a.flushPendingInstanceCommand()
+	return nil
+}
+
+// tick does a window's share of a turn of the event loop: animations,
+// what its workers and other processes sent, and drawing.
+func (a *App) tick() error {
+	a.updateNativeInset()
+	a.refreshStaleSelection()
+	a.advanceSmoothScroll()
+	a.advanceSmoothZoom()
+	a.advanceAutoscroll()
+	a.advanceTitleBar()
+	if a.pollInstanceCommands() {
+		a.pendingRedraw = true
 	}
-	defer a.stopTextInput()
-	defer a.cancelSmoothScroll()
-	defer a.cancelSmoothZoom()
-	for !a.quit {
-		var event sdl.Event
-		for sdl.PollEvent(&event) {
-			if err := a.handleSDLEvent(&event); err != nil {
-				return err
-			}
-		}
-		a.refreshStaleSelection()
-		a.advanceSmoothScroll()
-		a.advanceSmoothZoom()
-		a.advanceAutoscroll()
-		a.advanceTitleBar()
-		if a.runtime != nil {
-			if a.runtime.PollPluginOperations() {
-				a.applyRuntimeChanges("plugin operation")
-				a.pendingRedraw = true
-			}
-		}
-		if a.pollInstanceCommands() {
-			a.pendingRedraw = true
-		}
-		if a.pollSystemActions() {
-			a.pendingRedraw = true
-		}
-		a.pollRenderUpdates()
-		a.pollMetricUpdates()
-		a.flushPendingInstanceJump()
-		a.pollSearchUpdates()
-		a.pollRemoteTask()
-		a.pollRemotePrompts()
-		a.pollDocumentUpdate()
-		a.expireSequence()
-		a.finishKeybindCapture(time.Now())
-		a.revealLinkPreview()
-		a.pollPrintResult()
-		a.pollUpdateCheck()
-		a.prefetchVisiblePages()
-		a.adjustRenderBaseScaleForExtremeZoom(a.scale)
-		a.emitViewStateEvents()
-		if a.pendingRedraw {
-			if err := a.drawFrame(); err != nil {
-				return err
-			}
-		}
-		if !a.quit {
-			var event sdl.Event
-			if sdl.WaitEventTimeout(&event, int32(a.eventWaitTimeoutMS())) {
-				if err := a.handleSDLEvent(&event); err != nil {
-					return err
-				}
-			}
-		}
+	a.pollRenderUpdates()
+	a.pollMetricUpdates()
+	a.flushPendingInstanceJump()
+	a.pollSearchUpdates()
+	a.pollRemoteTask()
+	a.pollBackgroundSaves()
+	a.pollRemotePrompts()
+	a.pollDocumentUpdate()
+	a.expireSequence()
+	a.finishKeybindCapture(time.Now())
+	a.revealLinkPreview()
+	a.pollPrintResult()
+	a.pollUpdateCheck()
+	a.prefetchVisiblePages()
+	a.adjustRenderBaseScaleForExtremeZoom(a.scale)
+	a.emitViewStateEvents()
+	if a.pendingRedraw {
+		return a.drawFrame()
 	}
-	a.logf("viewer exiting")
 	return nil
 }
 
@@ -196,6 +195,8 @@ func (a *App) openInitialDocument() error {
 		a.message = err.Error()
 		a.pendingRedraw = true
 	}
+	a.restoreTabs(a.initialTabs)
+	a.initialTabs = config.WindowTabs{}
 	return nil
 }
 
@@ -263,7 +264,13 @@ func (a *App) handleSDLEvent(event *sdl.Event) error {
 	redraw := true
 	switch event.Type() {
 	case sdl.EventQuit:
-		a.quit = a.confirmDiscard("closing")
+		a.windowGroup().quitAll("closing")
+		redraw = false
+	case sdl.EventWindowCloseRequested:
+		// With one window, SDL then asks to quit, which confirms.
+		if len(a.windowGroup().windows) > 1 {
+			a.quit = a.confirmQuit("closing")
+		}
 		redraw = false
 	case sdl.EventWindowExposed:
 		redraw = true
@@ -288,6 +295,7 @@ func (a *App) handleSDLEvent(event *sdl.Event) error {
 		a.followSystemColors()
 	case sdl.EventWindowFocusGained:
 		a.refreshReducedMotion()
+		a.noteLastWindow()
 		redraw = false
 	case sdl.EventWindowFocusLost:
 		a.stopPan()
@@ -318,6 +326,9 @@ func (a *App) handleSDLEvent(event *sdl.Event) error {
 			break
 		}
 		e := event.Wheel()
+		if a.handleTabBarWheel(&e) {
+			break
+		}
 		a.handleAnimatedMouseWheel(&e)
 		redraw = false
 	case sdl.EventPinchBegin:
@@ -356,6 +367,10 @@ func (a *App) handleSDLEvent(event *sdl.Event) error {
 // needs drawing again.
 func (a *App) handleMouseMotionEvent(e *sdl.MouseMotionEvent) bool {
 	a.noteTitleBarPointer(float64(e.X), float64(e.Y), true)
+	if a.handleTabBarMotion(e.X, e.Y) {
+		a.updateCursor()
+		return true
+	}
 	if a.handleInputMouseMotion(e) {
 		return true
 	}
@@ -364,7 +379,7 @@ func (a *App) handleMouseMotionEvent(e *sdl.MouseMotionEvent) bool {
 
 func (a *App) handleMouseButtonEvent(e *sdl.MouseButtonEvent) {
 	a.pointer = sdl.FPoint{X: e.X, Y: e.Y}
-	if a.handleTitleBarButton(e) {
+	if a.handleTitleBarButton(e) || a.handleTabBarButton(e) {
 		return
 	}
 	if a.handleAutoscrollButton(e) {
@@ -467,19 +482,32 @@ func pinchEventScale(event *sdl.Event) float32 {
 
 // handleDroppedFile opens a file dropped on the window, or one the system asked
 // a running onon to open: on macOS, Finder and `open` send that to this process
-// as a drop on no window. With open_in_new_window, that one gets a window of its
-// own, as it would on other platforms, unless this window is still empty.
+// as a drop on no window. open_documents says where it opens: in a new tab, a
+// new window, or in place of the document shown. A window with no document
+// takes it whichever is set.
 func (a *App) handleDroppedFile(path string, windowID sdl.WindowID) {
 	if path == "" {
 		return
 	}
-	if windowID == 0 && a.config.OpenInNewWindow && a.docPath != "" {
-		if err := a.openInNewWindow(path); err != nil {
-			a.message = err.Error()
+	var err error
+	where := a.config.OpenDocuments
+	if where == "tab" && a.tabsOff() {
+		// As before onon had tabs: a document the system sends in a new
+		// window, and one dropped on this window in place of its own.
+		where = "replace"
+		if windowID == 0 {
+			where = "window"
 		}
-		return
 	}
-	if err := a.Open(path); err != nil {
+	switch {
+	case a.tabIsEmpty() && len(a.tabList()) == 1, where == "replace":
+		err = a.Open(path)
+	case where == "window":
+		err = a.openInNewWindow(path)
+	default:
+		err = a.OpenTab(path)
+	}
+	if err != nil {
 		a.message = err.Error()
 	}
 }
@@ -521,6 +549,7 @@ func (a *App) drawFrame() error {
 			return err
 		}
 	}
+	a.drawTabBar(a.renderer)
 	if err := a.drawUIViews(a.renderer); err != nil {
 		return err
 	}

@@ -227,6 +227,7 @@ func (a *App) applyConfigState(cfg config.Config) {
 	a.firstPageOffset = cfg.FirstPageOffset
 	a.statusBarShown = cfg.StatusBarVisible
 	a.applyConfigSettings()
+	a.appliedConfig, a.configSeen = cfg, a.configGeneration
 	a.loadUIFont()
 }
 
@@ -236,8 +237,17 @@ func (a *App) applyConfigState(cfg config.Config) {
 // changes it or the option is assigned (named in assigned); the UI font and
 // rendered tiles are kept unless their own settings change.
 func (a *App) applyConfig(cfg config.Config, assigned map[string]bool) {
+	for _, w := range a.windowGroup().windows {
+		w.applyWindowConfig(cfg, assigned)
+	}
+}
+
+// applyWindowConfig applies a changed config to one window, as applyConfig
+// does to every window.
+func (a *App) applyWindowConfig(cfg config.Config, assigned map[string]bool) {
 	prev := a.config
 	a.config = cfg
+	a.configGeneration++
 	a.applyConfigSettings()
 	// Shapes drawn by Lua may draw differently after any change.
 	a.masks.clear()
@@ -245,6 +255,15 @@ func (a *App) applyConfig(cfg config.Config, assigned map[string]bool) {
 	if prev.Theme.Font != cfg.Theme.Font {
 		a.loadUIFont()
 	}
+	a.applyTabConfig(prev, cfg, assigned)
+	a.showConfigWarnings()
+}
+
+// applyTabConfig applies to the tab shown what changed from prev to cfg,
+// as applyConfig does; a tab shown again catches up with what changed while
+// it was in the background.
+func (a *App) applyTabConfig(prev, cfg config.Config, assigned map[string]bool) {
+	a.applyTabSettings()
 	if prev.AltColors != cfg.AltColors || prev.AltColorsSystem != cfg.AltColorsSystem || assigned["alt_colors"] {
 		a.setAltColors(a.wantAltColors(cfg))
 	}
@@ -256,7 +275,6 @@ func (a *App) applyConfig(cfg config.Config, assigned map[string]bool) {
 	if a.tilesRenderedDifferently(prev, cfg) {
 		a.restyleTiles()
 	}
-	a.showConfigWarnings()
 	a.relayoutWithViewportAnchor(func() {
 		changed := false
 		apply := func(differs bool, option string, set func()) {
@@ -275,6 +293,7 @@ func (a *App) applyConfig(cfg config.Config, assigned map[string]bool) {
 			a.cancelSmoothScroll()
 		}
 	})
+	a.appliedConfig, a.configSeen = cfg, a.configGeneration
 }
 
 // wantAltColors is whether cfg asks for alternate colors: as it says, or
@@ -319,12 +338,19 @@ func (a *App) showConfigWarnings() {
 func (a *App) applyConfigSettings() {
 	cfg := a.config
 	a.styles = nil
-	a.zoom = a.clampZoom(a.zoom)
-	a.cache.byteLimit = pageCacheByteLimit(cfg)
-	a.cache.evict()
 	a.setKeyBindings(cfg.KeyBindings)
 	a.mouseBindings = maps.Clone(cfg.MouseBindings)
 	a.pageStep = float64(cfg.ScrollStep)
+	a.applyTabSettings()
+}
+
+// applyTabSettings applies to the tab shown the settings that are cheap to
+// apply whether or not they changed.
+func (a *App) applyTabSettings() {
+	cfg := a.config
+	a.zoom = a.clampZoom(a.zoom)
+	a.cache.byteLimit = pageCacheByteLimit(cfg)
+	a.cache.evict()
 	a.document.setDelay(time.Duration(cfg.AutoReloadDelayMS) * time.Millisecond)
 }
 
@@ -501,21 +527,50 @@ func (a *App) resolvePageInput(input string) (int, bool) {
 var commandHandlers map[string]func(a *App, args string)
 
 // commandAliases are short names of commands.
-var commandAliases = map[string]string{"q": "quit", "q!": "quit!", "p": "page", "w": "write", "w!": "write!"}
+var commandAliases = map[string]string{
+	"q": "quit", "q!": "quit!", "qa": "quitall", "qa!": "quitall!", "p": "page", "w": "write", "w!": "write!",
+	"wa": "writeall", "wqa": "wqall", "xa": "wqall",
+	"tabe": "tabnew", "tabedit": "tabnew", "tabn": "tabnext", "tabp": "tabprevious", "tabN": "tabprevious",
+	"tabNext": "tabprevious", "tabfir": "tabfirst", "tabr": "tabfirst", "tabrewind": "tabfirst", "tabl": "tablast",
+	"tabc": "tabclose", "tabc!": "tabclose!", "tabo": "tabonly", "tabo!": "tabonly!", "tabm": "tabmove",
+}
 
 func init() {
 	commandHandlers = map[string]func(*App, string){
-		"quit":   func(a *App, _ string) { a.quit = a.confirmDiscard(":q") },
-		"quit!":  func(a *App, _ string) { a.quit = true },
-		"write":  func(a *App, args string) { a.writeDocument(args, false) },
-		"write!": func(a *App, args string) { a.writeDocument(args, true) },
+		// :q closes the tab, and the window with its last tab, as in Vim.
+		"quit":    func(a *App, _ string) { a.closeTab(a.userTabIndex(), false, ":q") },
+		"quit!":   func(a *App, _ string) { a.closeTab(a.userTabIndex(), true, ":q!") },
+		"quitall": func(a *App, _ string) { a.windowGroup().quitAll(":qa") },
+		"quitall!": func(a *App, _ string) {
+			for _, w := range a.windowGroup().windows {
+				w.quit = true
+			}
+		},
+		"write":       func(a *App, args string) { a.writeDocument(args, false) },
+		"write!":      func(a *App, args string) { a.writeDocument(args, true) },
+		"writeall":    func(a *App, _ string) { a.writeAll() },
+		"wqall":       func(a *App, _ string) { a.writeAll(); a.windowGroup().quitAll(":wqa") },
+		"tabnew":      (*App).runTabNewCommand,
+		"tabnext":     func(a *App, args string) { a.runTabGotoCommand(args, 1) },
+		"tabprevious": func(a *App, args string) { a.runTabGotoCommand(args, -1) },
+		"tabfirst":    func(a *App, _ string) { a.showTab(0) },
+		"tablast":     func(a *App, _ string) { a.showTab(len(a.userTabs()) - 1) },
+		"tabclose":    func(a *App, args string) { a.runTabCloseCommand(args, false) },
+		"tabclose!":   func(a *App, args string) { a.runTabCloseCommand(args, true) },
+		"tabonly":     func(a *App, _ string) { a.closeOtherTabs(false) },
+		"tabonly!":    func(a *App, _ string) { a.closeOtherTabs(true) },
+		"tabmove":     (*App).runTabMoveCommand,
+		"tabdo":       (*App).tabDo,
+		"tabs":        func(a *App, _ string) { a.toggleTabsMenu() },
 		"wq": func(a *App, args string) {
 			a.writeDocument(args, false)
 			if task := a.remoteTask; task != nil && task.kind == remoteSave {
 				task.quitAfter = true // once it is on the remote host
 				return
 			}
-			a.quit = !a.unsaved
+			if !a.unsaved {
+				a.closeTab(a.userTabIndex(), true, ":wq")
+			}
 		},
 		"print":     (*App).printDocument,
 		"undo":      func(a *App, _ string) { a.undoEdit(false) },
@@ -642,7 +697,9 @@ func unescapeCommandArg(arg string) string {
 func (a *App) reloadConfig() {
 	oldActive := a.activeUIView()
 	err := a.runtime.Reload()
-	a.removeStaleLuaViews(a.runtime.Generation())
+	for _, w := range a.windowGroup().windows {
+		w.removeStaleLuaViews(a.runtime.Generation())
+	}
 	if err != nil {
 		if oldActive != nil && a.views.views[oldActive.id] == oldActive {
 			a.showUIView(oldActive)

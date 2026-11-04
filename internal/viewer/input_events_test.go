@@ -11,7 +11,7 @@ func TestPasteInputInsertsClipboardAtCursor(t *testing.T) {
 	t.Cleanup(func() { sdlGetClipboardText = oldGet })
 	sdlGetClipboardText = func() string { return "界x" }
 
-	app := &App{inputState: inputState{input: textInput{Value: "ab", Cursor: 1}}}
+	app := &App{tab: &tab{}, inputState: inputState{input: textInput{Value: "ab", Cursor: 1}}}
 	app.handleInputEditKey(&sdl.KeyboardEvent{Key: sdl.KeycodeV, Mod: sdl.KeymodCtrl})
 
 	if app.input.Value != "a界xb" || app.input.Cursor != 3 {
@@ -29,13 +29,13 @@ func TestCommitInputModeExecutesModeSpecificBehavior(t *testing.T) {
 		t.Fatalf("expected goto input to navigate and clear input, mode=%v input=%q cursor=%d page=%d", app.mode, app.input.Value, app.input.Cursor, app.page)
 	}
 
-	app = &App{inputState: inputState{mode: modeCommand, input: textInput{Value: "quit", Cursor: 4}}}
+	app = &App{tab: &tab{}, inputState: inputState{mode: modeCommand, input: textInput{Value: "quit", Cursor: 4}}}
 	app.commitInputMode()
 	if app.mode != modeNormal || !app.quit {
 		t.Fatalf("expected command input to run quit and return to normal, mode=%v quit=%v", app.mode, app.quit)
 	}
 
-	app = &App{inputState: inputState{mode: modeSearch, input: textInput{Value: "needle", Cursor: 6}, searchInput: searchModeBackward}}
+	app = &App{tab: &tab{}, inputState: inputState{mode: modeSearch, input: textInput{Value: "needle", Cursor: 6}, searchInput: searchModeBackward}}
 	app.commitInputMode()
 	if app.mode != modeNormal || app.search.query != "needle" || app.search.mode != searchModeBackward || app.message != "no document open" {
 		t.Fatalf("expected search input to start backward search, mode=%v search=%+v message=%q", app.mode, app.search, app.message)

@@ -32,8 +32,12 @@ func (a *App) moveEditPos(delta int) {
 // setUnsaved records whether the document has edits not yet written, and
 // shows it on the window where the system marks edited documents.
 func (a *App) setUnsaved(unsaved bool) {
+	changed := a.unsaved != unsaved
 	a.unsaved = unsaved
 	a.showWindowDocument()
+	if changed {
+		a.emitTabListChanged("modified", a.userTabIndex())
+	}
 }
 
 // undoEdit undoes (or redoes) an edit and re-renders the pages on screen.

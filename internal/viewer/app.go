@@ -4,7 +4,6 @@ import (
 	"log"
 
 	"onon/internal/config"
-	"onon/internal/mupdf"
 	"onon/internal/remote"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
@@ -17,13 +16,13 @@ type App struct {
 	// launchArgs are the flags a new window's process inherits.
 	launchArgs []string
 
-	documentState
-	viewStateFields
-	layoutState
+	// tab is the document shown; tabs holds every document open in the
+	// window, in order, this one among them.
+	*tab
+	tabs []*tab
+
+	windowState
 	sdlState
-	documentWorkers
-	renderService
-	metricsService
 	inputState
 	interactionState
 	uiState
@@ -36,57 +35,56 @@ type NewOptions struct {
 	// LaunchArgs are the flags a new window's process inherits, such as
 	// --config.
 	LaunchArgs []string
+	// RestoreTabs are the tabs to open around the document, as the window
+	// had them when it last closed.
+	RestoreTabs config.WindowTabs
 }
 
 func New(docPath string, runtime *config.Runtime, startPage int, iconBytes []byte, opts NewOptions) (*App, error) {
-	cfg := runtime.Config()
 	if startPage < 0 {
 		startPage = 0
 	}
+	app := newApp(runtime, iconBytes, opts)
+	app.logf("create viewer doc=%q startPage=%d", remote.Display(docPath), startPage+1)
+	app.page = startPage
+	remote.SetPrompter(app.askRemote)
+	runtime.AttachHost(app)
+	runtime.SetWake(app.wakeLoop)
+	if docPath != "" {
+		app.initialDocPath = docPath
+		app.initialStartPage = startPage
+		app.initialPageSet = opts.StartPageExplicit
+		app.initialTabs = opts.RestoreTabs
+	}
+	app.recomputeLayout(1400, 900-app.statusReservedHeight())
+	return app, nil
+}
+
+// newApp makes a window, with one empty tab, set up as runtime's
+// configuration asks.
+func newApp(runtime *config.Runtime, iconBytes []byte, opts NewOptions) *App {
+	cfg := runtime.Config()
+	first := newTab(0)
+	first.zoom = cfg.MinZoom
+	first.cache = tileCache{byteLimit: pageCacheByteLimit(cfg)}
 	app := &App{
-		runtime:    runtime,
-		verbose:    opts.Verbose,
-		launchArgs: opts.LaunchArgs,
-		documentState: documentState{
-			page:      startPage,
-			pageLinks: map[int][]mupdf.Link{},
-		},
-		viewStateFields: viewStateFields{
-			zoom:     cfg.MinZoom,
-			scale:    1,
-			pageStep: 64,
-		},
+		runtime:     runtime,
+		verbose:     opts.Verbose,
+		launchArgs:  opts.LaunchArgs,
+		tab:         first,
+		tabs:        []*tab{first},
+		windowState: windowState{pageStep: 64, remotePrompts: make(chan *remotePrompt, 4)},
 		sdlState: sdlState{
 			iconBytes: iconBytes,
 		},
-		renderService: renderService{
-			cache:              tileCache{byteLimit: pageCacheByteLimit(cfg)},
-			minRenderBaseScale: 0.25,
-		},
-		metricsService: metricsService{},
 		inputState: inputState{
 			mouseBindings:  map[string]string{},
 			sequenceLookup: map[string]string{},
 		},
 	}
-	app.logf("create viewer doc=%q startPage=%d", remote.Display(docPath), startPage+1)
-	app.remotePrompts = make(chan *remotePrompt, 4)
-	remote.SetPrompter(app.askRemote)
-	runtime.AttachHost(app)
-	runtime.SetWake(app.wakeLoop)
 	app.applyConfigState(cfg)
 	app.message = cfg.NormalMessage
-	if docPath != "" {
-		app.initialDocPath = docPath
-		app.initialStartPage = startPage
-		app.initialPageSet = opts.StartPageExplicit
-	}
-	app.recomputeLayout(1400, 900-app.statusReservedHeight())
-	if app.doc != nil {
-		app.ensureRenderBaseScale()
-		app.alignPageToAnchor(startPage)
-	}
-	return app, nil
+	return app
 }
 
 func (a *App) logf(format string, args ...any) {
@@ -96,21 +94,28 @@ func (a *App) logf(format string, args ...any) {
 }
 
 func (a *App) setWindowTitle() {
-	if a.window == nil {
+	if a.window == nil || a.background {
 		return
 	}
 	a.showWindowDocument()
-	if a.docName == "" {
-		sdl.SetWindowTitle(a.window, "onon")
-		return
+	name := a.docName
+	if name == "" && a.pendingPath != "" {
+		name = config.DocumentName(a.pendingPath)
 	}
-	sdl.SetWindowTitle(a.window, a.docName+" - onon")
+	switch {
+	case a.nativeTabsOn():
+		sdl.SetWindowTitle(a.window, a.tab.tabName()) // as its tab shows it
+	case name == "":
+		sdl.SetWindowTitle(a.window, "onon")
+	default:
+		sdl.SetWindowTitle(a.window, name+" - onon")
+	}
 }
 
 // showWindowDocument tells the system which file the window shows and
 // whether it has unsaved edits, on systems that show them.
 func (a *App) showWindowDocument() {
-	if a.window != nil {
+	if a.window != nil && !a.background {
 		file := a.docPath
 		if remote.IsURI(file) {
 			file = "" // no local file for the proxy icon
@@ -119,28 +124,34 @@ func (a *App) showWindowDocument() {
 	}
 }
 
+// Close closes every window of the process still open, and the process's
+// share of the viewer: the shutdown event, and SDL.
 func (a *App) Close() {
-	a.cancelRemoteTask()
+	g := a.windowGroup()
+	if f := g.focused; f != nil && f.window != nil {
+		f.rememberTabs() // only a window that was shown, not one a test made
+	}
+	for _, w := range g.windows {
+		w.closeWindow()
+	}
+	g.windows = nil
+	g.server.Close()
+	g.server = nil
 	if a.remotePrompts != nil {
 		remote.SetPrompter(nil)
 	}
-	hadDocument := a.doc != nil
-	payload := a.documentEventPayload()
-	if hadDocument && a.runtime != nil {
-		a.emitPluginEvent("document_close_pre", payload)
-	}
-	a.saveDocumentSession()
-	a.document.Close()
-	a.closeDocumentResources()
-	if a.releaseCopy != nil {
-		a.releaseCopy()
-		a.releaseCopy = nil
-	}
-	if hadDocument && a.runtime != nil {
-		a.emitPluginEvent("document_closed", payload)
-	}
 	if a.runtime != nil {
 		a.emitPluginEvent("shutdown", map[string]any{})
+	}
+	if g.waker != nil {
+		sdl.Quit()
+	}
+}
+
+// closeWindow closes a window's tabs, and the window itself.
+func (a *App) closeWindow() {
+	for _, t := range a.tabList() {
+		a.withTab(t, a.closeTabDocument)
 	}
 	a.stopTextInput()
 	a.sdlState.Close()

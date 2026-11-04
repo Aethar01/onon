@@ -99,24 +99,29 @@ func (a *App) Selection() (config.DocumentSelection, error) {
 	return selection, nil
 }
 
-func (a *App) PageText(page int) (string, error) {
-	a.documentAPIMu.Lock()
-	defer a.documentAPIMu.Unlock()
-	index, err := a.documentPageIndex(page)
+// PageText is a page's text, for plugins. The tab answers it rather than
+// App, so a plugin's job, which asks from another goroutine, reads the
+// document it was started for; see CurrentDocumentHost.
+func (t *tab) PageText(page int) (string, error) {
+	t.documentAPIMu.Lock()
+	defer t.documentAPIMu.Unlock()
+	index, err := t.documentPageIndex(page)
 	if err != nil {
 		return "", err
 	}
-	return a.doc.PageText(index)
+	return t.doc.PageText(index)
 }
 
-func (a *App) PageLinks(page int) ([]config.DocumentPageLink, error) {
-	a.documentAPIMu.Lock()
-	defer a.documentAPIMu.Unlock()
-	index, err := a.documentPageIndex(page)
+// PageLinks is a page's links, for plugins, answered by the tab as
+// PageText is.
+func (t *tab) PageLinks(page int) ([]config.DocumentPageLink, error) {
+	t.documentAPIMu.Lock()
+	defer t.documentAPIMu.Unlock()
+	index, err := t.documentPageIndex(page)
 	if err != nil {
 		return nil, err
 	}
-	links, err := a.linksForPageLocked(index)
+	links, err := t.linksForPageLocked(index)
 	if err != nil {
 		return nil, err
 	}
@@ -127,15 +132,19 @@ func (a *App) PageLinks(page int) ([]config.DocumentPageLink, error) {
 	return result, nil
 }
 
-func (a *App) documentPageIndex(page int) (int, error) {
-	if a.doc == nil {
+func (t *tab) documentPageIndex(page int) (int, error) {
+	if t.doc == nil {
 		return 0, fmt.Errorf("document unavailable")
 	}
-	if page < 1 || page > a.pageCount {
-		return 0, fmt.Errorf("page %d out of range [1,%d]", page, a.pageCount)
+	if page < 1 || page > t.pageCount {
+		return 0, fmt.Errorf("page %d out of range [1,%d]", page, t.pageCount)
 	}
 	return page - 1, nil
 }
+
+// CurrentDocumentHost is what answers for the document shown: its tab,
+// which plugins' jobs keep hold of while other tabs are shown.
+func (a *App) CurrentDocumentHost() any { return a.tab }
 
 func documentPage(page int) int {
 	if page < 0 {

@@ -32,6 +32,11 @@ const (
 	RoleMinimize   Role = "minimize"
 	RoleZoom       Role = "zoom"
 	RoleFront      Role = "front"
+	// The tab items macOS gives windows that it gathers into tabs.
+	RoleMergeWindows    Role = "merge_windows"
+	RoleMoveTabToWindow Role = "move_tab_to_window"
+	RoleTabOverview     Role = "tab_overview"
+	RoleTabBar          Role = "tab_bar"
 
 	// RoleRecentDocuments is the system's list of documents opened lately.
 	RoleRecentDocuments Role = "recent_documents"
@@ -80,6 +85,7 @@ func Menus() []Menu {
 			{Title: "Quit {app}", Action: "quit", Key: "<D-q>"},
 		}},
 		{Title: "File", Items: []Item{
+			{Title: "New Tab", Action: "new_tab"},
 			{Title: "Open…", Action: "open_file_picker"},
 			{Title: "Open Recent", Role: RoleRecentDocuments},
 			{Title: "Recent Files…", Action: "show_recent_files"},
@@ -119,6 +125,7 @@ func Menus() []Menu {
 			{Title: "Trim Margins", Action: "toggle_trim_margins"},
 			{Title: "Alternate Colors", Action: "toggle_alt_colors"},
 			{Title: "Status Bar", Action: "toggle_status_bar"},
+			{Title: "Tab Bar", Action: "toggle_tab_bar"},
 			Separator,
 			{Title: "Outline", Action: "outline"},
 			{Title: "Page Overview", Action: "overview"},
@@ -138,9 +145,16 @@ func Menus() []Menu {
 			{Title: "Follow Link…", Action: "follow_link"},
 		}},
 		{Title: "Window", Role: RoleWindow, Items: []Item{
-			{Title: "Close", Action: "quit", Key: "<D-w>"},
+			{Title: "Close Tab", Action: "close_tab", Key: "<D-w>"},
 			{Title: "Minimize", Role: RoleMinimize},
 			{Title: "Zoom", Role: RoleZoom},
+			Separator,
+			{Title: "Show Previous Tab", Action: "prev_tab"},
+			{Title: "Show Next Tab", Action: "next_tab"},
+			{Title: "Tabs…", Action: "tabs_menu"},
+			{Title: "Show All Tabs", Role: RoleTabOverview},
+			{Title: "Move Tab to New Window", Role: RoleMoveTabToWindow},
+			{Title: "Merge All Windows", Role: RoleMergeWindows},
 			Separator,
 			{Title: "Bring All to Front", Role: RoleFront},
 		}},

@@ -24,11 +24,12 @@ onon.options.link_preview_delay_ms = 400 -- Milliseconds to hover an internal li
 onon.options.link_schemes = {"http", "https", "mailto"} -- URI schemes that document links may open externally; other links only show their target.
 onon.options.loading_indicator = true -- Animate a loading indicator on pages still rendering for the first time.
 onon.options.max_zoom = 8 -- Maximum manual zoom scale.
-onon.options.menus = {} -- Where onon's own menus sit, by name, such as { outline = { anchor = "left", width = "40%" } }: each takes width and height, the most of the window it takes, in logical pixels or a percentage, and anchor, as views do, or beside, for a menu opened over another, beside the row it was opened from, as keybind_keys and printers are unless set. Menus: annotation, choice, colors, help, keybind_keys, keybinds, matches, options, outline, print, printers, recent, themes.
+onon.options.menus = {} -- Where onon's own menus sit, by name, such as { outline = { anchor = "left", width = "40%" } }: each takes width and height, the most of the window it takes, in logical pixels or a percentage, and anchor, as views do, or beside, for a menu opened over another, beside the row it was opened from, as keybind_keys and printers are unless set. Menus: annotation, choice, colors, help, keybind_keys, keybinds, matches, options, outline, print, printers, recent, tabs, themes.
 onon.options.min_zoom = 0.5 -- Minimum manual zoom scale.
 onon.options.mouse_text_select = true -- Enable text selection with the left mouse button.
 onon.options.mupdf_store_mb = 256 -- MuPDF cache for fonts and decoded images in MiB; applies to newly opened documents.
-onon.options.open_in_new_window = true -- On macOS, open a document Finder or `open` sends to a running onon in a new window rather than the current one.
+onon.options.native_tabs = false -- On macOS, use the system's window tabs, as other Mac apps do, with Merge All Windows and the tab bar's +, whatever the tab_bar options say; by default onon draws its own tab bar, as on other systems. Restart onon for a change to take effect.
+onon.options.open_documents = "tab" -- Where a document the system sends a running onon, such as from Finder or `open`, or one dropped on the window, opens: tab, in a new tab; window, in a new window; or replace, in place of the document shown. A window with no document takes it whichever is set.
 onon.options.outline_height_percent = 80 -- Outline overlay height as a percentage of the window.
 onon.options.outline_initial_depth = 1 -- Outline levels expanded when the outline opens.
 onon.options.outline_width_percent = 70 -- Most of the window the outline overlay takes, as a percentage of its width; the outline is narrower when its entries are.
@@ -36,7 +37,6 @@ onon.options.overview_gap = 16 -- Gap in pixels between the page overview's cell
 onon.options.overview_max_columns = 12 -- Most columns the page overview shows, whether fitted to the window or set with zoom_out.
 onon.options.overview_thumb_width = 220 -- Width in pixels the page overview aims to show each page at, which sets how many columns fit.
 onon.options.page_cache_memory_mb = 512 -- Maximum memory in MiB for cached page renders; 0 disables the limit.
-onon.options.page_cache_size = 0 -- Deprecated and ignored; the cache is bounded by page_cache_memory_mb.
 onon.options.page_gap = 0 -- Vertical gap between pages; aliases page_gap_vertical.
 onon.options.page_gap_horizontal = 0 -- Horizontal gap between pages in a spread.
 onon.options.page_gap_vertical = 0 -- Vertical gap between page rows.
@@ -48,6 +48,7 @@ onon.options.render_mode = "continuous" -- Initial render mode: continuous or si
 onon.options.render_oversample = 1 -- Render scale multiplier; values above 1 supersample.
 onon.options.render_threads = 0 -- Page rendering threads; 0 picks one per core up to 4, leaving a core free. Applies to newly opened documents.
 onon.options.renderer = "auto" -- Renderer SDL draws with, read when onon starts: "auto" for SDL's own choice, "gpu" for its GPU renderer (Vulkan, Metal or Direct3D 12), or one of SDL's drivers, such as "vulkan", "opengl", "metal", "direct3d11" or "software". One that cannot start falls back to "auto"; SDL_RENDER_DRIVER in the environment overrides it.
+onon.options.restore_tabs = true -- Open the tabs the window had when onon last closed with several, when it starts with no document named, each loaded when first shown.
 onon.options.scroll_off = 1 -- Minimum number of rows kept visible above and below the selected item in UI menus, like Vim's scrolloff.
 onon.options.scroll_step = 64 -- Keyboard and mouse scroll distance in pixels.
 onon.options.sequence_timeout_ms = 700 -- Maximum delay between keys in a binding sequence.
@@ -58,8 +59,16 @@ onon.options.smooth_zoom = { mouse = true, trackpad = true, keyboard = true } --
 onon.options.smooth_zoom_dampening = 0.8 -- Catch-up factor for smooth zooming per animation frame; higher values are more responsive and less damped; clamped to 0.01 through 1.
 onon.options.spread_gap = 0 -- Horizontal spread gap; aliases page_gap_horizontal.
 onon.options.status_bar_left = "{modified}{message}" -- Left status bar template.
+onon.options.status_bar_order = 10 -- Where the status bar sits among the bars and docked views along the window's edges, as tab_bar_order says; lower is nearer the edge.
 onon.options.status_bar_right = "{document}  {label}/{total}  {zoom}" -- Right status bar template.
 onon.options.status_bar_visible = true -- Show the status bar.
+onon.options.tab_bar_drag_space = 48 -- Logical pixels kept clear at the end of a tab bar in the title row, however many tabs there are, to drag the window by; 0 for none.
+onon.options.tab_bar_order = 20 -- Where the tab bar sits among the bars and docked views along the window's edges: each takes its side of what those of lower order leave. The status bar is 10 and docked views 30 unless they say, so by default a tab bar at the bottom sits above the status bar, and one at the left stops at it.
+onon.options.tab_bar_position = "title" -- Where onon draws its tab bar: title, along the top in the row of the window's buttons (on Linux, where the system draws the title bar, as top); top, in a row of its own below them; bottom; left; or right. native_tabs = true on macOS sets it aside for the system's tabs.
+onon.options.tab_bar_resizable = true -- Let the pointer drag the inner edge of a tab bar at the left or right to resize it.
+onon.options.tab_bar_visible = "auto" -- When onon's tab bar shows: auto, while the window has more than one tab; always; or never, which turns tabs off: what would open in a new tab opens in a new window instead, a file dropped on the window replaces its document, and no tabs are restored, as before onon had tabs. true is always and false never. toggle_tab_bar and :tabbar only show or hide the bar of a window, its tabs kept.
+onon.options.tab_drag = true -- Let the pointer drag tabs in onon's tab bar to reorder them.
+onon.options.tab_width = "fit" -- How wide tabs are: fit, each as wide as its name; fill, sharing the bar's width equally; or a width in logical pixels or as a percentage of the window's, such as 160 or "20%". Tabs keep between the tab element's min_width and max_width, but for fill, which keeps only min_width. A bar at the left or right is as wide as its tabs: the width given, or with fit and fill, max_width; dragging its inner edge resizes it.
 onon.options.trim_margins = false -- Lay pages out by their content, trimming blank margins.
 onon.options.trim_padding = 8 -- Margin in points kept around a page's content when trimming margins.
 onon.options.zoom_step = 1.15 -- Factor zoom_in multiplies the zoom by, and zoom_out divides it by; above 1.
@@ -110,6 +119,7 @@ onon.options.zoom_step = 1.15 -- Factor zoom_in multiplies the zoom by, and zoom
 --   shadow = true, -- Draw a soft shadow under floating panels.
 --   status_bar_style = "bar", -- Status bar layout: bar along the bottom of the window, or pill, floating over the page.
 --   status_bar_padding = 10, -- Horizontal status bar padding in logical pixels.
+--   tab_bar_style = "bar", -- Tab bar layout: bar, along the window's edge, or pill, tabs floating over the page as pills.
 --   motion = {
 --     scale = 1, -- Speed of every transition: 1 as given, 2 twice as slow, 0 for no motion at all, as when the OS is set to reduce motion.
 --     panel = "none", -- Menus and completion fading in as they open, and menus fading out as they close.
@@ -185,6 +195,12 @@ onon.bind("<C-p>", onon.print)
 onon.bind("<F1>", onon.help)
 onon.bind("g?", onon.help)
 onon.bind("<Space>", onon.pan)
+onon.bind("gt", onon.next_tab)
+onon.bind("<C-Tab>", onon.next_tab)
+onon.bind("<C-PgDn>", onon.next_tab)
+onon.bind("gT", onon.prev_tab)
+onon.bind("<C-S-Tab>", onon.prev_tab)
+onon.bind("<C-PgUp>", onon.prev_tab)
 onon.bind("q", onon.quit)
 
 -- Also bound on macOS.
@@ -211,8 +227,11 @@ if onon.platform.os == "macos" then
   onon.bind("<D-o>", onon.open_file_picker)
   onon.bind("<D-s>", onon.save)
   onon.bind("<D-p>", onon.print)
+  onon.bind("<D-S-]>", onon.next_tab)
+  onon.bind("<D-S-[>", onon.prev_tab)
+  onon.bind("<D-t>", onon.new_tab)
+  onon.bind("<D-w>", onon.close_tab)
   onon.bind("<D-q>", onon.quit)
-  onon.bind("<D-w>", onon.quit)
 end
 
 -- Also bound on Windows.
@@ -235,8 +254,9 @@ if onon.platform.os == "windows" then
   onon.bind("<C-S-z>", onon.redo)
   onon.bind("<A-Right>", onon.jump_forward)
   onon.bind("<A-Left>", onon.jump_backward)
+  onon.bind("<C-t>", onon.new_tab)
+  onon.bind("<C-w>", onon.close_tab)
   onon.bind("<C-q>", onon.quit)
-  onon.bind("<C-w>", onon.quit)
 end
 
 -- Also bound on Linux.
@@ -259,8 +279,9 @@ if onon.platform.os == "linux" then
   onon.bind("<C-S-z>", onon.redo)
   onon.bind("<A-Right>", onon.jump_forward)
   onon.bind("<A-Left>", onon.jump_backward)
+  onon.bind("<C-t>", onon.new_tab)
+  onon.bind("<C-w>", onon.close_tab)
   onon.bind("<C-q>", onon.quit)
-  onon.bind("<C-w>", onon.quit)
 end
 
 -- Default mouse bindings.

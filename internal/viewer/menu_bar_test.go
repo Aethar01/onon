@@ -7,7 +7,7 @@ import (
 )
 
 func TestMenuItemStateFollowsTheViewer(t *testing.T) {
-	app := &App{}
+	app := &App{tab: &tab{}}
 	if enabled, _ := app.menuItemState("zoom_in"); enabled {
 		t.Error("Zoom In is enabled with no document open")
 	}
