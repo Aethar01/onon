@@ -11,6 +11,11 @@ on:
       - README.md
   workflow_dispatch:
 
+# A newer push to a pull request makes its older runs pointless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   linux:
     name: Arch Linux
@@ -26,14 +31,42 @@ jobs:
       - name: Verify native dependencies
         run: pkg-config --cflags --libs mupdf sdl3
 
+      # Restored everywhere, saved only from main (whose caches pull requests
+      # can read) and only when go.sum or Go itself has changed.
+      - name: Locate Go cache
+        id: go
+        run: |
+          echo "GOCACHE=${RUNNER_TEMP}/go-build" >> "$GITHUB_ENV"
+          echo "GOMODCACHE=${RUNNER_TEMP}/go-mod" >> "$GITHUB_ENV"
+          echo "version=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Go cache
+        id: go-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ${{ env.GOCACHE }}
+            ${{ env.GOMODCACHE }}
+          key: go-${{ runner.os }}-${{ steps.go.outputs.version }}-${{ hashFiles('go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ steps.go.outputs.version }}-
+
       - name: Test
-        run: go test ./...
+        run: go test -count=1 ./...
 
       - name: Check generated documentation
         run: go run ./cmd/builddocs -check
 
       - name: Build
         run: go build ./...
+
+      - name: Save Go cache
+        if: github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ env.GOCACHE }}
+            ${{ env.GOMODCACHE }}
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
 
   macos:
     name: macOS
@@ -59,11 +92,30 @@ jobs:
           test -f "$(brew --prefix mupdf)/lib/libmupdf.dylib"
           test -f "$(brew --prefix sdl3)/lib/libSDL3.dylib"
 
+      # Restored everywhere, saved only from main (whose caches pull requests
+      # can read) and only when go.sum or Go itself has changed.
+      - name: Locate Go cache
+        id: go
+        run: |
+          echo "GOCACHE=${RUNNER_TEMP}/go-build" >> "$GITHUB_ENV"
+          echo "GOMODCACHE=${RUNNER_TEMP}/go-mod" >> "$GITHUB_ENV"
+          echo "version=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Go cache
+        id: go-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ${{ env.GOCACHE }}
+            ${{ env.GOMODCACHE }}
+          key: go-${{ runner.os }}-${{ steps.go.outputs.version }}-${{ hashFiles('go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ steps.go.outputs.version }}-
+
       - name: Build
         run: go build ./...
 
       - name: Test
-        run: go test ./...
+        run: go test -count=1 ./...
 
       - name: Test self-contained app bundle
         run: |
@@ -71,7 +123,8 @@ jobs:
           mkdir -p "$app/Contents/MacOS" "$app/Contents/Frameworks"
           sed -e "s/@VERSION@/0.0.0/" -e "s/@BUILD@/0/" assets/macos/Info.plist > "$app/Contents/Info.plist"
           plutil -lint "$app/Contents/Info.plist"
-          go build -trimpath -o "$app/Contents/MacOS/onon" .
+          # Without -trimpath, which would recompile every package Build did.
+          go build -o "$app/Contents/MacOS/onon" .
           dylibbundler -od -b -x "$app/Contents/MacOS/onon" -d "$app/Contents/Frameworks" -p "@executable_path/../Frameworks"
           cp "$(brew --prefix sdl3)/lib/libSDL3.dylib" "$app/Contents/Frameworks/libSDL3.dylib"
           install_name_tool -id "@executable_path/../Frameworks/libSDL3.dylib" "$app/Contents/Frameworks/libSDL3.dylib"
@@ -85,6 +138,15 @@ jobs:
             exit 1
           fi
           env -u DYLD_LIBRARY_PATH "$app/Contents/MacOS/onon" -v
+
+      - name: Save Go cache
+        if: github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ env.GOCACHE }}
+            ${{ env.GOMODCACHE }}
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
 
   windows:
     name: Windows
@@ -112,8 +174,36 @@ jobs:
       - name: Verify native dependencies
         run: pkg-config --cflags --libs mupdf sdl3
 
+      # Restored everywhere, saved only from main (whose caches pull requests
+      # can read) and only when go.sum or Go itself has changed.
+      - name: Locate Go cache
+        id: go
+        run: |
+          echo "GOCACHE=${RUNNER_TEMP}/go-build" >> "$GITHUB_ENV"
+          echo "GOMODCACHE=${RUNNER_TEMP}/go-mod" >> "$GITHUB_ENV"
+          echo "version=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Go cache
+        id: go-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ${{ env.GOCACHE }}
+            ${{ env.GOMODCACHE }}
+          key: go-${{ runner.os }}-${{ steps.go.outputs.version }}-${{ hashFiles('go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ steps.go.outputs.version }}-
+
       - name: Test
-        run: go test ./...
+        run: go test -count=1 ./...
 
       - name: Build
         run: go build ./...
+
+      - name: Save Go cache
+        if: github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ env.GOCACHE }}
+            ${{ env.GOMODCACHE }}
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
