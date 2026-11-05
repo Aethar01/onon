@@ -46,17 +46,17 @@ func transition(ms float64, easing string) Transition {
 	return t
 }
 
-// defaultMotion moves only what moves: the selection, the cursor and the
-// status bar's sides glide quickly to where they go, while menus and
-// messages, which only appear and go, do so at once.
+// defaultMotion is quick and quiet: the selection, the cursor and the
+// status bar's sides glide to where they go, menus and messages fade
+// briefly in and out, and the bars slide along the edges.
 var defaultMotion = Motion{
 	Scale:     1,
-	Panel:     transition(0, "ease-out"),
+	Panel:     transition(120, "ease-out"),
 	Selection: transition(80, "ease-out"),
 	Prompt:    transition(100, "ease-out"),
-	Message:   transition(0, "ease-out"),
+	Message:   transition(150, "ease-out"),
 	Cursor:    transition(50, "ease-out"),
-	Edges:     transition(0, "ease-out"),
+	Edges:     transition(160, "ease-out"),
 }
 
 // stillMotion is the default motion turned off, for the classic theme.

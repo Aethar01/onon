@@ -216,6 +216,7 @@ func TestResizingABarDoesNotMoveTheEdges(t *testing.T) {
 
 func TestEdgesDoNotMoveWithoutMotion(t *testing.T) {
 	app := twoTabs(t)
+	app.config.Theme.Motion.Edges.Duration = 0
 	app.motion.frame = 1
 	before := app.documentRect()
 	toggleStatusBar(app)

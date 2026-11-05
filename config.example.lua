@@ -122,12 +122,12 @@ onon.options.zoom_step = 1.15 -- Factor zoom_in multiplies the zoom by, and zoom
 --   tab_bar_style = "bar", -- Tab bar layout: bar, along the window's edge, or pill, tabs floating over the page as pills.
 --   motion = {
 --     scale = 1, -- Speed of every transition: 1 as given, 2 twice as slow, 0 for no motion at all, as when the OS is set to reduce motion.
---     panel = "none", -- Menus and completion fading in as they open, and menus fading out as they close.
+--     panel = "120ms ease-out", -- Menus and completion fading in as they open, and menus fading out as they close.
 --     selection = "80ms ease-out", -- The selected row's highlight gliding to the next row selected.
 --     prompt = "100ms ease-out", -- The sides of the status bar growing and shrinking with their text, as a pill does when a prompt opens.
---     message = "none", -- Status messages fading in, and out when cleared.
+--     message = "150ms ease-out", -- Status messages fading in, and out when cleared.
 --     cursor = "50ms ease-out", -- The prompt's cursor gliding to where it moves.
---     edges = "none", -- The status bar, tab bar and docked views sliding in along the window's edges as they are shown, the bars sliding out as they are hidden, the page moving with them only where it must.
+--     edges = "160ms ease-out", -- The status bar, tab bar and docked views sliding in along the window's edges as they are shown, the bars sliding out as they are hidden, the page moving with them only where it must.
 --   },
 --   elements = {}, -- The style of each piece of the UI, such as panel or row_selected; see Elements in the reference.
 -- }
