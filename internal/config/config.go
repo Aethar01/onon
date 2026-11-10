@@ -121,14 +121,17 @@ type luaGeneration struct {
 	callbackSeq int
 	// openViews has, for each plugin view shown, what takes its state as
 	// it closes; see UIViewClosed.
-	openViews        map[string]func(UIViewState)
-	schemes          map[string]*lua.LFunction // onon.register_scheme, by name
-	dirty            bool
-	pluginCatalog    *pluginCatalog
-	plugins          *pluginState
-	operations       map[int]*pluginOperation
-	pluginGeneration int
-	draw             drawCache
+	openViews     map[string]func(UIViewState)
+	schemes       map[string]*lua.LFunction // onon.register_scheme, by name
+	dirty         bool
+	pluginCatalog *pluginCatalog
+	plugins       *pluginState
+	operations    map[int]*pluginOperation
+	// backgroundDocuments are the documents this Lua state opened without
+	// a tab, by id, closed with it.
+	backgroundDocuments map[int]bool
+	pluginGeneration    int
+	draw                drawCache
 	// loadingConfig is set while config.lua runs, which records its
 	// changes to the theme in themeOps and whether it assigns the theme
 	// whole in configSetsTheme; themeChoice is the theme picked with
