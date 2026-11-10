@@ -70,6 +70,7 @@ func renderReference(luaRefs []config.LuaReferenceEntry, luaDocs map[string]stri
 		fmt.Fprintf(&b, "| %s | %s | %s | %s |\n", markdownCode(ref.Name), ref.Type, markdownCode(ref.Default), ref.Description)
 	}
 	renderThemeReference(&b)
+	renderKeyBindings(&b)
 	b.WriteString("\n## Commands\n\n")
 	b.WriteString("| Command | Description |\n|---|---|\n")
 	for _, ref := range commands.CommandReferences() {
@@ -84,47 +85,23 @@ func renderReference(luaRefs []config.LuaReferenceEntry, luaDocs map[string]stri
 		fmt.Fprintf(&b, "%s `%s` %s", sep, m.Modifier, m.Description)
 	}
 	b.WriteString(". Regular expressions use [Go syntax](https://pkg.go.dev/regexp/syntax), and `\\\\` searches for a backslash in literal text.\n")
-	b.WriteString("\n## Lua functions\n\n")
-	b.WriteString("The index below is followed by a detailed entry for every function. Lua errors are raised as protected-call errors; use `pcall` when a script should handle them without aborting the current dispatch.\n\n")
-	b.WriteString("### Index\n\n| Function | Summary |\n|---|---|\n")
-	for _, ref := range luaRefs {
-		doc := luaDocs[luaDocumentationName(ref.Signature)]
-		fmt.Fprintf(&b, "| %s | %s |\n", markdownCode(ref.Signature), docSummary(ref.Signature, doc))
-	}
-	for _, ref := range luaRefs {
-		renderLuaFunction(&b, ref, luaDocs[luaDocumentationName(ref.Signature)])
-	}
-	b.WriteString("\n### UI views\n\n")
-	b.WriteString(config.UIViewsReference)
-	renderPortablePluginReference(&b)
-	renderBindingNames(&b)
-	b.WriteString("\n## Bindable actions\n\n")
-	b.WriteString("Every action is available as `onon.<action>`, can be passed to `onon.bind`, and can be called from a runtime Lua callback.\n\n")
-	platforms := actions.Platforms()
-	b.WriteString("Keys in a system's own column are bound there as well as the default keys.\n\n")
-	b.WriteString("| Action | Default keys |")
-	for _, platform := range platforms {
-		b.WriteString(" " + platform.Name + " |")
-	}
-	b.WriteString(" Countable |\n|---|---|" + strings.Repeat("---|", len(platforms)) + "---|\n")
-	for _, action := range actions.All() {
-		fmt.Fprintf(&b, "| %s | %s |", markdownCode(action.Name), markdownCodeList(action.Keys))
-		for _, platform := range platforms {
-			fmt.Fprintf(&b, " %s |", markdownCodeList(platform.Keys[action.Name]))
-		}
-		fmt.Fprintf(&b, " %t |\n", action.Countable)
-	}
+	renderLuaAPI(&b, luaRefs, luaDocs)
+	renderPortableReference(&b)
 	b.WriteString("\n## Lua tables\n\n")
 	b.WriteString("Every table onon gives Lua code or takes from it, with its fields. A type such as `string[]` is a list, and `{ [string]: string }` a table keyed by strings. The fields of a table onon takes may be left out unless they say they are required.\n\n")
 	b.WriteString("- `onon.document`: see [Document](#document).\n")
 	b.WriteString("- `onon.platform`: see [Platform](#platform).\n")
+	b.WriteString("- `onon.config`: the configuration's own [Plugin module](#plugin-module); see [Plugins in config.lua](#plugins-in-configlua).\n")
 	b.WriteString("- `onon.options` (alias `onon.o`): all entries from the configuration-options table.\n")
 	b.WriteString("- `onon.theme`: the theme; see [Theme](#theme). Read or assign whole, or one field at a time.\n")
 	b.WriteString("- `onon.themes`: each built-in theme as a fresh table, such as `onon.themes.birch`.\n")
 	b.WriteString("- `onon.ui.create`'s spec and rows: see [UI views](#ui-views).\n")
-	b.WriteString("- `onon.cache`, `onon.tabs`, `onon.ui`, and `onon.plugin`: functions are listed above.\n")
-	renderLuaTables(&b)
-	b.WriteString("\n### Status bar\n\n")
+	b.WriteString("- `onon.cache`, `onon.tabs`, `onon.ui`, and `onon.plugin`: their functions are in [Lua API](#lua-api).\n")
+	renderLuaTables(&b, luaTableGroups)
+	b.WriteString("\n## Events\n\n")
+	b.WriteString(luaEventTables.intro + "\n")
+	renderLuaTableList(&b, "###", luaEventTables.tables)
+	b.WriteString("\n## Status bar\n\n")
 	b.WriteString("Show or hide the status bar with `onon.options.status_bar_visible`. Its look comes from the theme: `status_bar_style` places it along the bottom or floating as pills, `status_bar_padding` sets its horizontal spacing and `font.size` its text size, and the `status`, `status_left` and `status_right` elements style it further. The `status_bar_left` and `status_bar_right` options are templates with these substitutions:\n\n")
 	b.WriteString("| Placeholder | Value |\n|---|---|\n")
 	b.WriteString("| `{message}` | Status message or active input prompt. |\n")
@@ -139,16 +116,39 @@ func renderReference(luaRefs []config.LuaReferenceEntry, luaDocs map[string]stri
 	b.WriteString("| `{modified}` | `[+] ` while the document has unsaved edits, else empty. |\n")
 	b.WriteString("| `{input}` / `{prompt}` | Active input text and search prompt (`/` or `?`). |\n")
 	b.WriteString("| `$$` | A literal dollar sign. |\n")
+	b.WriteString("\n## UI views\n\n")
+	b.WriteString(config.UIViewsReference)
+	renderPluginReference(&b)
 	return b.String()
 }
 
-// renderBindingNames describes the key and mouse names that bindings accept.
-// The tables come from the keys package, which parses those names.
-func renderBindingNames(b *strings.Builder) {
-	b.WriteString("\n## Key and mouse names\n\n")
-	b.WriteString("`onon.bind` and `onon.unbind` take a key sequence; `onon.bind_mouse` and `onon.unbind_mouse` take a mouse event. An unknown name is an error. To find the name of a key, bind it in `:keybinds`, which records the keys you press.\n\n")
+// renderKeyBindings documents what a binding is made of: the actions it
+// can run and the key and mouse names it accepts. The tables come from the
+// actions and keys packages, which define and parse them.
+func renderKeyBindings(b *strings.Builder) {
+	b.WriteString("\n## Key bindings\n\n")
+	// Links made before the section was renamed.
+	b.WriteString("<a id=\"key-and-mouse-names\"></a>\n\n")
+	b.WriteString("`onon.bind` and `onon.unbind` take a key sequence; `onon.bind_mouse` and `onon.unbind_mouse` take a mouse event. An unknown name is an error. To find the name of a key, bind it in `:keybinds`, which records the keys you press.\n")
 
-	b.WriteString("### Keys\n\n")
+	b.WriteString("\n### Bindable actions\n\n")
+	b.WriteString("Every action is available as `onon.<action>`, can be passed to `onon.bind`, and can be called from a runtime Lua callback.\n\n")
+	platforms := actions.Platforms()
+	b.WriteString("Keys in a system's own column are bound there as well as the default keys.\n\n")
+	b.WriteString("| Action | Default keys |")
+	for _, platform := range platforms {
+		b.WriteString(" " + platform.Name + " |")
+	}
+	b.WriteString(" Countable |\n|---|---|" + strings.Repeat("---|", len(platforms)) + "---|\n")
+	for _, action := range actions.All() {
+		fmt.Fprintf(b, "| %s | %s |", markdownCode(action.Name), markdownCodeList(action.Keys))
+		for _, platform := range platforms {
+			fmt.Fprintf(b, " %s |", markdownCodeList(platform.Keys[action.Name]))
+		}
+		fmt.Fprintf(b, " %t |\n", action.Countable)
+	}
+
+	b.WriteString("\n### Keys\n\n")
 	b.WriteString("A sequence is one or more keys written one after another, such as `gg`, `g?` or `<C-w>j`. Each key must follow the one before within `sequence_timeout_ms`. Digits 1 to 9 start a count, as in `5j` or `12g`, and `'` and `\"` jump to and set marks, so binding a sequence that begins with any of them is an error.\n\n")
 	b.WriteString("Printable keys are written as the character they type with the current keyboard layout, so on a US keyboard Shift+1 is `!`. Letters are case-sensitive: `J` is Shift+j, or j with Caps Lock on. On layouts without Latin letters, letter keys are read as their QWERTY letters. Write `<` as `<lt>`.\n\n")
 	b.WriteString("Other keys are written by name in angle brackets. Names are case-insensitive.\n\n")
@@ -181,9 +181,6 @@ func renderBindingNames(b *strings.Builder) {
 	b.WriteString("Ctrl, Alt and Cmd combine with any key: letters, digits, symbols and the names above, as in `<C-a>`, `<C-=>`, `<A-Space>` or `<D-Up>`. With them, a key is named by its unshifted character and Shift is written out: `<C-S-r>` is Ctrl+Shift+r, `<C-S-1>` is Ctrl+Shift+1, `<A-j>` is Alt+j, whatever character Option+j types on macOS, and `<C-R>` is Ctrl+r. Write `>` as `<gt>` after a modifier, as in `<C-gt>`. Without Ctrl, Alt or Cmd, Shift applies to named keys, as in `<S-Tab>` or `<S-F5>`, and `<S-j>` means `J`; for other printable keys, write the shifted character. While a prompt is open, a character pressed with Alt alone is typed rather than running its binding, since Option on macOS and AltGr elsewhere type characters of their own.\n\n")
 	b.WriteString("Modifiers may be written in any order, so `<C-S-Tab>`, `<s-c-tab>` and `<S-C-TAB>` are the same key. Bindings are stored and shown in the first form, with modifiers in C, A, D, S order.\n\n")
 
-	b.WriteString("### Editing a prompt\n\n")
-	b.WriteString("While a prompt is open, these keys edit its text before any binding of theirs runs. On every system, Left and Right move a character and with Ctrl a word, Home and End go to the ends, Shift with any of them selects, Backspace and Delete delete a character and with Ctrl a word, `<C-w>` deletes the word before the cursor, and `<C-v>` pastes. Up and Down step through the prompt's history. `<C-a>` on Windows and Linux, and `<D-a>` on macOS, selects all of it.\n\n")
-	b.WriteString("On macOS, prompts also edit as Mac text fields do: Option with Left, Right, Backspace or Delete works by word, Cmd with Left or Right goes to the ends and Cmd-Backspace deletes to the start, and `<C-a>`, `<C-e>`, `<C-b>`, `<C-f>`, `<C-h>`, `<C-d>` and `<C-k>` work as in Emacs.\n\n")
 	b.WriteString("### Mouse events\n\n")
 	b.WriteString("| Event | Fires on |\n|---|---|\n")
 	events := keys.MouseEvents()
@@ -198,6 +195,10 @@ func renderBindingNames(b *strings.Builder) {
 	}
 	b.WriteString("\nButton events take no modifiers, and the horizontal wheel does nothing while Ctrl is held. Event names are case-insensitive and may be written in angle brackets like keys: `<middle_down>` is `middle_down`. `-` may be written for `_`, and `ctrl_wheel_up` is the same as `<C-wheel_up>`.\n\n")
 	b.WriteString("A bound button event replaces that button's built-in behaviour, such as text selection and following links on the left button. Wheel directions scroll smoothly only while they are bound to their default scroll actions.\n")
+
+	b.WriteString("\n### Editing a prompt\n\n")
+	b.WriteString("While a prompt is open, these keys edit its text before any binding of theirs runs. On every system, Left and Right move a character and with Ctrl a word, Home and End go to the ends, Shift with any of them selects, Backspace and Delete delete a character and with Ctrl a word, `<C-w>` deletes the word before the cursor, and `<C-v>` pastes. Up and Down step through the prompt's history. `<C-a>` on Windows and Linux, and `<D-a>` on macOS, selects all of it.\n\n")
+	b.WriteString("On macOS, prompts also edit as Mac text fields do: Option with Left, Right, Backspace or Delete works by word, Cmd with Left or Right goes to the ends and Cmd-Backspace deletes to the start, and `<C-a>`, `<C-e>`, `<C-b>`, `<C-f>`, `<C-h>`, `<C-d>` and `<C-k>` work as in Emacs.\n\n")
 }
 
 // nameRange lists names, shortening a numbered run such as F1 to F24 to
@@ -215,10 +216,6 @@ func joinWords(items []string, conjunction string) string {
 		return items[0]
 	}
 	return strings.Join(items[:len(items)-1], ", ") + " " + conjunction + " " + items[len(items)-1]
-}
-
-func renderLuaFunction(b *strings.Builder, ref config.LuaReferenceEntry, doc string) {
-	fmt.Fprintf(b, "\n### %s\n\n%s\n\n", markdownCode(ref.Signature), formatLuaDoc(ref.Signature, doc))
 }
 
 func renderExampleConfig() string {

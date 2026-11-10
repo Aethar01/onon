@@ -4,7 +4,7 @@ package config
 // documentation and its examples run by the tests.
 const UIViewsReference = `Create views with ` + "`local view = onon.ui.create(spec)`" + `, then call ` + "`view:show()`" + `. A view is a menu or a panel: a list of rows, or a body its ` + "`draw`" + ` function draws, with text fields, buttons and check boxes. onon's own menus are views made the same way, so they and plugins' look and behave alike, and the theme styles both.
 
-#### Placing a view
+### Placing a view
 
 | Field | Meaning |
 |---|---|
@@ -20,7 +20,7 @@ const UIViewsReference = `Create views with ` + "`local view = onon.ui.create(sp
 | ` + "`motion`" + ` | How the view moves: an animation for it to come in and go with, or a table of ` + "`enter`" + ` and ` + "`exit`" + ` for it and ` + "`rows`" + `, ` + "`selection`" + ` and ` + "`cursor`" + ` for what moves in it, over the theme's ` + "`motion`" + `, as ` + "`motion = { enter = \"slide 200ms\", rows = \"fade 80ms stagger:10ms\" }`" + `. |
 | ` + "`resizable`" + ` | For a docked view: its inner edge can be dragged to resize it. ` + "`view:size()`" + ` gives a view's width and height. |
 
-#### Lists
+### Lists
 
 | Field | Meaning |
 |---|---|
@@ -51,7 +51,7 @@ A row is a string, its text, or a table of these fields. Other fields are the pl
 | ` + "`edit`" + ` | boolean or table | Makes choosing the row type into it rather than run ` + "`on_select`" + `: see [Typing](#typing). ` + "`true`" + ` starts from its ` + "`secondary`" + ` text; a table may give the ` + "`text`" + ` to start from, a ` + "`hint`" + ` at what to type and a ` + "`placeholder`" + ` shown while nothing is. |
 | ` + "`cells`" + ` | string[] | Its text in the view's ` + "`columns`" + `, searched as its text is. |
 
-#### Drawing a view
+### Drawing a view
 
 ` + "`draw = function(canvas, box, state)`" + ` draws the view's body, below its header, in place of its rows; ` + "`canvas:default()`" + ` draws the rows. The canvas has the methods element draw functions have (see [Drawing](#drawing)), and those below. ` + "`box`" + ` is the body, and ` + "`state.scroll`" + ` how far it is scrolled.
 
@@ -75,7 +75,7 @@ A row is a string, its text, or a table of these fields. Other fields are the pl
 
 The fields, buttons and check boxes take the theme's ` + "`input`" + `, ` + "`input_focused`" + `, ` + "`button`" + `, ` + "`button_focused`" + ` and ` + "`check`" + ` elements. The cursor shows an I-beam over a field and a hand over a button or check box.
 
-#### Columns
+### Columns
 
 ` + "`canvas:column({ x =, y =, width =, gap = })`" + ` lays out a form, or anything drawn down a body, without working out where each thing goes: each method draws at the column's left, below what it drew last, ` + "`gap`" + ` (8 unless given) apart, and returns its width and height. The column starts at ` + "`x`" + `, ` + "`y`" + ` (0, 0 unless given), ` + "`width`" + ` wide, as far in from the right as from the left unless given.
 
@@ -92,7 +92,7 @@ The fields, buttons and check boxes take the theme's ` + "`input`" + `, ` + "`in
 
 Everything a canvas draws out of sight, below or above what shows of the body, is neither drawn nor, for a page, rendered, so a view can draw all it holds, as every page of a long document, and costs only what shows.
 
-#### Typing
+### Typing
 
 - ` + "`prompt = \"Open\"`" + ` puts a text field in the header, labelled with it, whose text is the query: typing filters a list without /, and Enter chooses the selected row, or runs ` + "`on_submit`" + ` if the view has one.
 - ` + "`canvas:input`" + ` draws a text field. The first drawn has the typing until Tab, Shift-Tab or a click moves it; Tab and Shift-Tab move through the prompt, fields, buttons and check boxes in the order they are drawn. ` + "`view:field(id)`" + ` and ` + "`view:set_field(id, text)`" + ` read and write a field's text, before the view opens too, and ` + "`view:fields()`" + ` gives them all, as an ` + "`on_submit`" + ` reading a form wants.
@@ -100,7 +100,7 @@ Everything a canvas draws out of sight, below or above what shows of the body, i
 - Fields and prompts edit as onon's own prompt does, with the same keys, a press placing the cursor, a drag selecting, and copy, cut and paste with the clipboard actions. Text an input method is composing shows underlined at the cursor. In a field of more than one line, Enter starts a new line, Ctrl- or Cmd-Enter submits, and the arrows, Home and End move by line.
 - A menu has the keys while it is open. A panel takes them when clicked, if it has fields, buttons, check boxes, a prompt or ` + "`on_key`" + `, or from ` + "`view:focus()`" + `, until Escape, a click elsewhere, or ` + "`view:blur()`" + `; ` + "`view:focused()`" + ` says whether it has them.
 
-#### Callbacks
+### Callbacks
 
 | Callback | Runs |
 |---|---|

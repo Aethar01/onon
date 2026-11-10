@@ -132,7 +132,7 @@ var luaTableGroups = []luaTableGroup{
 				{"default", "any", "Its value until set; `false`, `0`, `\"\"` or `{}`, by its type, unless given."},
 				{"description", "string", "What it does."},
 			}},
-			{"Plugin module", "What `onon.plugin.register` and `require(\"plugin-id\")` return. Its functions are methods, called with `:` as `plugin:on(\"page_changed\", callback)`; the `register_*` functions and `on` work only while the plugin is loading. Fields assigned on it are kept as the plugin's own.", []luaField{
+			{"Plugin module", "What `onon.plugin.register` and `require(\"plugin-id\")` return; `onon.config` is the configuration's own. Its functions are methods, called with `:` as `plugin:on(\"page_changed\", callback)`; the `register_*` functions and `on` work only while the plugin is loading. Fields assigned on it are kept as the plugin's own.", []luaField{
 				{"id", "string", "The plugin's ID."},
 				{"version", "string", "The manifest's version, or empty."},
 				{"actions", "table", "The plugin's actions by name, as `register_action` returned them."},
@@ -241,65 +241,68 @@ var luaTableGroups = []luaTableGroup{
 			}},
 		},
 	},
-	{
-		name:  "Events",
-		intro: "What `plugin:on(event, callback)` gives its callback. `shutdown` gives an empty table.",
-		tables: []luaTable{
-			{"Document event", "`app_ready`, `document_opened`, `document_reloaded`, `config_reloaded`, `document_close_pre` and `document_closed`.", []luaField{
-				{"document", "table", "`path`, `name`, and `page_count`, an integer, of the document concerned; `path` is empty when none is open."},
-				{"generation", "integer", "A number that changes whenever a document is opened or reloaded."},
-			}},
-			{"Opening event", "`document_open_pre`, before a document opens.", []luaField{
-				{"document", "table", "The `path` and `name` of the document opening."},
-			}},
-			{"Mouse button event", "`mouse_button_pre`, before onon handles a press or release, and `mouse_button`, after. A `mouse_button_pre` callback returning true keeps onon from handling it.", []luaField{
-				{"phase", "string", "`down` or `up`."},
-				{"button", "string", "`left`, `middle`, `right`, `x1` or `x2`."},
-				{"x", "number", "Where the pointer is, from the window's left."},
-				{"y", "number", "Where the pointer is, from the window's top."},
-				{"modifiers", "table", "Booleans `ctrl`, `shift`, `alt` and `gui`, the last Cmd on macOS and the Super or Windows key elsewhere."},
-				{"inside_document", "boolean", "Whether the pointer is over a page."},
-				{"page", "integer", "Over a page: the 1-based page."},
-				{"page_x", "number", "Over a page: where on it, in points from its left."},
-				{"page_y", "number", "Over a page: where on it, in points from its top."},
-			}},
-			{"Selection event", "`selection_changed`.", []luaField{
-				{"active", "boolean", "Whether text is selected."},
-				{"text", "string", "The selected text."},
-				{"pages", "integer[]", "The 1-based pages the selection covers, in order. [`onon.document.selection()`](#selection) gives where on them."},
-			}},
-			{"Page event", "`page_changed`.", []luaField{
-				{"page", "integer", "The 1-based page now current."},
-				{"label", "string", "Its page label, or its number when it has none."},
-				{"previous_page", "integer", "The 1-based page current before."},
-				{"page_count", "integer", "The document's number of pages."},
-			}},
-			{"Zoom event", "`zoom_changed`.", []luaField{
-				{"scale", "number", "The zoom now, 1 being 100%."},
-				{"previous_scale", "number", "The zoom before."},
-				{"percent", "number", "The zoom now as a percentage."},
-			}},
-			{"Tab event", "`tab_changed`, when the window shows another tab.", []luaField{
-				{"document", "table", "`path`, `name`, and `page_count` of the document the tab now shown has open; `path` is empty when it has none."},
-				{"generation", "integer", "A number that changes whenever a document is opened or reloaded."},
-				{"index", "integer", "The 1-based position of the tab now shown."},
-				{"previous", "integer", "The 1-based position of the tab shown before, or 0 when that tab was closed."},
-			}},
-			{"Tab list event", "`tab_list_changed`, when a tab of the window opens, closes or moves, or gains or loses unsaved edits, so a plugin drawing its own tabs can redraw them from `onon.tabs.list()`.", []luaField{
-				{"reason", "string", "`opened`, `closed`, `moved` or `modified`."},
-				{"index", "integer", "The 1-based position of the tab that changed: where it is now, or where it was for one closed."},
-				{"count", "integer", "How many tabs the window has now."},
-			}},
-			{"Option event", "`option_changed`, after Lua code changes options.", []luaField{
-				{"source", "string", "What ran the code that changed them: the event's name for an event callback, `ui_select`, `ui_click` and so on for a view's callback, or `action`, `command`, `set`, `theme` or `plugin operation`."},
-			}},
-		},
+}
+
+// luaEventTables are what plugin event callbacks are given, documented in
+// a section of their own.
+var luaEventTables = luaTableGroup{
+	name:  "Events",
+	intro: "What `plugin:on(event, callback)` and `onon.config:on(event, callback)` give their callbacks. `shutdown` gives an empty table.",
+	tables: []luaTable{
+		{"Document event", "`app_ready`, `document_opened`, `document_reloaded`, `config_reloaded`, `document_close_pre` and `document_closed`.", []luaField{
+			{"document", "table", "`path`, `name`, and `page_count`, an integer, of the document concerned; `path` is empty when none is open."},
+			{"generation", "integer", "A number that changes whenever a document is opened or reloaded."},
+		}},
+		{"Opening event", "`document_open_pre`, before a document opens.", []luaField{
+			{"document", "table", "The `path` and `name` of the document opening."},
+		}},
+		{"Mouse button event", "`mouse_button_pre`, before onon handles a press or release, and `mouse_button`, after. A `mouse_button_pre` callback returning true keeps onon from handling it.", []luaField{
+			{"phase", "string", "`down` or `up`."},
+			{"button", "string", "`left`, `middle`, `right`, `x1` or `x2`."},
+			{"x", "number", "Where the pointer is, from the window's left."},
+			{"y", "number", "Where the pointer is, from the window's top."},
+			{"modifiers", "table", "Booleans `ctrl`, `shift`, `alt` and `gui`, the last Cmd on macOS and the Super or Windows key elsewhere."},
+			{"inside_document", "boolean", "Whether the pointer is over a page."},
+			{"page", "integer", "Over a page: the 1-based page."},
+			{"page_x", "number", "Over a page: where on it, in points from its left."},
+			{"page_y", "number", "Over a page: where on it, in points from its top."},
+		}},
+		{"Selection event", "`selection_changed`.", []luaField{
+			{"active", "boolean", "Whether text is selected."},
+			{"text", "string", "The selected text."},
+			{"pages", "integer[]", "The 1-based pages the selection covers, in order. [`onon.document.selection()`](#selection) gives where on them."},
+		}},
+		{"Page event", "`page_changed`.", []luaField{
+			{"page", "integer", "The 1-based page now current."},
+			{"label", "string", "Its page label, or its number when it has none."},
+			{"previous_page", "integer", "The 1-based page current before."},
+			{"page_count", "integer", "The document's number of pages."},
+		}},
+		{"Zoom event", "`zoom_changed`.", []luaField{
+			{"scale", "number", "The zoom now, 1 being 100%."},
+			{"previous_scale", "number", "The zoom before."},
+			{"percent", "number", "The zoom now as a percentage."},
+		}},
+		{"Tab event", "`tab_changed`, when the window shows another tab.", []luaField{
+			{"document", "table", "`path`, `name`, and `page_count` of the document the tab now shown has open; `path` is empty when it has none."},
+			{"generation", "integer", "A number that changes whenever a document is opened or reloaded."},
+			{"index", "integer", "The 1-based position of the tab now shown."},
+			{"previous", "integer", "The 1-based position of the tab shown before, or 0 when that tab was closed."},
+		}},
+		{"Tab list event", "`tab_list_changed`, when a tab of the window opens, closes or moves, or gains or loses unsaved edits, so a plugin drawing its own tabs can redraw them from `onon.tabs.list()`.", []luaField{
+			{"reason", "string", "`opened`, `closed`, `moved` or `modified`."},
+			{"index", "integer", "The 1-based position of the tab that changed: where it is now, or where it was for one closed."},
+			{"count", "integer", "How many tabs the window has now."},
+		}},
+		{"Option event", "`option_changed`, after Lua code changes options.", []luaField{
+			{"source", "string", "What ran the code that changed them: the event's name for an event callback, `ui_select`, `ui_click` and so on for a view's callback, or `action`, `command`, `set`, `theme` or `plugin operation`."},
+		}},
 	},
 }
 
-// luaTableLocations says where each documented table is exposed or passed.
-// Keep these in the headings so a reader can identify the table's source
-// without having to read its introductory sentence.
+// luaTableLocations says where each documented table is exposed or passed,
+// shown first in its entry so a reader can tell where it comes from. Its
+// heading is its name alone, which keeps the table of contents short.
 var luaTableLocations = map[string]string{
 	"Platform":           "`onon.platform`",
 	"Document":           "`onon.document`",
@@ -314,7 +317,7 @@ var luaTableLocations = map[string]string{
 	"Plugin manifest":    "`onon-plugin.json`",
 	"Plugin spec":        "`onon.plugin.register(id[, spec])`",
 	"Option declaration": "plugin spec `options`",
-	"Plugin module":      "`onon.plugin.register()` / `require()` result",
+	"Plugin module":      "`onon.plugin.register()` / `require()` result, and `onon.config`",
 	"Action spec":        "`plugin:register_action()`",
 	"Command spec":       "`plugin:register_command()`",
 	"Command context":    "plugin command callback",
@@ -342,33 +345,32 @@ var luaTableLocations = map[string]string{
 	"Option event":       "`option_changed` callback",
 }
 
-// renderLuaTables writes each table in luaTableGroups as a heading and a
-// table of its fields.
-func renderLuaTables(b *strings.Builder) {
-	for _, group := range luaTableGroups {
+// renderLuaTables writes each group as a heading over its tables.
+func renderLuaTables(b *strings.Builder, groups []luaTableGroup) {
+	for _, group := range groups {
 		fmt.Fprintf(b, "\n### %s\n\n", group.name)
 		if group.intro != "" {
 			b.WriteString(group.intro + "\n")
 		}
-		for _, table := range group.tables {
-			location := luaTableLocations[table.name]
-			if location == "" {
-				panic("missing Lua table location for " + table.name)
-			}
-			// Preserve links to the existing heading while making the table's
-			// source visible in its title.
-			fmt.Fprintf(b, "\n<a id=\"%s\"></a>\n\n#### %s %s\n\n", tableAnchor(table.name), table.name, location)
-			if table.intro != "" {
-				b.WriteString(table.intro + "\n\n")
-			}
-			b.WriteString("| Field | Type | Description |\n|---|---|---|\n")
-			for _, field := range table.fields {
-				fmt.Fprintf(b, "| %s | %s | %s |\n", markdownCode(field.name), field.kind, field.description)
-			}
-		}
+		renderLuaTableList(b, "####", group.tables)
 	}
 }
 
-func tableAnchor(name string) string {
-	return strings.ToLower(strings.ReplaceAll(name, " ", "-"))
+// renderLuaTableList writes each table as a heading, at level, and a table
+// of its fields.
+func renderLuaTableList(b *strings.Builder, level string, tables []luaTable) {
+	for _, table := range tables {
+		location := luaTableLocations[table.name]
+		if location == "" {
+			panic("missing Lua table location for " + table.name)
+		}
+		fmt.Fprintf(b, "\n%s %s\n\n**Source:** %s\n\n", level, table.name, location)
+		if table.intro != "" {
+			b.WriteString(table.intro + "\n\n")
+		}
+		b.WriteString("| Field | Type | Description |\n|---|---|---|\n")
+		for _, field := range table.fields {
+			fmt.Fprintf(b, "| %s | %s | %s |\n", markdownCode(field.name), field.kind, field.description)
+		}
+	}
 }
