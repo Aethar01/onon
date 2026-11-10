@@ -40,8 +40,8 @@ func (a *App) listOffset(view *uiView, rows, total int) (offset, shift float64) 
 		// the list keeps its place on screen.
 		target := float64(view.scroll)
 		key := tweenKey{kind: "list offset", view: view}
-		tr := a.config.Theme.Motion.Selection
-		smooth := !first && a.config.SmoothScrollSources.Has(config.SmoothInputKeyboard)
+		tr := a.viewAnim(view, config.MotionSelection, config.MomentChange)
+		smooth := !first && a.config.SmoothScrollSources.Has(config.SmoothInputKeyboard) && tr.Glide
 		if !smooth {
 			tr.Duration = 0
 		}

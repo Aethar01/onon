@@ -282,29 +282,39 @@ func (a *App) hoverOverview(x, y float64) bool {
 	return true
 }
 
-func (a *App) drawOverviewSelection(renderer *sdl.Renderer) {
-	if a.overview == nil {
-		return
+// overviewSpreadRect is the screen rect round page's spread, if it is
+// laid out.
+func (a *App) overviewSpreadRect(page int) (minX, minY, maxX, maxY float64, ok bool) {
+	if page < 0 || page >= len(a.pageToRow) {
+		return 0, 0, 0, 0, false
 	}
-	if a.overview.selected >= len(a.pageToRow) {
-		return
-	}
-	// Outline the whole selected spread.
-	row := a.rows[a.pageToRow[a.overview.selected]]
-	_, spread := a.spreadOf(a.overview.selected)
-	minX, minY, maxX, maxY := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
-	for i, page := range row.pages {
-		if slices.Contains(spread, page) {
+	row := a.rows[a.pageToRow[page]]
+	_, spread := a.spreadOf(page)
+	minX, minY, maxX, maxY = math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
+	for i, p := range row.pages {
+		if slices.Contains(spread, p) {
 			x, y := a.rowPageScreenOrigin(row, i)
 			minX, minY = math.Min(minX, x), math.Min(minY, y)
 			maxX, maxY = math.Max(maxX, x+row.pageW[i]), math.Max(maxY, y+row.pageH[i])
 		}
 	}
+	return minX, minY, maxX, maxY, !math.IsInf(minX, 1)
+}
+
+func (a *App) drawOverviewSelection(renderer *sdl.Renderer) {
+	if a.overview == nil {
+		return
+	}
+	// Outline the whole selected spread.
+	minX, minY, maxX, maxY, ok := a.overviewSpreadRect(a.overview.selected)
+	if !ok {
+		return
+	}
 	// The outline glides to the selection as a menu's selected row does.
 	// It moves among the pages, so it stays with them as the grid scrolls.
-	tr := a.config.Theme.Motion.Selection
+	anim := a.anim(config.MotionOverviewSelection, config.MomentChange)
 	glide := func(kind string, v, scroll float64) float64 {
-		return a.animate(tweenKey{kind: kind}, v+scroll, tr) - scroll
+		return a.glide(tweenKey{kind: kind}, v+scroll, anim) - scroll
 	}
 	minX, maxX = glide("overview selection x0", minX, a.scrollX), glide("overview selection x1", maxX, a.scrollX)
 	minY, maxY = glide("overview selection y0", minY, a.scrollY), glide("overview selection y1", maxY, a.scrollY)
@@ -312,9 +322,20 @@ func (a *App) drawOverviewSelection(renderer *sdl.Renderer) {
 	st := a.style(config.ElementOverviewSelection)
 	top, right, bottom, left := a.insets(st.Padding.V)
 	border := a.lineWidth(st.BorderWidth.V)
-	rect := sdl.FRect{
-		X: float32(minX) - left - border, Y: float32(minY) - top - border,
-		W: float32(maxX-minX) + left + right + 2*border, H: float32(maxY-minY) + top + bottom + 2*border,
+	outline := func(minX, minY, maxX, maxY float64) sdl.FRect {
+		return sdl.FRect{
+			X: float32(minX) - left - border, Y: float32(minY) - top - border,
+			W: float32(maxX-minX) + left + right + 2*border, H: float32(maxY-minY) + top + bottom + 2*border,
+		}
 	}
-	a.drawBox(renderer, &st, rect)
+	rect := outline(minX, minY, maxX, maxY)
+	ctx := layerCtx{rect: rect, side: "bottom", auto: a.edgeDistance(rect, "bottom")}
+	in, prev, out, leaving := a.changeLayers(tweenKey{kind: "overview selection change"}, a.overview.selected, anim, ctx)
+	if leaving {
+		if x0, y0, x1, y1, ok := a.overviewSpreadRect(prev); ok {
+			was := outline(x0, y0, x1, y1)
+			_ = a.drawLayer(out, was, func() error { a.drawBox(renderer, &st, was); return nil })
+		}
+	}
+	_ = a.drawLayer(in, rect, func() error { a.drawBox(renderer, &st, rect); return nil })
 }

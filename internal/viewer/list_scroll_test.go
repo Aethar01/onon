@@ -64,7 +64,7 @@ func listFrame(app *App, view *uiView, now time.Time) (offset, box float64) {
 	items := view.visibleRows()
 	offset, shift := app.listOffset(view, rows, len(items))
 	key := tweenKey{kind: "selection", view: view}
-	app.animate(key, float64(uiViewSelectedRow(view, items)), app.config.Theme.Motion.Selection)
+	app.glide(key, float64(uiViewSelectedRow(view, items)), app.anim(config.MotionSelection, config.MomentChange))
 	return offset, app.shiftTween(key, shift) - offset
 }
 

@@ -37,22 +37,55 @@ type titleBar struct {
 	shown    bool // the controls are wanted, though they may still be fading
 	fadeFrom float64
 	fadeAt   time.Time
-	hovered  titleButton
-	pressed  titleButton
+	// inLen and outLen are how long coming in and going take, from title
+	// bar's enter and exit; titleBarFade unless set.
+	inLen, outLen time.Duration
+	hovered       titleButton
+	pressed       titleButton
 }
 
-// alpha is how opaque the controls are at now.
+// length is how long the controls take to come in, or to go.
+func (t *titleBar) length() time.Duration {
+	l, set := t.outLen, t.outLen != 0 || t.inLen != 0
+	if t.shown {
+		l = t.inLen
+	}
+	if !set {
+		return titleBarFade
+	}
+	return l
+}
+
+// alpha is how far in the controls are at now, from 0 to 1, moving at an
+// even pace.
 func (t *titleBar) alpha(now time.Time) float64 {
 	target := 0.0
 	if t.shown {
 		target = 1
 	}
-	progress := min(1, float64(now.Sub(t.fadeAt))/float64(titleBarFade))
-	return t.fadeFrom + (target-t.fadeFrom)*progress
+	length := t.length()
+	if length <= 0 {
+		return target
+	}
+	step := float64(now.Sub(t.fadeAt)) / float64(length)
+	if target > t.fadeFrom {
+		return min(target, t.fadeFrom+step)
+	}
+	return max(target, t.fadeFrom-step)
 }
 
 func (t *titleBar) fading(now time.Time) bool {
-	return now.Sub(t.fadeAt) < titleBarFade
+	a := t.alpha(now)
+	return t.shown && a < 1 || !t.shown && a > 0
+}
+
+// syncTitleBarMotion sets how long the controls take to come and go from
+// the theme's title_bar motion.
+func (a *App) syncTitleBarMotion() {
+	if t := a.titleBar; t != nil {
+		t.inLen = max(1, a.scaledMs(a.anim(config.MotionTitleBar, config.MomentEnter).Length()))
+		t.outLen = max(1, a.scaledMs(a.anim(config.MotionTitleBar, config.MomentExit).Length()))
+	}
 }
 
 func (t *titleBar) setShown(shown bool, now time.Time) bool {
@@ -173,6 +206,7 @@ func (a *App) noteTitleBarPointer(x, y float64, inWindow bool) {
 		return
 	}
 	now := time.Now()
+	a.syncTitleBarMotion()
 	t := a.titleBar
 	l := a.titleBarLayout()
 	in := inWindow && y >= 0 && y < l.height && x >= 0 && x < l.width
@@ -195,6 +229,7 @@ func (a *App) noteTitleBarPointer(x, y float64, inWindow bool) {
 // advanceTitleBar hides the controls once the pointer left the strip, which
 // SDL does not report while the pointer is over it, and keeps a fade drawing.
 func (a *App) advanceTitleBar() {
+	a.syncTitleBarMotion()
 	if !a.titleBarActive() {
 		if a.titleBar != nil && a.titleBar.setShown(false, time.Now()) {
 			a.pendingRedraw = true
@@ -318,12 +353,20 @@ func (a *App) drawTitleBar(renderer *sdl.Renderer) error {
 		return nil
 	}
 	t := a.titleBar
-	alpha := t.alpha(time.Now())
-	if alpha <= 0 {
+	in := t.alpha(time.Now())
+	if in <= 0 {
 		return nil
 	}
-	return a.faded(alpha, func() error {
-		l := a.titleBarLayout()
+	// The controls move as title_bar says, at how far in they are.
+	moment, e := config.MomentEnter, in
+	if !t.shown {
+		moment, e = config.MomentExit, 1-in
+	}
+	anim := a.anim(config.MotionTitleBar, moment)
+	l := a.titleBarLayout()
+	strip := sdl.FRect{W: float32(l.width), H: float32(l.height)}
+	ly := a.layerEased(anim, a.ease(anim.Easing, e), t.shown, layerCtx{rect: strip, side: "top", auto: l.height})
+	return a.drawLayer(ly, strip, func() error {
 		first, last := l.buttonRect(titleButtonMinimize), l.buttonRect(titleButtonClose)
 		bar := a.style(config.ElementTitleBar)
 		a.drawBox(renderer, &bar, sdl.FRect{X: first.X, Y: 0, W: last.X + last.W - first.X, H: first.H})

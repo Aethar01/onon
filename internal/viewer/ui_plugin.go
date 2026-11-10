@@ -167,6 +167,7 @@ func (a *App) createLuaView(spec config.UIOverlay) *uiView {
 		element:    config.ElementPanel,
 		place:      a.pluginPlacement(spec),
 		resizable:  spec.Resizable && spec.Dock != "",
+		motion:     spec.Motion,
 	}
 	if view.id == "" {
 		view.id = "lua" + strconv.Itoa(len(a.views.views)+1)

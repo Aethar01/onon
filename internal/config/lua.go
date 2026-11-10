@@ -245,6 +245,13 @@ func uiOverlayFromLuaSpec(L *lua.LState, rt *Runtime, spec *lua.LTable) UIOverla
 			*field = lua.LVAsBool(value)
 		}
 	}
+	if motion := spec.RawGetString("motion"); motion != lua.LNil {
+		vm, err := ViewMotionFromLua(L, motion)
+		if err != nil {
+			L.RaiseError("ui.create: motion: %v", err)
+		}
+		overlay.Motion = vm
+	}
 	for name, field := range map[string]*UISize{"width": &overlay.Width, "height": &overlay.Height} {
 		if value := spec.RawGetString(name); value != lua.LNil {
 			size, err := luaUISize(value)

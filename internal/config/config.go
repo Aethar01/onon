@@ -171,6 +171,8 @@ type UIOverlay struct {
 	Order int
 	// Resizable lets the pointer drag a docked view's inner edge.
 	Resizable bool
+	// Motion, if set, is the view's own motion over the theme's.
+	Motion *ViewMotion
 	// Stack opens a modal view over the menu open, which it returns to,
 	// instead of replacing it.
 	Stack bool

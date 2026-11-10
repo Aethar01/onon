@@ -11,7 +11,9 @@ import (
 // been drawn. It goes after setOption, which applies the theme again.
 func slowEdges(app *App) {
 	app.config.Theme.Motion.Scale = 1
-	app.config.Theme.Motion.Edges = config.Transition{Duration: 100, Easing: "linear", Curve: [4]float64{0, 0, 1, 1}}
+	slide := config.Animation{Duration: 100, Easing: config.Easing{Name: "linear", Curve: [4]float64{0, 0, 1, 1}}, Tracks: []config.Track{{Prop: "slide", Auto: true}}}
+	app.config.Theme.Motion.Moves[config.MotionEdges][config.MomentEnter] = slide
+	app.config.Theme.Motion.Moves[config.MotionEdges][config.MomentExit] = slide
 	app.motion.osReduced.Store(false)
 	app.motion.frame = 1
 }
@@ -216,7 +218,8 @@ func TestResizingABarDoesNotMoveTheEdges(t *testing.T) {
 
 func TestEdgesDoNotMoveWithoutMotion(t *testing.T) {
 	app := twoTabs(t)
-	app.config.Theme.Motion.Edges.Duration = 0
+	app.config.Theme.Motion.Moves[config.MotionEdges][config.MomentEnter].Duration = 0
+	app.config.Theme.Motion.Moves[config.MotionEdges][config.MomentExit].Duration = 0
 	app.motion.frame = 1
 	before := app.documentRect()
 	toggleStatusBar(app)

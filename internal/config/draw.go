@@ -152,6 +152,10 @@ type Canvas interface {
 	Checkbox(id string, x, y float64, label string, checked bool) (float64, float64)
 	// Size is the box's size.
 	Size() (w, h float64)
+	// Animate returns where a value named key, heading for target, is
+	// now, moving as anim says; one not asked for on the frame before is
+	// at its target.
+	Animate(key string, target float64, anim Animation) float64
 }
 
 // PageArea is the part of a page a canvas draws: from the point X, Y, in
@@ -200,6 +204,35 @@ type drawCache struct {
 	dir        string // where image paths not absolute are from
 	colors     map[string]Color
 	paths      map[string][]PathOp
+	motions    map[string]Animation
+}
+
+// canvasMotion is how canvas:animate moves a value unless told otherwise.
+var canvasMotion = Animation{Duration: 200, Easing: namedEasing("ease-out"), Glide: true}
+
+// motion reads canvas:animate's animation, n on the stack.
+func (c *drawCache) motion(L *lua.LState, n int) Animation {
+	value := L.Get(n)
+	if s, ok := value.(lua.LString); ok {
+		if a, ok := c.motions[string(s)]; ok {
+			return a
+		}
+	}
+	if value == lua.LNil {
+		return canvasMotion
+	}
+	p, err := AnimationFromLua(value)
+	if err != nil {
+		L.ArgError(n, err.Error())
+	}
+	a := p.Apply(canvasMotion)
+	if s, ok := value.(lua.LString); ok {
+		if c.motions == nil || len(c.motions) >= maxDrawCacheEntries {
+			c.motions = map[string]Animation{}
+		}
+		c.motions[string(s)] = a
+	}
+	return a
 }
 
 // maxDrawCacheEntries bounds each map, which is emptied when full, in
@@ -294,6 +327,30 @@ func (r *Runtime) runDraw(fn *lua.LFunction, canvas Canvas, state DrawState, nre
 		return nil
 	})
 	return ret, err
+}
+
+// RunEasing runs a Lua easing, fn(p), returning how far through its
+// change it is at fraction p of its time.
+func (r *Runtime) RunEasing(fn *lua.LFunction, p float64) (float64, error) {
+	if r == nil || r.state == nil {
+		return p, fmt.Errorf("no Lua state")
+	}
+	L := r.state
+	v := p
+	err := r.doLua(func() error {
+		if err := L.CallByParam(lua.P{Fn: fn, NRet: 1, Protect: true}, lua.LNumber(p)); err != nil {
+			return err
+		}
+		ret := L.Get(-1)
+		L.Pop(1)
+		n, ok := ret.(lua.LNumber)
+		if !ok {
+			return fmt.Errorf("an easing returns a number, not %s", ret.Type())
+		}
+		v = float64(n)
+		return nil
+	})
+	return v, err
 }
 
 func push2(L *lua.LState, a, b float64) int {
@@ -650,6 +707,13 @@ func luaCanvasMetatable(L *lua.LState, cache *drawCache) *lua.LTable {
 			c := check(L)
 			id := L.CheckAny(2)
 			L.Push(lua.LBool(c.Region(id, float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), float64(L.CheckNumber(5)), float64(L.CheckNumber(6)))))
+			return 1
+		},
+		"animate": func(L *lua.LState) int {
+			c := check(L)
+			key := L.CheckAny(2)
+			target := float64(L.CheckNumber(3))
+			L.Push(lua.LNumber(c.Animate(lua.LVAsString(key)+"\x00"+key.Type().String(), target, cache.motion(L, 4))))
 			return 1
 		},
 		"path": func(L *lua.LState) int {

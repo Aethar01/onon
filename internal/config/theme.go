@@ -164,7 +164,7 @@ type themeField struct {
 }
 
 // themeGroups are the tables nested in the theme table.
-var themeGroups = []string{"alt", "font", "motion"}
+var themeGroups = []string{"alt", "font", "motion", "motion.reduced"}
 
 var themeFields = buildThemeFields()
 
@@ -207,7 +207,7 @@ func buildThemeFields() []themeField {
 			fields = append(fields, themeField{group.prefix + color.name, themeColorOption(description, func(c *Config) *[3]uint8 { return field(palette(c)) })})
 		}
 	}
-	return append(fields,
+	fields = append(fields,
 		themeField{"font.family", stringOption("Installed UI font family; empty uses the system interface font, such as SF on macOS or Segoe UI on Windows.", func(c *Config) string { return c.Theme.Font.Family }, func(c *Config, v string) { c.Theme.Font.Family = strings.TrimSpace(v) })},
 		themeField{"font.path", stringOption("UI font file; overrides font.family, font.style and font.weight.", func(c *Config) string { return c.Theme.Font.Path }, func(c *Config, v string) { c.Theme.Font.Path = strings.TrimSpace(v) })},
 		themeField{"font.size", intOption("UI font size in logical pixels, scaled up on high-density displays.", func(c *Config) int { return c.Theme.Font.Size }, func(c *Config, v int) { c.Theme.Font.Size = max(1, v) })},
@@ -219,14 +219,8 @@ func buildThemeFields() []themeField {
 		themeField{"status_bar_style", stringOption("Status bar layout: bar along the bottom of the window, or pill, floating over the page.", func(c *Config) string { return c.Theme.StatusBarStyle }, func(c *Config, v string) { c.Theme.StatusBarStyle = NormalizeBarStyle(v) })},
 		themeField{"status_bar_padding", intOption("Horizontal status bar padding in logical pixels.", func(c *Config) int { return c.Theme.StatusBarPadding }, func(c *Config, v int) { c.Theme.StatusBarPadding = max(0, v) })},
 		themeField{"tab_bar_style", stringOption("Tab bar layout: bar, along the window's edge, or pill, tabs floating over the page as pills.", func(c *Config) string { return c.Theme.TabBarStyle }, func(c *Config, v string) { c.Theme.TabBarStyle = NormalizeBarStyle(v) })},
-		themeField{"motion.scale", floatOption("Speed of every transition: 1 as given, 2 twice as slow, 0 for no motion at all, as when the OS is set to reduce motion.", func(c *Config) float64 { return c.Theme.Motion.Scale }, func(c *Config, v float64) { c.Theme.Motion.Scale = max(0, v) })},
-		themeField{"motion.panel", transitionOption("Menus and completion fading in as they open, and menus fading out as they close.", func(c *Config) *Transition { return &c.Theme.Motion.Panel })},
-		themeField{"motion.selection", transitionOption("The selected row's highlight gliding to the next row selected.", func(c *Config) *Transition { return &c.Theme.Motion.Selection })},
-		themeField{"motion.prompt", transitionOption("The sides of the status bar growing and shrinking with their text, as a pill does when a prompt opens.", func(c *Config) *Transition { return &c.Theme.Motion.Prompt })},
-		themeField{"motion.message", transitionOption("Status messages fading in, and out when cleared.", func(c *Config) *Transition { return &c.Theme.Motion.Message })},
-		themeField{"motion.cursor", transitionOption("The prompt's cursor gliding to where it moves.", func(c *Config) *Transition { return &c.Theme.Motion.Cursor })},
-		themeField{"motion.edges", transitionOption("The status bar, tab bar and docked views sliding in along the window's edges as they are shown, the bars sliding out as they are hidden, the page moving with them only where it must.", func(c *Config) *Transition { return &c.Theme.Motion.Edges })},
 	)
+	return append(fields, motionThemeFields()...)
 }
 
 // altRecolors describes the alt colours that pages are also recoloured to.
@@ -396,19 +390,20 @@ func luaThemeTable(L *lua.LState, theme Theme) *lua.LTable {
 	tbl := L.NewTable()
 	tbl.RawSetString("base", lua.LString(theme.Base))
 	for _, field := range themeFields {
+		if slices.Contains(themeGroups, field.name) {
+			continue // a table's own value, such as motion.reduced's base, is one of its fields too
+		}
 		target := tbl
-		group, member, nested := strings.Cut(field.name, ".")
-		if nested {
-			sub, ok := tbl.RawGetString(group).(*lua.LTable)
+		parts := strings.Split(field.name, ".")
+		for _, group := range parts[:len(parts)-1] {
+			sub, ok := target.RawGetString(group).(*lua.LTable)
 			if !ok {
 				sub = L.NewTable()
-				tbl.RawSetString(group, sub)
+				target.RawSetString(group, sub)
 			}
 			target = sub
-		} else {
-			member = group
 		}
-		target.RawSetString(member, field.desc.get(L, &cfg))
+		target.RawSetString(parts[len(parts)-1], field.desc.get(L, &cfg))
 	}
 	tbl.RawSetString("elements", luaElementsTable(L, &theme.Elements))
 	return tbl

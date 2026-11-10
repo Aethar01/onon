@@ -281,12 +281,69 @@ func renderThemeReference(b *strings.Builder) {
 	b.WriteString("`:theme` lists the built-in themes and the theme files, each named for its file: those in `themes/` beside `config.lua`, then those in each directory plugins are searched for with `themes` in place of `plugins`, as `/usr/lib/onon/themes` and `~/.config/onon/themes` on Linux. Where two directories have a file of the same name, the first wins. `:theme` shows each one as it is selected: Enter keeps it, Esc puts back the theme before, and `:theme <name>` switches straight to one. A file named for a built-in theme is left out. The theme chosen is remembered and applied before `config.lua` runs, so what `config.lua` changes field by field, as `onon.theme.accent = \"#335533\"` does, changes the chosen theme too; assigning `onon.theme` whole replaces it, and `:theme` then says that a theme it picks lasts only until onon restarts.\n\n")
 	b.WriteString("Fields left out keep the base theme's values. Assign a preset by name with `onon.theme = \"birch\"`, or a single field with `onon.theme.accent = \"#335533\"`; at runtime use `:set theme=birch` or `:set theme.accent=#335533`. Built-in themes: " + codeList(config.ThemeNames()) + ". `onon.themes.<name>` gives a copy of one to change. Fields and element properties this version does not know are skipped with a warning, so a theme written for a newer version still loads; `:set` refuses them.\n\n")
 	b.WriteString("Colours are `\"#RRGGBB\"` or `{ r, g, b }`. The `alt` table holds the colours used in alternate-color mode, toggled with `:colors`, and has the same colour fields as the theme. The `font` table picks the UI font; with neither `family` nor `path` set it is the system's interface font.\n\n")
-	b.WriteString("The `motion` table sets how the UI moves. Each transition is written as CSS writes one, a duration and an easing such as `\"140ms ease-out\"`, or as `{ duration = 140, easing = \"ease-out\" }`; easings are `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out` and `cubic-bezier(x1, y1, x2, y2)`, and `\"none\"` turns one transition off. By default everything moves, briefly: the selection, the cursor and the sides of the status bar glide to where they go, menus and messages fade in and out, and the bars and docked views slide in and out along the edges. `scale` slows or speeds every transition, and `0` turns motion off altogether, as the classic theme does.\n\n")
 	b.WriteString("| Field | Type | Default | Description |\n|---|---|---|---|\n")
-	for _, ref := range config.ThemeReferences() {
+	for _, ref := range themeReferences() {
 		fmt.Fprintf(b, "| %s | %s | %s | %s |\n", markdownCode(ref.Name), ref.Type, markdownCode(ref.Default), ref.Description)
 	}
+	renderMotionReference(b)
 	renderElementReference(b)
+}
+
+// themeReferences are the theme's fields as documented: those of the
+// reduced motion table, which is the motion table again, left to the
+// motion section.
+func themeReferences() []config.ThemeFieldReference {
+	var refs []config.ThemeFieldReference
+	for _, ref := range config.ThemeReferences() {
+		if strings.HasPrefix(ref.Name, "motion.reduced.") && ref.Name != "motion.reduced.base" && ref.Name != "motion.reduced.scale" {
+			continue
+		}
+		refs = append(refs, ref)
+	}
+	return refs
+}
+
+// renderMotionReference documents the motion table.
+func renderMotionReference(b *strings.Builder) {
+	b.WriteString("\n### Motion\n\n")
+	b.WriteString("The `motion` table sets how the UI moves. Each thing that moves is a target, with an animation for each moment it moves at: `enter` as it comes, `exit` as it goes, or `change` as it moves to another place, as the selection does. By default everything moves, briefly: the selection, the cursor and the sides of the status bar glide to where they go, menus and messages fade in and out, and the bars and docked views slide in and out along the edges.\n\n")
+	b.WriteString("```lua\nonon.theme.motion = {\n  panel = { enter = \"fade rise zoom 160ms ease-out\", exit = \"fade 90ms\" },\n  rows = { enter = \"fade x:-6px 120ms ease-out stagger:15ms\" },\n  selection = \"crossfade 80ms\",\n  message = \"fade slide from:left 200ms spring(220, 22)\",\n  edges = \"240ms cubic-bezier(0.22, 1, 0.36, 1)\",\n}\n```\n\n")
+	b.WriteString("An animation written as text is a list of words in any order: effects and tracks, a duration and then a delay, an easing, and `delay:`, `stagger:` and `from:`. `\"none\"` turns it off. Written with no effects or tracks, as `\"140ms ease-out\"`, it changes only the timing and keeps the effects it had; a duration without an easing eases as CSS does by default, with `ease`. Set for a target, it is that target's animation at each of its moments; a table of `enter`, `exit` or `change` sets them one at a time.\n\n")
+	b.WriteString("| Word | Meaning |\n|---|---|\n")
+	for _, row := range [][2]string{
+		{"`fade`, `crossfade`", "Opacity from 0."},
+		{"`rise`, `drop`", "Up from 12px below, or down from 12px above."},
+		{"`zoom`, `pop`", "Scale from 0.95, or from 0.8."},
+		{"`slide`", "In from out of the window, on its side: the side a view is anchored to (from below for one in the middle), the edge a bar lines, or the left for rows."},
+		{"`wipe`", "Uncovered from its side."},
+		{"`glide`", "For a change: moves the thing itself to where it goes. Without it, the new one comes in with the tracks and the old one goes."},
+		{"`opacity:v`, `x:v`, `y:v`, `scale:v`, `slide:v`, `clip:v`", "A track: the value while hidden, from which it comes in and to which it goes out. `x`, `y` and `slide` are lengths, in px or in % of the thing's own size; `slide:auto` goes out of the window, and `slide:left` goes towards a side. `clip` is how much is cut away, from 0 to 1. `from>to`, as `opacity:0.5>1`, moves from one to the other either way."},
+		{"`from:side`", "The side `slide` and `wipe` go to: `top`, `bottom`, `left` or `right`."},
+		{"`140ms`, `0.14s`", "The duration; a second one is the delay."},
+		{"`delay:40ms`, `stagger:15ms`", "Wait before starting; for rows, each waits that much longer than the one before."},
+		{"easings", "`linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out`, `cubic-bezier(x1, y1, x2, y2)`, `steps(n)`, or `spring(stiffness, damping)`, a spring that settles over the duration and overshoots when damping is low."},
+	} {
+		fmt.Fprintf(b, "| %s | %s |\n", row[0], row[1])
+	}
+	b.WriteString("\nAs a table, an animation has `duration`, `delay` and `stagger` (milliseconds, or text such as `\"140ms\"`), `easing` (text, or a Lua function from the time through the change, 0 to 1, to how far it is), `glide`, `effect` (text, as above), `from`, and its tracks, each a value as written after its name, `{ from, to }`, or a table with its own `duration`, `delay`, `easing` and `side`:\n\n")
+	b.WriteString("```lua\nonon.theme.motion.panel = {\n  enter = {\n    opacity = 0,\n    y = \"16px\",\n    scale = { 0.9, 1, duration = 320, easing = \"spring(170, 18)\" },\n    duration = 160,\n    easing = function(t) return 1 - (1 - t) ^ 3 end,\n  },\n  exit = \"fade 90ms\",\n}\n```\n\n")
+	b.WriteString("Targets: ")
+	var targets []string
+	for t := range config.MotionTargetCount {
+		targets = append(targets, "`"+t.String()+"` ("+momentNames(t)+")")
+	}
+	b.WriteString(strings.Join(targets, ", ") + ". What each moves is in the table above.\n\n")
+	b.WriteString("`reduced` is the motion used instead when the OS asks for less motion, as macOS's Reduce motion or GNOME's animations switch do, or `force_reduced` is true. It is `\"fade\"` by default: the motion with only its fades, so nothing glides, slides or grows and the bars and the page do not move. `\"none\"` is no motion and `\"full\"` the motion as it is. A table is a whole motion table of its own, over its `base`, `fade` unless it says; what it leaves out comes from the base:\n\n")
+	b.WriteString("```lua\nonon.theme.motion.reduced = {\n  base = \"none\",\n  panel = \"fade 80ms\",\n  selection = \"crossfade 60ms\",\n  scale = 1,\n}\n```\n\n")
+	b.WriteString("A view can move its own way: `onon.ui.create` takes `motion`, as a target's animation for its panel, or a table of `enter` and `exit` for the panel and `panel`, `rows`, `selection` and `cursor` for what moves in it. A draw function can move its own values with `canvas:animate(key, target [, animation])`, which returns where the value named `key` is on its way to `target`, gliding as the animation's timing says, `\"200ms ease-out\"` unless given.\n")
+}
+
+func momentNames(t config.MotionTarget) string {
+	var names []string
+	for _, m := range t.Moments() {
+		names = append(names, m.String())
+	}
+	return strings.Join(names, ", ")
 }
 
 // renderElementReference documents the elements table, its properties and
@@ -328,6 +385,7 @@ func renderElementReference(b *strings.Builder) {
 		{"canvas:text(x, y, text, color [, bold])", "Text with the top of its line at y, in the UI font; returns its width."},
 		{"canvas:measure(text [, bold])", "Nothing; returns the width and line height of text."},
 		{"canvas:path()", "Nothing; returns an empty path, with the methods a shape function's path has."},
+		{"canvas:animate(key, target [, animation])", "Nothing; returns where the value named key is on its way to target, gliding as the animation's timing says (see Motion)."},
 	} {
 		fmt.Fprintf(b, "| %s | %s |\n", markdownCode(row[0]), row[1])
 	}
@@ -335,32 +393,42 @@ func renderElementReference(b *strings.Builder) {
 	b.WriteString("```lua\nonon.theme.elements.row_selected.draw = function(canvas, box, state)\n  canvas:default()\n  canvas:rect(0, 5, 3, box.h - 10, \"accent\", 1.5) -- a bar at the left\nend\n```\n")
 }
 
-// renderExampleTheme writes the default theme as a onon.theme table.
+// renderExampleTheme writes the default theme as a onon.theme table, its
+// nested tables, such as motion and motion.reduced, as tables.
 func renderExampleTheme(b *strings.Builder) {
 	fmt.Fprintf(b, "onon.theme = {\n  base = %q,\n", config.DefaultTheme)
-	group := ""
-	for _, ref := range config.ThemeReferences() {
-		name, member, nested := strings.Cut(ref.Name, ".")
-		if !nested {
-			name, member = "", name
+	refs := themeReferences()
+	tables := map[string]bool{}
+	for _, ref := range refs {
+		parts := strings.Split(ref.Name, ".")
+		for i := 1; i < len(parts); i++ {
+			tables[strings.Join(parts[:i], ".")] = true
 		}
-		if name != group {
-			if group != "" {
-				b.WriteString("  },\n")
-			}
-			if name != "" {
-				fmt.Fprintf(b, "  %s = {\n", name)
-			}
-			group = name
-		}
-		indent := "  "
-		if group != "" {
-			indent = "    "
-		}
-		fmt.Fprintf(b, "%s%s = %s, -- %s\n", indent, member, ref.Default, ref.Description)
 	}
-	if group != "" {
-		b.WriteString("  },\n")
+	var open []string // the tables open, outermost first
+	for _, ref := range refs {
+		if tables[ref.Name] {
+			continue // a table's own value, written as the table
+		}
+		parts := strings.Split(ref.Name, ".")
+		groups := parts[:len(parts)-1]
+		shared := 0
+		for shared < len(open) && shared < len(groups) && open[shared] == groups[shared] {
+			shared++
+		}
+		for len(open) > shared {
+			open = open[:len(open)-1]
+			fmt.Fprintf(b, "%s},\n", strings.Repeat("  ", len(open)+1))
+		}
+		for _, g := range groups[shared:] {
+			fmt.Fprintf(b, "%s%s = {\n", strings.Repeat("  ", len(open)+1), g)
+			open = append(open, g)
+		}
+		fmt.Fprintf(b, "%s%s = %s, -- %s\n", strings.Repeat("  ", len(open)+1), parts[len(parts)-1], ref.Default, ref.Description)
+	}
+	for len(open) > 0 {
+		open = open[:len(open)-1]
+		fmt.Fprintf(b, "%s},\n", strings.Repeat("  ", len(open)+1))
 	}
 	b.WriteString("  elements = {}, -- The style of each piece of the UI, such as panel or row_selected; see Elements in the reference.\n")
 	b.WriteString("}\n")

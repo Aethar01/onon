@@ -80,8 +80,10 @@ type uiView struct {
 	place    viewPlacement
 	// resizable lets the pointer drag a docked view's inner edge.
 	resizable bool
-	geometry  viewGeometryCache // see viewGeometry
-	visible   bool
+	// motion, if set, is the view's own motion over the theme's.
+	motion   *config.ViewMotion
+	geometry viewGeometryCache // see viewGeometry
+	visible  bool
 
 	rows []uiRow
 	// fitRows, if set, are the rows a fitted list's width is measured
@@ -548,9 +550,7 @@ func (a *App) removeStaleLuaViews(generation int) {
 		}
 		// It does not fade out: its draw function belongs to the old
 		// generation, whose callbacks' names the new one reuses.
-		if m := &a.motion; m.shownView == view || m.closingView == view {
-			m.shownView, m.closingView = nil, nil
-		}
+		a.forgetViewMotion(view)
 	}
 }
 
@@ -771,124 +771,164 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 	rowY := func(index float64) int { return int(math.Round(top + (index-offset)*float64(rowHeight))) }
 	first, last := int(math.Floor(offset)), min(len(items), int(math.Ceil(offset))+rows)
 	list := sdl.FRect{X: rect.X, Y: float32(top), W: rect.W, H: float32(rows * rowHeight)}
+	// The rows come in one after another as the view opens, and go as it
+	// closes, each by its place among those shown.
+	rowsEntering, rowsElapsed := a.viewPhase(view)
+	rowsMoment := config.MomentEnter
+	if !rowsEntering {
+		rowsMoment = config.MomentExit
+	}
+	rowsAnim := a.viewAnim(view, config.MotionRows, rowsMoment)
+	rowLayer := func(index int) layer {
+		if !rowsAnim.Moves() {
+			return restLayer
+		}
+		box := a.viewRowBox(view, rect, rowY(float64(index)), rowHeight)
+		l, _ := a.layerAt(rowsAnim, rowsElapsed-rowsAnim.Stagger*float64(max(0, index-first)), rowsEntering, layerCtx{rect: box, side: "left", auto: float64(box.W)})
+		return l
+	}
+	drawRow := func(index int) error {
+		item := items[index]
+		y := rowY(float64(index))
+		element := config.ElementRow
+		switch {
+		case item.heading:
+			element = config.ElementHeading
+		case item.index == view.selected:
+			element = config.ElementRowSelected
+		case item.disabled:
+			element = config.ElementRowDisabled
+		case item.button:
+			element = config.ElementButton
+		}
+		st := a.style(element)
+		if item.button && element == config.ElementRowSelected {
+			st = a.selectedButtonStyle(st)
+		}
+		box := a.viewRowBox(view, rect, y, rowHeight)
+		if element == config.ElementButton {
+			// a framed box within the row
+			inset := a.px(3)
+			a.drawBox(renderer, &st, sdl.FRect{X: box.X + inset, Y: box.Y + inset, W: box.W - 2*inset, H: box.H - 2*inset})
+		} else if element != config.ElementRowSelected {
+			a.drawBox(renderer, &st, box)
+		}
+		_, padRight, _, padLeft := a.insets(st.Padding.V)
+		face := a.styleFace(&st)
+		textX, textEnd := int(math.Round(float64(box.X+padLeft))), int(math.Round(float64(box.X+box.W-padRight)))
+		baseline := y + baselineOffset
+		if item.heading {
+			if err := a.drawTextFace(renderer, truncateText(face, item.text, textEnd-textX), textX, baseline, a.textColor(&st, false), st.Bold.V); err != nil {
+				return err
+			}
+			return nil
+		}
+		text := item.text
+		if !item.button {
+			// Every row leaves the room any row's swatch, check box or
+			// key takes, so their text lines up.
+			size := float32(a.uiLineHeight())
+			box := sdl.FRect{X: float32(textX), Y: float32(y) + (float32(rowHeight)-size)/2, W: size, H: size}
+			if item.swatch != nil {
+				swatchStyle := a.style(config.ElementSwatch)
+				swatchStyle.Fill.V = *item.swatch
+				a.drawBox(renderer, &swatchStyle, box)
+			}
+			box.X += float32(prefix.swatch)
+			if item.checkbox {
+				a.drawCheckbox(renderer, box, item.checked, false)
+			}
+			if item.key != "" {
+				if err := a.drawText(renderer, a.truncateModalListText(item.key, prefix.key), textX+prefix.swatch+prefix.checkbox, baseline, a.textColor(&st, true)); err != nil {
+					return err
+				}
+			}
+			textX += prefix.width() + a.depthIndent(item.depth)
+			// Markers take a column of their own, so the text of rows
+			// with and without one lines up.
+			if item.marker != "" {
+				if err := a.drawText(renderer, item.marker, textX, baseline, a.textColor(&st, true)); err != nil {
+					return err
+				}
+			}
+			textX += prefix.marker
+		}
+		// The detail on the right takes what the text leaves it, and
+		// at least 45% of a row too narrow for both.
+		if edit := view.rowEdit; edit != nil && edit.row == item.index {
+			// The row's value is the text being typed.
+			label := truncateText(face, text, textEnd-textX)
+			if err := a.drawRowText(renderer, item, label, textX, baseline, face, &st); err != nil {
+				return err
+			}
+			labelEnd := textX + measureText(face, label)
+			a.drawRowEdit(renderer, view, &st, face, labelEnd+a.ipx(12), textEnd, baseline)
+			return nil
+		}
+		secondary := item.secondary
+		if secondary == "" && item.index == view.selected {
+			secondary = item.hint
+		}
+		if secondary != "" {
+			room := textEnd - textX - measureText(face, text) - a.ipx(12)
+			secondary = a.truncateModalListText(secondary, max(room, int(rect.W*0.45)))
+		}
+		secondaryWidth := measureText(a.fontFace, secondary)
+		textWidth := textEnd - textX
+		if secondary != "" {
+			textWidth -= secondaryWidth + a.ipx(12)
+		}
+		if len(view.columns) > 0 && item.cells != nil {
+			a.drawCells(renderer, view, item.cells, textX, textEnd, baseline, face, a.textColor(&st, false), st.Bold.V)
+			return nil
+		}
+		if err := a.drawRowText(renderer, item, truncateText(face, text, textWidth), textX, baseline, face, &st); err != nil {
+			return err
+		}
+		if secondary != "" {
+			if err := a.drawText(renderer, secondary, textEnd-secondaryWidth, baseline, a.textColor(&st, true)); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	err := a.withClip(renderer, list, func() error {
 		// The selected row's box is drawn first, gliding to it from the
 		// row selected before. It moves among the rows, so it stays with
 		// its row as the list scrolls, and in step with the list when
 		// the list scrolls to show it. It is followed every frame, even
 		// out of view, so a glide begun out of view is not lost.
+		// Without a glide, the row selected before is drawn going as the
+		// new one comes. The selected row comes in with its row as the
+		// rows come in.
 		for index, item := range items {
 			if item.index == view.selected && !item.heading {
+				anim := a.viewAnim(view, config.MotionSelection, config.MomentChange)
 				key := tweenKey{kind: "selection", view: view}
-				a.animate(key, float64(index), a.config.Theme.Motion.Selection)
+				a.glide(key, float64(index), anim)
 				at := a.shiftTween(key, shift)
 				st := a.style(config.ElementRowSelected)
-				a.drawBox(renderer, &st, a.viewRowBox(view, rect, rowY(at), rowHeight))
+				box := a.viewRowBox(view, rect, rowY(at), rowHeight)
+				ctx := layerCtx{rect: box, side: "left", auto: float64(box.W)}
+				in, prev, out, leaving := a.changeLayers(tweenKey{kind: "selection change", view: view}, item.index, anim, ctx)
+				if leaving {
+					if was := slices.IndexFunc(items, func(r uiRow) bool { return r.index == prev }); was >= 0 {
+						wasBox := a.viewRowBox(view, rect, rowY(float64(was)), rowHeight)
+						_ = a.drawLayer(rowLayer(was), wasBox, func() error {
+							return a.drawLayer(out, wasBox, func() error { a.drawBox(renderer, &st, wasBox); return nil })
+						})
+					}
+				}
+				_ = a.drawLayer(rowLayer(index), box, func() error {
+					return a.drawLayer(in, box, func() error { a.drawBox(renderer, &st, box); return nil })
+				})
 				break
 			}
 		}
 		for index := first; index < last; index++ {
-			item := items[index]
-			y := rowY(float64(index))
-			element := config.ElementRow
-			switch {
-			case item.heading:
-				element = config.ElementHeading
-			case item.index == view.selected:
-				element = config.ElementRowSelected
-			case item.disabled:
-				element = config.ElementRowDisabled
-			case item.button:
-				element = config.ElementButton
-			}
-			st := a.style(element)
-			if item.button && element == config.ElementRowSelected {
-				st = a.selectedButtonStyle(st)
-			}
-			box := a.viewRowBox(view, rect, y, rowHeight)
-			if element == config.ElementButton {
-				// a framed box within the row
-				inset := a.px(3)
-				a.drawBox(renderer, &st, sdl.FRect{X: box.X + inset, Y: box.Y + inset, W: box.W - 2*inset, H: box.H - 2*inset})
-			} else if element != config.ElementRowSelected {
-				a.drawBox(renderer, &st, box)
-			}
-			_, padRight, _, padLeft := a.insets(st.Padding.V)
-			face := a.styleFace(&st)
-			textX, textEnd := int(math.Round(float64(box.X+padLeft))), int(math.Round(float64(box.X+box.W-padRight)))
-			baseline := y + baselineOffset
-			if item.heading {
-				if err := a.drawTextFace(renderer, truncateText(face, item.text, textEnd-textX), textX, baseline, a.textColor(&st, false), st.Bold.V); err != nil {
-					return err
-				}
-				continue
-			}
-			text := item.text
-			if !item.button {
-				// Every row leaves the room any row's swatch, check box or
-				// key takes, so their text lines up.
-				size := float32(a.uiLineHeight())
-				box := sdl.FRect{X: float32(textX), Y: float32(y) + (float32(rowHeight)-size)/2, W: size, H: size}
-				if item.swatch != nil {
-					swatchStyle := a.style(config.ElementSwatch)
-					swatchStyle.Fill.V = *item.swatch
-					a.drawBox(renderer, &swatchStyle, box)
-				}
-				box.X += float32(prefix.swatch)
-				if item.checkbox {
-					a.drawCheckbox(renderer, box, item.checked, false)
-				}
-				if item.key != "" {
-					if err := a.drawText(renderer, a.truncateModalListText(item.key, prefix.key), textX+prefix.swatch+prefix.checkbox, baseline, a.textColor(&st, true)); err != nil {
-						return err
-					}
-				}
-				textX += prefix.width() + a.depthIndent(item.depth)
-				// Markers take a column of their own, so the text of rows
-				// with and without one lines up.
-				if item.marker != "" {
-					if err := a.drawText(renderer, item.marker, textX, baseline, a.textColor(&st, true)); err != nil {
-						return err
-					}
-				}
-				textX += prefix.marker
-			}
-			// The detail on the right takes what the text leaves it, and
-			// at least 45% of a row too narrow for both.
-			if edit := view.rowEdit; edit != nil && edit.row == item.index {
-				// The row's value is the text being typed.
-				label := truncateText(face, text, textEnd-textX)
-				if err := a.drawRowText(renderer, item, label, textX, baseline, face, &st); err != nil {
-					return err
-				}
-				labelEnd := textX + measureText(face, label)
-				a.drawRowEdit(renderer, view, &st, face, labelEnd+a.ipx(12), textEnd, baseline)
-				continue
-			}
-			secondary := item.secondary
-			if secondary == "" && item.index == view.selected {
-				secondary = item.hint
-			}
-			if secondary != "" {
-				room := textEnd - textX - measureText(face, text) - a.ipx(12)
-				secondary = a.truncateModalListText(secondary, max(room, int(rect.W*0.45)))
-			}
-			secondaryWidth := measureText(a.fontFace, secondary)
-			textWidth := textEnd - textX
-			if secondary != "" {
-				textWidth -= secondaryWidth + a.ipx(12)
-			}
-			if len(view.columns) > 0 && item.cells != nil {
-				a.drawCells(renderer, view, item.cells, textX, textEnd, baseline, face, a.textColor(&st, false), st.Bold.V)
-				continue
-			}
-			if err := a.drawRowText(renderer, item, truncateText(face, text, textWidth), textX, baseline, face, &st); err != nil {
+			box := a.viewRowBox(view, rect, rowY(float64(index)), rowHeight)
+			if err := a.drawLayer(rowLayer(index), box, func() error { return drawRow(index) }); err != nil {
 				return err
-			}
-			if secondary != "" {
-				if err := a.drawText(renderer, secondary, textEnd-secondaryWidth, baseline, a.textColor(&st, true)); err != nil {
-					return err
-				}
 			}
 		}
 		return nil
