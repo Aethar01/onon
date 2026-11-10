@@ -677,22 +677,44 @@ func (a *App) pushClip(renderer *sdl.Renderer, rect sdl.FRect) {
 		clip = intersectRects(clip, a.clips[n-1])
 	}
 	a.clips = append(a.clips, clip)
-	if renderer != nil {
-		sdl.SetRenderClipRect(renderer, &a.clips[n])
-	}
+	setClip(renderer, &a.clips[n])
 }
 
 // popClip takes away the clip pushClip put in place.
 func (a *App) popClip(renderer *sdl.Renderer) {
 	a.clips = a.clips[:len(a.clips)-1]
+	if n := len(a.clips); n > 0 {
+		setClip(renderer, &a.clips[n-1])
+	} else {
+		setClip(renderer, nil)
+	}
+}
+
+// setClip makes clip, within the viewport, the renderer's clip, or none.
+// The part of it before the target's left and top edges is cut off: where
+// the viewport is moved past them, as a scaled layer's texture's is, the
+// gpu renderer draws nothing under a clip reaching past them.
+func setClip(renderer *sdl.Renderer, clip *sdl.Rect) {
 	if renderer == nil {
 		return
 	}
-	if n := len(a.clips); n > 0 {
-		sdl.SetRenderClipRect(renderer, &a.clips[n-1])
-	} else {
+	if clip == nil {
 		sdl.SetRenderClipRect(renderer, nil)
+		return
 	}
+	var vp sdl.Rect
+	sdl.GetRenderViewport(renderer, &vp)
+	c := clipOnTarget(*clip, vp)
+	sdl.SetRenderClipRect(renderer, &c)
+}
+
+// clipOnTarget is clip, within viewport vp, less any part before the
+// target's left and top edges.
+func clipOnTarget(clip, vp sdl.Rect) sdl.Rect {
+	if vp.X+clip.X >= 0 && vp.Y+clip.Y >= 0 {
+		return clip
+	}
+	return intersectRects(clip, sdl.Rect{X: -vp.X, Y: -vp.Y, W: math.MaxInt32 / 2, H: math.MaxInt32 / 2})
 }
 
 func intersectRects(a, b sdl.Rect) sdl.Rect {

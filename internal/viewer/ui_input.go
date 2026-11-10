@@ -366,7 +366,7 @@ func (c *elementCanvas) Input(id string, x, y, w float64, o config.InputOptions)
 // itself leaves.
 func (c *elementCanvas) restoreClip() {
 	if c.clipped && c.renderer != nil {
-		sdl.SetRenderClipRect(c.renderer, &c.clip)
+		setClip(c.renderer, &c.clip)
 	}
 }
 

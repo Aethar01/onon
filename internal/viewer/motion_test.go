@@ -278,3 +278,24 @@ func TestMovedWithinScaledLayer(t *testing.T) {
 		t.Errorf("rect after the move not at (110, 110): green %d there", g)
 	}
 }
+
+// TestClipOnTarget cuts a clip at its target's left and top edges, where
+// the gpu renderer draws nothing under a clip reaching past them, and
+// leaves one within them as it is.
+func TestClipOnTarget(t *testing.T) {
+	for _, c := range []struct {
+		clip, vp, want sdl.Rect
+	}{
+		{sdl.Rect{W: 200, H: 200}, sdl.Rect{W: 200, H: 200}, sdl.Rect{W: 200, H: 200}},
+		{sdl.Rect{X: 5, Y: 5, W: 20, H: 20}, sdl.Rect{X: 30, Y: 40, W: 200, H: 200}, sdl.Rect{X: 5, Y: 5, W: 20, H: 20}},
+		// A scaled layer's texture, its corner at (50, 30) of the window.
+		{sdl.Rect{W: 200, H: 200}, sdl.Rect{X: -50, Y: -30, W: 200, H: 200}, sdl.Rect{X: 50, Y: 30, W: 150, H: 170}},
+		{sdl.Rect{X: 60, Y: 10, W: 20, H: 40}, sdl.Rect{X: -50, Y: -30, W: 200, H: 200}, sdl.Rect{X: 60, Y: 30, W: 20, H: 20}},
+		// Wholly before the edge: nothing shows.
+		{sdl.Rect{X: 0, Y: 0, W: 10, H: 10}, sdl.Rect{X: -50, Y: 0, W: 200, H: 200}, sdl.Rect{X: 50, Y: 0, W: 0, H: 10}},
+	} {
+		if got := clipOnTarget(c.clip, c.vp); got != c.want {
+			t.Errorf("clipOnTarget(%v, %v) = %v, want %v", c.clip, c.vp, got, c.want)
+		}
+	}
+}
