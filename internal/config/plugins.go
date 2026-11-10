@@ -148,6 +148,10 @@ func discoverPluginCatalog(paths, disabled []string) *pluginCatalog {
 				catalog.warnings = append(catalog.warnings, fmt.Sprintf("plugin %q has invalid id", dir))
 				continue
 			}
+			if manifest.ID == configPluginID {
+				catalog.warnings = append(catalog.warnings, fmt.Sprintf("plugin %q: the id %q is the configuration's own", dir, configPluginID))
+				continue
+			}
 			if manifest.Module == "" {
 				manifest.Module = manifest.ID
 			}
@@ -428,6 +432,32 @@ func (r *Runtime) registerPlugin(L *lua.LState, id string, spec *lua.LTable) (*l
 	if !ok {
 		return nil, fmt.Errorf("plugin %q was not discovered", id)
 	}
+	instance, err := r.newPluginInstance(L, manifest, spec)
+	if err != nil {
+		return nil, err
+	}
+	return instance.module, nil
+}
+
+// configPluginID is the ID of the configuration's own plugin module,
+// onon.config, which no discovered plugin may take.
+const configPluginID = "config"
+
+// installConfigModule gives the configuration a plugin module of its own as
+// onon.config, so config.lua can subscribe to events, start timers and
+// register actions and commands as a plugin does. config.lua counts as
+// loading it for as long as it runs.
+func (r *Runtime) installConfigModule(L *lua.LState, mod *lua.LTable) {
+	instance, err := r.newPluginInstance(L, pluginManifest{ID: configPluginID}, nil)
+	if err != nil {
+		panic(err) // only options in a spec can fail, and it has none
+	}
+	L.SetField(mod, "config", instance.module)
+}
+
+// newPluginInstance builds a plugin's module and makes it active.
+func (r *Runtime) newPluginInstance(L *lua.LState, manifest pluginManifest, spec *lua.LTable) (*pluginInstance, error) {
+	id := manifest.ID
 	instance := &pluginInstance{
 		runtime:       r,
 		manifest:      manifest,
@@ -494,7 +524,7 @@ func (r *Runtime) registerPlugin(L *lua.LState, id string, spec *lua.LTable) (*l
 	L.SetMetatable(module, metatable)
 	r.plugins.active[id] = instance
 	r.plugins.activationOrder = append(r.plugins.activationOrder, id)
-	return module, nil
+	return instance, nil
 }
 
 func (r *Runtime) registerPluginOptions(L *lua.LState, instance *pluginInstance, spec *lua.LTable) error {
@@ -708,9 +738,20 @@ func (instance *pluginInstance) subscribe(L *lua.LState) int {
 }
 
 func (instance *pluginInstance) requireLoadingPlugin(L *lua.LState, method string) {
-	if instance.runtime.loadingPlugin != instance.manifest.ID {
+	if !instance.loading() {
 		L.RaiseError("plugin %s.%s can only be called while the plugin is loading", instance.manifest.ID, method)
 	}
+}
+
+// loading reports whether the plugin is loading: for a discovered plugin,
+// while require runs its entrypoint, and for onon.config, while config.lua
+// runs, though not while a plugin it requires loads.
+func (instance *pluginInstance) loading() bool {
+	r := instance.runtime
+	if instance.manifest.ID == configPluginID {
+		return r.loadingConfig && r.loadingPlugin == ""
+	}
+	return r.loadingPlugin == instance.manifest.ID
 }
 
 func (instance *pluginInstance) unsubscribe(L *lua.LState) int {
@@ -997,7 +1038,17 @@ func (r *Runtime) emitPluginEvent(event string, payload map[string]any) bool {
 }
 
 func (r *Runtime) emitPluginEventCallbacks(event string, payload map[string]any) bool {
-	ids := append([]string(nil), r.plugins.activationOrder...)
+	// The configuration hears each event after every plugin, so it has the
+	// last word.
+	ids := make([]string, 0, len(r.plugins.activationOrder))
+	for _, id := range r.plugins.activationOrder {
+		if id != configPluginID {
+			ids = append(ids, id)
+		}
+	}
+	if r.plugins.active[configPluginID] != nil {
+		ids = append(ids, configPluginID)
+	}
 	consumed := false
 	for _, id := range ids {
 		instance := r.plugins.active[id]

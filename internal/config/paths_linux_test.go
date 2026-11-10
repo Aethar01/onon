@@ -60,7 +60,7 @@ func TestPluginsLoadFromEverySearchPath(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", "")
 	for id, base := range map[string]string{
 		"local":  filepath.Join(home, ".local", "share", "onon", "plugins"),
-		"config": filepath.Join(home, ".config", "onon", "plugins"),
+		"user":   filepath.Join(home, ".config", "onon", "plugins"),
 		"system": filepath.Join(systemDir, "plugins"),
 	} {
 		root := writeTestPlugin(t, id, `return onon.plugin.register("`+id+`")`)
@@ -76,7 +76,7 @@ func TestPluginsLoadFromEverySearchPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer rt.Close()
-	if _, err := rt.Eval(`require("local"); require("config"); require("system")`); err != nil {
+	if _, err := rt.Eval(`require("local"); require("user"); require("system")`); err != nil {
 		t.Fatal(err)
 	}
 }
