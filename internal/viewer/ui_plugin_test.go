@@ -289,6 +289,35 @@ onon.ui.create({
 	}
 }
 
+func TestLuaUIViewTitleIsDrawnAsGivenWithItsDetail(t *testing.T) {
+	app := luaUITestApp(t, "")
+	evalLua(t, app, `
+view = onon.ui.create({ title = "~/Books (old) /drafts", detail = "by name", rows = { "a", "b" } })
+view:show()`)
+	v := app.activeUIView()
+	if title, detail := v.headerText(app, 2); title != "~/Books (old) /drafts" || detail != "by name" {
+		t.Fatalf("header = %q, %q; want the title whole and the detail apart", title, detail)
+	}
+	app.setUIViewQuery(v, "a")
+	if _, detail := v.headerText(app, 1); detail != "by name  /a  1/2" {
+		t.Fatalf("searched detail = %q", detail)
+	}
+	evalLua(t, app, `view:set_detail("newest first"); assert(view.detail == "newest first")`)
+	app.setUIViewQuery(v, "")
+	if _, detail := v.headerText(app, 2); detail != "newest first" {
+		t.Fatalf("detail after set_detail = %q", detail)
+	}
+	// onon's own titles are drawn whole too, as Print does a document's name.
+	own := &uiView{title: "Print Paper (draft).pdf", rows: []uiRow{{text: "a"}, {text: "b"}, {text: "c"}}}
+	if title, detail := own.headerText(app, 3); title != "Print Paper (draft).pdf" || detail != "" {
+		t.Fatalf("own header = %q, %q", title, detail)
+	}
+	own.query = "a (b)"
+	if _, detail := own.headerText(app, 1); detail != "/a (b)  1/3" {
+		t.Fatalf("own searched detail = %q", detail)
+	}
+}
+
 func TestLuaUIKeyAndActionCallbacks(t *testing.T) {
 	app := luaUITestApp(t, "")
 	evalLua(t, app, `

@@ -390,6 +390,11 @@ func (a *App) drawPromptHeader(renderer *sdl.Renderer, view *uiView, rect sdl.FR
 		a.drawText(renderer, count, end-w, baseline, a.textColor(&st, true))
 		end -= w + a.ipx(st.Gap.V)
 	}
+	if view.detail != "" {
+		w := measureText(a.fontFace, view.detail)
+		a.drawText(renderer, view.detail, end-w, baseline, a.textColor(&st, true))
+		end -= w + a.ipx(st.Gap.V)
+	}
 	textTop := baseline - a.fontFace.Metrics().Ascent.Ceil()
 	view.promptRect = sdl.FRect{X: float32(x), Y: top, W: float32(max(1, end-x)), H: float32(height)}
 	view.promptLayout = a.drawEditBox(renderer, editBox{

@@ -140,8 +140,11 @@ type luaGeneration struct {
 }
 
 type UIOverlay struct {
-	ID         string
-	Title      string
+	ID    string
+	Title string
+	// Detail is drawn muted on the right of the header, as onon's own
+	// menus draw their counts.
+	Detail     string
 	Rows       []UIListRow
 	Selected   int
 	Scroll     int
@@ -384,9 +387,11 @@ type Host interface {
 	// RedrawUI draws the view again, as a view with a draw function needs
 	// when what it draws changes.
 	RedrawUI(id string)
-	// SetUITitle changes a view's title, and UIFields gives the text of
-	// all its text fields.
+	// SetUITitle and SetUIDetail change a view's title and the detail on
+	// the right of its header, and UIFields gives the text of all its text
+	// fields.
 	SetUITitle(id, title string)
+	SetUIDetail(id, detail string)
 	UIFields(id string) map[string]string
 	// UIField and SetUIField get and set the text of a view's text field.
 	UIField(id, field string) string

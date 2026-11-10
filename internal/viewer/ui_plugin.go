@@ -29,6 +29,13 @@ func (a *App) SetUITitle(id, title string) {
 	}
 }
 
+func (a *App) SetUIDetail(id, detail string) {
+	if view := a.views.views[id]; view != nil {
+		view.detail = detail
+		a.pendingRedraw = true
+	}
+}
+
 func (a *App) UIFields(id string) map[string]string {
 	fields := map[string]string{}
 	if view := a.views.views[id]; view != nil {
@@ -155,6 +162,7 @@ func (a *App) createLuaView(spec config.UIOverlay) *uiView {
 		owner:      "lua",
 		generation: spec.Generation,
 		title:      spec.Title,
+		detail:     spec.Detail,
 		rows:       uiRowsFromConfig(spec.Rows),
 		selected:   selected,
 		scroll:     max(0, spec.Scroll),

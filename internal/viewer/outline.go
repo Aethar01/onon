@@ -2,6 +2,7 @@ package viewer
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"onon/internal/config"
@@ -60,11 +61,11 @@ func (a *App) newOutlineView() *uiView {
 	}
 	// Wide enough for its levels to stand apart, however short its titles.
 	view.place.least = config.UISize{Value: 40, Percent: true}
-	view.header = func(a *App, view *uiView, visible int) string {
+	view.header = func(a *App, view *uiView, visible int) (string, string) {
 		if view.searching || view.query != "" {
-			return fmt.Sprintf("Outline /%s (%d/%d)", view.query, visible, len(a.outline))
+			return "Outline", searchDetail(view.query, visible, len(a.outline))
 		}
-		return fmt.Sprintf("Outline (%d)", len(a.outline))
+		return "Outline", strconv.Itoa(len(a.outline))
 	}
 	view.empty = func(_ *App, view *uiView) string {
 		if view.query != "" {

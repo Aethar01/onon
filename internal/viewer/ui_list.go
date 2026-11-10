@@ -1,7 +1,6 @@
 package viewer
 
 import (
-	"fmt"
 	"image/color"
 	"math"
 	"slices"
@@ -40,25 +39,26 @@ type uiRow struct {
 	highlight [2]int
 }
 
-// splitHeader splits a panel header such as "Outline /query (3/10)" into
-// its title and the detail after it, drawn muted.
-func splitHeader(header string) (title, detail string) {
-	cut := len(header)
-	for _, sep := range []string{" /", " ("} {
-		if i := strings.Index(header, sep); i > 0 && i < cut {
-			cut = i
-		}
+// headerText is the title of view's header and the detail drawn muted on
+// its right, with the query and its count while the rows are searched.
+func (v *uiView) headerText(a *App, shown int) (title, detail string) {
+	if v.header != nil {
+		return v.header(a, v, shown)
 	}
-	title, detail = header[:cut], strings.TrimSpace(header[cut:])
-	// Only the parentheses around the trailing count go; a query keeps its own.
-	if strings.HasSuffix(detail, ")") {
-		if i := strings.LastIndex(detail, " ("); i >= 0 {
-			detail = detail[:i] + "  " + detail[i+2:len(detail)-1]
-		} else if strings.HasPrefix(detail, "(") {
-			detail = detail[1 : len(detail)-1]
-		}
+	title, detail = v.title, v.detail
+	if title == "" {
+		title = "Menu"
+	}
+	if v.searching || v.query != "" {
+		detail = strings.TrimSpace(detail + "  " + searchDetail(v.query, shown, len(v.rows)))
 	}
 	return title, detail
+}
+
+// searchDetail is what a header's detail says while its rows are searched:
+// the query, and how many of them match it.
+func searchDetail(query string, shown, total int) string {
+	return "/" + query + "  " + formatCount(shown, total)
 }
 
 // uiView is a menu or panel: onon's own and plugins' alike. Its body is
@@ -69,9 +69,11 @@ type uiView struct {
 	owner      string
 	generation int
 	title      string
-	// header, if set, is the header's text for the rows shown, in place of
-	// the title and the query; empty is what an empty list says.
-	header   func(*App, *uiView, int) string
+	// detail is drawn muted on the right of the header, after the title.
+	detail string
+	// header, if set, gives the header's title and detail for the rows
+	// shown, in place of the title, the detail and the query.
+	header   func(*App, *uiView, int) (string, string)
 	empty    func(*App, *uiView) string
 	headless bool           // no header: the rows or body start below the panel's padding
 	element  config.Element // the panel's
@@ -699,17 +701,7 @@ func (a *App) drawUIViewContent(renderer *sdl.Renderer, view *uiView, rect sdl.F
 	case view.prompt != "":
 		a.drawPromptHeader(renderer, view, rect, len(items), len(view.rows))
 	case !view.headless:
-		header := view.title
-		if view.header != nil {
-			header = view.header(a, view, len(items))
-		}
-		if header == "" {
-			header = "Menu"
-		}
-		if view.header == nil && (view.searching || view.query != "") {
-			header = fmt.Sprintf("%s /%s (%d/%d)", header, view.query, len(items), len(view.rows))
-		}
-		title, detail := splitHeader(header)
+		title, detail := view.headerText(a, len(items))
 		if err := a.drawModalListHeader(renderer, rect, title, detail); err != nil {
 			return err
 		}
@@ -1126,13 +1118,10 @@ func (a *App) listContentWidth(view *uiView) int {
 	}
 	prefix := a.rowPrefix(view, rows, math.MaxInt32)
 	width := int(math.Ceil(float64(panelLeft+rowLeft+rowRight+panelRight))) + prefix.width() + prefix.marker + widest
-	if header := view.title; header != "" || view.header != nil {
-		if view.header != nil {
-			header = view.header(a, view, len(view.rows))
-		}
+	if view.title != "" || view.detail != "" || view.header != nil {
 		st := a.style(config.ElementHeader)
 		_, right, _, left := a.insets(st.Padding.V)
-		title, detail := splitHeader(header)
+		title, detail := view.headerText(a, len(view.rows))
 		w := int(math.Ceil(float64(left+right))) + measureText(a.styleFace(&st), title)
 		if detail != "" {
 			w += a.ipx(st.Gap.V) + measureText(a.fontFace, detail)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -55,7 +56,9 @@ func (a *App) openKeybindMenu(over bool) {
 func (a *App) newKeybindView() *uiView {
 	return &uiView{
 		id: "core:keybinds", owner: "core", modal: true, searchable: true, element: config.ElementPanel, place: menuPlace(76, 80),
-		header:   func(a *App, _ *uiView, _ int) string { return fmt.Sprintf("Keybinds (%d)", len(a.keybindMenu.actions)) },
+		header: func(a *App, _ *uiView, _ int) (string, string) {
+			return "Keybinds", strconv.Itoa(len(a.keybindMenu.actions))
+		},
 		onAction: func(a *App, _ *uiView, action string) bool { return a.keybindMenuAction(action) },
 		onSelect: func(a *App, row uiRow) { a.openActionKeys(row.value) },
 	}
@@ -68,7 +71,7 @@ func (a *App) openActionKeys(action string) {
 	m.action, m.capturing, m.captured = action, false, nil
 	m.keysView = &uiView{
 		id: "core:keybind-keys", owner: "core", modal: true, stack: true, element: config.ElementPanel, place: menuPlace(50, 50).besideRow(m.view),
-		header:   func(a *App, _ *uiView, _ int) string { return "Keys for " + a.keybindMenu.action },
+		header:   func(a *App, _ *uiView, _ int) (string, string) { return "Keys for " + a.keybindMenu.action, "" },
 		keyHook:  func(a *App, key keys.Key, repeat bool) bool { return a.keybindMenuKey(key, repeat) },
 		onAction: func(a *App, _ *uiView, action string) bool { return a.keybindMenuAction(action) },
 		onSelect: func(a *App, row uiRow) { a.chooseKeybindRow(row) },
