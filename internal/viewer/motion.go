@@ -516,9 +516,7 @@ func (a *App) beginOffset(t *layerToken, x, y int32) {
 		clip.X -= x
 		clip.Y -= y
 		a.clips = append(a.clips, clip)
-		if a.renderer != nil {
-			sdl.SetRenderClipRect(a.renderer, &a.clips[n])
-		}
+		setClip(a.renderer, &a.clips[n])
 	}
 }
 
@@ -526,9 +524,7 @@ func (a *App) endOffset(t *layerToken) {
 	a.setViewport(t.viewport, t.hadViewport)
 	if n := t.clips; len(a.clips) > n {
 		a.clips = a.clips[:n]
-		if a.renderer != nil {
-			sdl.SetRenderClipRect(a.renderer, &a.clips[n-1])
-		}
+		setClip(a.renderer, &a.clips[n-1])
 	}
 }
 
@@ -579,9 +575,9 @@ func (a *App) beginScale(t *layerToken, s float64, rect sdl.FRect) {
 	m.regionX, m.regionY = x0, y0
 	a.setViewport(m.viewport, m.hasViewport)
 	if n := len(a.clips); n > 0 {
-		sdl.SetRenderClipRect(r, &a.clips[n-1])
+		setClip(r, &a.clips[n-1])
 	} else {
-		sdl.SetRenderClipRect(r, nil)
+		setClip(r, nil)
 	}
 }
 

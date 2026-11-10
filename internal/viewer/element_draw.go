@@ -82,7 +82,7 @@ func (c *elementCanvas) Default() {
 	c.drawDefault()
 	// What the default drew clipped itself, leaving the clip it found.
 	if c.clipped && c.renderer != nil {
-		sdl.SetRenderClipRect(c.renderer, &c.clip)
+		setClip(c.renderer, &c.clip)
 	}
 }
 

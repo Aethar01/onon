@@ -303,7 +303,7 @@ func (c *elementCanvas) Clip(x, y, w, h float64) {
 	}
 	c.clipped = true
 	if c.renderer != nil {
-		sdl.SetRenderClipRect(c.renderer, &c.clip)
+		setClip(c.renderer, &c.clip)
 	}
 }
 
@@ -316,9 +316,9 @@ func (c *elementCanvas) Unclip() {
 		return
 	}
 	if n := len(c.app.clips); n > 0 {
-		sdl.SetRenderClipRect(c.renderer, &c.app.clips[n-1])
+		setClip(c.renderer, &c.app.clips[n-1])
 	} else {
-		sdl.SetRenderClipRect(c.renderer, nil)
+		setClip(c.renderer, nil)
 	}
 }
 
