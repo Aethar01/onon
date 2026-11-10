@@ -137,6 +137,7 @@ func (a *App) tick() error {
 		a.pendingRedraw = true
 	}
 	a.pollRenderUpdates()
+	a.pollDocumentPreviews()
 	a.pollMetricUpdates()
 	a.flushPendingInstanceJump()
 	a.pollSearchUpdates()

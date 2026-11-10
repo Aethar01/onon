@@ -362,6 +362,10 @@ func (c *recordingCanvas) Page(page int, x, y, w, h float64, area *PageArea) (fl
 	c.calls = append(c.calls, "page "+formatNumber(float64(page)))
 	return w, h
 }
+func (c *recordingCanvas) DocumentPage(id, page int, x, y, w, h float64) (float64, float64) {
+	c.calls = append(c.calls, "document_page "+formatNumber(float64(id))+" "+formatNumber(float64(page)))
+	return w, h
+}
 func (c *recordingCanvas) Input(id string, x, y, w float64, o InputOptions) (float64, float64) {
 	c.calls = append(c.calls, "input "+id)
 	return w, 20
