@@ -67,6 +67,7 @@ func (r *Runtime) initLuaState() *lua.LState {
 	}
 	installPluginPackagePath(L, r)
 	mod := newLuaModule(L, r, &r.cfg)
+	r.installConfigModule(L, mod)
 	L.SetGlobal("onon", mod)
 	L.SetGlobal("bind", L.GetField(mod, "bind"))
 	L.SetGlobal("unbind", L.GetField(mod, "unbind"))
