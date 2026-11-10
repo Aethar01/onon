@@ -61,6 +61,34 @@ func splitHeader(header string) (title, detail string) {
 	return title, detail
 }
 
+// headerText is the title of view's header and the detail drawn muted on
+// its right, with the query and its count while the rows are searched.
+func (v *uiView) headerText(a *App, shown int) (title, detail string) {
+	if v.header != nil {
+		return splitHeader(v.header(a, v, shown))
+	}
+	search := ""
+	if v.searching || v.query != "" {
+		search = fmt.Sprintf("/%s (%d/%d)", v.query, shown, len(v.rows))
+	}
+	title = v.title
+	if title == "" {
+		title = "Menu"
+	}
+	if !v.ownTitle {
+		if search != "" {
+			title += " " + search
+		}
+		return splitHeader(title)
+	}
+	detail = v.detail
+	if search != "" {
+		_, search = splitHeader("_ " + search)
+		detail = strings.TrimSpace(detail + "  " + search)
+	}
+	return title, detail
+}
+
 // uiView is a menu or panel: onon's own and plugins' alike. Its body is
 // its rows, or what its draw function draws, under a header with its
 // title or prompt; hooks give it behaviour of its own.
@@ -69,6 +97,11 @@ type uiView struct {
 	owner      string
 	generation int
 	title      string
+	// detail is drawn muted on the right of the header. A view with
+	// ownTitle, as plugins' are, draws its title as it is; onon's own
+	// split theirs with splitHeader.
+	detail   string
+	ownTitle bool
 	// header, if set, is the header's text for the rows shown, in place of
 	// the title and the query; empty is what an empty list says.
 	header   func(*App, *uiView, int) string
@@ -699,17 +732,7 @@ func (a *App) drawUIViewContent(renderer *sdl.Renderer, view *uiView, rect sdl.F
 	case view.prompt != "":
 		a.drawPromptHeader(renderer, view, rect, len(items), len(view.rows))
 	case !view.headless:
-		header := view.title
-		if view.header != nil {
-			header = view.header(a, view, len(items))
-		}
-		if header == "" {
-			header = "Menu"
-		}
-		if view.header == nil && (view.searching || view.query != "") {
-			header = fmt.Sprintf("%s /%s (%d/%d)", header, view.query, len(items), len(view.rows))
-		}
-		title, detail := splitHeader(header)
+		title, detail := view.headerText(a, len(items))
 		if err := a.drawModalListHeader(renderer, rect, title, detail); err != nil {
 			return err
 		}
@@ -1126,13 +1149,10 @@ func (a *App) listContentWidth(view *uiView) int {
 	}
 	prefix := a.rowPrefix(view, rows, math.MaxInt32)
 	width := int(math.Ceil(float64(panelLeft+rowLeft+rowRight+panelRight))) + prefix.width() + prefix.marker + widest
-	if header := view.title; header != "" || view.header != nil {
-		if view.header != nil {
-			header = view.header(a, view, len(view.rows))
-		}
+	if view.title != "" || view.detail != "" || view.header != nil {
 		st := a.style(config.ElementHeader)
 		_, right, _, left := a.insets(st.Padding.V)
-		title, detail := splitHeader(header)
+		title, detail := view.headerText(a, len(view.rows))
 		w := int(math.Ceil(float64(left+right))) + measureText(a.styleFace(&st), title)
 		if detail != "" {
 			w += a.ipx(st.Gap.V) + measureText(a.fontFace, detail)

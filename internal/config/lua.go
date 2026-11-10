@@ -222,6 +222,7 @@ func uiOverlayFromLuaSpec(L *lua.LState, rt *Runtime, spec *lua.LTable) UIOverla
 	overlay := UIOverlay{
 		ID:         lua.LVAsString(spec.RawGetString("id")),
 		Title:      lua.LVAsString(spec.RawGetString("title")),
+		Detail:     lua.LVAsString(spec.RawGetString("detail")),
 		Rows:       luaTableUIRows(L, spec.RawGetString("rows")),
 		Selected:   1,
 		Searchable: true,
@@ -393,6 +394,7 @@ func newLuaView(L *lua.LState, rt *Runtime, overlay UIOverlay) *lua.LTable {
 	shown := func() bool { return rt.host != nil && rt.host.UIVisible(overlay.ID) }
 	L.SetField(view, "id", lua.LString(overlay.ID))
 	L.SetField(view, "title", lua.LString(overlay.Title))
+	L.SetField(view, "detail", lua.LString(overlay.Detail))
 	L.SetField(view, "show", L.NewFunction(func(L *lua.LState) int {
 		if rt.host == nil {
 			L.RaiseError("ui.view.show: viewer host unavailable")
@@ -477,6 +479,14 @@ func newLuaView(L *lua.LState, rt *Runtime, overlay UIOverlay) *lua.LTable {
 		L.SetField(view, "title", lua.LString(overlay.Title))
 		if shown() {
 			rt.host.SetUITitle(overlay.ID, overlay.Title)
+		}
+		return 0
+	}))
+	L.SetField(view, "set_detail", L.NewFunction(func(L *lua.LState) int {
+		overlay.Detail = L.OptString(2, "")
+		L.SetField(view, "detail", lua.LString(overlay.Detail))
+		if shown() {
+			rt.host.SetUIDetail(overlay.ID, overlay.Detail)
 		}
 		return 0
 	}))
