@@ -143,7 +143,7 @@ type Canvas interface {
 	// that part of the page in the rect instead.
 	Page(page int, x, y, w, h float64, area *PageArea) (float64, float64)
 	// DocumentPage draws a page (0-based) of the background document id,
-	// as plugin:open_document opened it, as Page draws one of the document
+	// as onon.load_document loaded it, as Page draws one of the document
 	// shown.
 	DocumentPage(id, page int, x, y, w, h float64) (float64, float64)
 	// Region names a rect for the pointer events over it, reporting

@@ -146,7 +146,6 @@ var luaTableGroups = []luaTableGroup{
 				{"on(event, callback)", "function", "Calls `callback(payload)` for each event; see [Events](#events). Returns the subscription's ID, an integer."},
 				{"off(id)", "function", "Removes the subscription `on` returned `id` for."},
 				{"job(spec, callback)", "function", "Starts a [Job spec](#job-spec)'s process, calling `callback` with its [Job result](#job-result). Returns a [Handle](#handle)."},
-				{"open_document(path[, callback])", "function", "Opens a local document without a tab, calling `callback` with a [Background document result](#background-document-result) once it opened or failed. Returns a [Background document](#background-document)."},
 			}},
 			{"Action spec", "", []luaField{
 				{"description", "string", "What it does; its full name unless given."},
@@ -232,7 +231,7 @@ var luaTableGroups = []luaTableGroup{
 				{"stdout", "string", "Its standard output."},
 				{"stderr", "string", "Its standard error."},
 			}},
-			{"Background document", "A document `plugin:open_document` opened without a tab, to read or draw a file other than the one shown. It is not in the tabs, the recent files or the session. At most 8 are open at once: opening another closes the one used least recently. They close when the configuration reloads. `metadata`, `outline` and `page_info` raise an error unless it is open.", []luaField{
+			{"Background document", "A document `onon.load_document` loaded without a tab, to read or draw a file other than the one shown. It is not in the tabs, the recent files or the session. At most 8 are open at once: opening another closes the one used least recently. They close when the configuration reloads. `metadata`, `outline` and `page_info` raise an error unless it is open.", []luaField{
 				{"path", "string", "The document's absolute path."},
 				{"state()", "function", "Returns `opening`, `open`, `failed` or `closed`."},
 				{"page_count()", "function", "Returns its number of pages; 0 unless it is open."},
@@ -244,7 +243,7 @@ var luaTableGroups = []luaTableGroup{
 				{"page_links(page, callback)", "function", "Reads a page's links asynchronously, as `plugin.document:page_links` does. Returns a [Handle](#handle)."},
 				{"close()", "function", "Closes it, with the pages drawn of it."},
 			}},
-			{"Background document result", "What `plugin:open_document`'s callback is given. `success` is whether it opened.", []luaField{
+			{"Background document result", "What `onon.load_document`'s callback is given. `success` is whether it opened.", []luaField{
 				{"page_count", "integer", "Its number of pages; 0 if it failed."},
 			}},
 			{"Page text result", "A `plugin.document:page_text` result.", []luaField{
@@ -348,8 +347,8 @@ var luaTableLocations = map[string]string{
 	"Directory result":           "`plugin.fs:read_dir()` result",
 	"HTTP response":              "`plugin.http:request()` callback",
 	"Job result":                 "`plugin:job()` callback",
-	"Background document":        "`plugin:open_document()`",
-	"Background document result": "`plugin:open_document()` callback",
+	"Background document":        "`onon.load_document()`",
+	"Background document result": "`onon.load_document()` callback",
 	"Page text result":           "`plugin.document:page_text()` callback",
 	"Page links result":          "`plugin.document:page_links()` callback",
 	"Document event":             "document event callbacks",

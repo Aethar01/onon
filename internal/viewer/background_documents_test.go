@@ -35,7 +35,7 @@ func openBackgroundTestDocument(t *testing.T) (*App, string) {
 	path := testpdf.WritePages(t, []string{"one"}, []string{"two"}, []string{"three"})
 	app := luaUITestApp(t, "")
 	evalLua(t, app, `
-doc = onon.config:open_document(`+strconv.Quote(path)+`, function(r) result = r end)
+doc = onon.load_document(`+strconv.Quote(path)+`, function(r) result = r end)
 assert(doc:state() == "opening" or doc:state() == "open")
 assert(doc.path == `+strconv.Quote(path)+`)`)
 	pollBackgroundUntil(t, app, func() bool { return luaHolds(app, "result ~= nil") })
@@ -105,13 +105,13 @@ view:show()`)
 
 func TestBackgroundDocumentReportsAFileItCannotOpen(t *testing.T) {
 	app := luaUITestApp(t, "")
-	evalLua(t, app, `doc = onon.config:open_document(`+strconv.Quote(t.TempDir()+"/missing.pdf")+`, function(r) result = r end)`)
+	evalLua(t, app, `doc = onon.load_document(`+strconv.Quote(t.TempDir()+"/missing.pdf")+`, function(r) result = r end)`)
 	pollBackgroundUntil(t, app, func() bool { return luaHolds(app, "result ~= nil") })
 	evalLua(t, app, `
 assert(not result.success and result.error ~= "" and result.page_count == 0, "result")
 assert(doc:state() == "failed" and doc:error() == result.error)
 assert(not pcall(doc.metadata, doc), "a failed document answers")`)
-	if _, err := app.runtime.Eval(`onon.config:open_document("ssh://host/file.pdf")`); err == nil {
+	if _, err := app.runtime.Eval(`onon.load_document("ssh://host/file.pdf")`); err == nil {
 		t.Fatal("a remote document opened in the background")
 	}
 }
@@ -121,7 +121,7 @@ func TestBackgroundDocumentsCloseTheOldestBeyondTheLimitAndOnReload(t *testing.T
 	app := luaUITestApp(t, "")
 	evalLua(t, app, `
 docs = {}
-for i = 1, `+strconv.Itoa(maxBackgroundDocuments+1)+` do docs[i] = onon.config:open_document(`+strconv.Quote(path)+`) end`)
+for i = 1, `+strconv.Itoa(maxBackgroundDocuments+1)+` do docs[i] = onon.load_document(`+strconv.Quote(path)+`) end`)
 	if got := len(app.windowGroup().backgroundDocuments().open); got != maxBackgroundDocuments {
 		t.Fatalf("documents open = %d, want %d", got, maxBackgroundDocuments)
 	}

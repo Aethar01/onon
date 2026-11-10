@@ -30,9 +30,9 @@ type BackgroundDocumentHost interface {
 const luaBackgroundDocumentType = "onon.background_document"
 
 type luaBackgroundDocument struct {
-	id     int
-	path   string
-	plugin *pluginInstance
+	id    int
+	path  string
+	owner string // the plugin that loaded it, or "" for config.lua
 }
 
 func (r *Runtime) backgroundHost() (BackgroundDocumentHost, bool) {
@@ -52,46 +52,66 @@ func (r *Runtime) closeBackgroundDocuments(open map[int]bool) {
 	}
 }
 
-// openDocument is plugin:open_document(path[, callback]): it opens path
-// without a tab, returning a [Background document](#background-document),
-// and calls callback with a [Background document result](#background-document-result)
-// once it opened or failed.
-func (instance *pluginInstance) openDocument(L *lua.LState) int {
-	r := instance.runtime
-	name := instance.manifest.ID
-	path := AbsoluteDocumentPath(L.CheckString(2))
-	callback, _ := L.Get(3).(*lua.LFunction)
-	if L.Get(3) != lua.LNil && callback == nil {
-		L.ArgError(3, "expected a function")
+// luaLoadDocument loads a local document in the background, without a tab,
+// to read it or draw its pages.
+//
+// # Parameters
+//
+//   - path: A local document path; ~ is not expanded.
+//   - callback: Optional; called with a [Background document result](#background-document-result) once the document opened or failed.
+//
+// # Returns
+//
+// A [Background document](#background-document), opening.
+//
+// # Errors
+//
+// Raises an error for a remote URI.
+//
+// # Example
+//
+//	local doc
+//	doc = onon.load_document("paper.pdf", function(result)
+//	  if result.success then onon.message(doc:metadata().title) end
+//	end)
+func luaLoadDocument(r *Runtime) lua.LGFunction {
+	return func(L *lua.LState) int {
+		path := AbsoluteDocumentPath(L.CheckString(1))
+		callback, _ := L.Get(2).(*lua.LFunction)
+		if L.Get(2) != lua.LNil && callback == nil {
+			L.ArgError(2, "expected a function")
+		}
+		host, ok := r.backgroundHost()
+		if !ok {
+			L.RaiseError("load_document: viewer host unavailable")
+		}
+		id, opened, err := host.OpenBackgroundDocument(path)
+		if err != nil {
+			L.RaiseError("load_document: %v", err)
+		}
+		if r.backgroundDocuments == nil {
+			r.backgroundDocuments = map[int]bool{}
+		}
+		r.backgroundDocuments[id] = true
+		// Its callbacks belong to the plugin that loaded it, or config.lua.
+		owner := r.owningPluginID()
+		if callback != nil {
+			r.startPluginOperation(owner, "load_document", callback, func(ctx context.Context) map[string]any {
+				select {
+				case <-opened:
+				case <-ctx.Done():
+					return operationError(ctx.Err())
+				}
+				info, _ := host.BackgroundDocument(id)
+				return map[string]any{"success": info.State == "open", "error": info.Error, "page_count": info.PageCount}
+			})
+		}
+		ud := L.NewUserData()
+		ud.Value = &luaBackgroundDocument{id: id, path: path, owner: owner}
+		L.SetMetatable(ud, luaBackgroundDocumentMetatable(L, r))
+		L.Push(ud)
+		return 1
 	}
-	host, ok := r.backgroundHost()
-	if !ok {
-		L.RaiseError("plugin %s open_document: viewer host unavailable", name)
-	}
-	id, opened, err := host.OpenBackgroundDocument(path)
-	if err != nil {
-		L.RaiseError("plugin %s open_document: %v", name, err)
-	}
-	if r.backgroundDocuments == nil {
-		r.backgroundDocuments = map[int]bool{}
-	}
-	r.backgroundDocuments[id] = true
-	if callback != nil {
-		r.startPluginOperation(name, "open_document", callback, func(ctx context.Context) map[string]any {
-			select {
-			case <-opened:
-			case <-ctx.Done():
-				return operationError(ctx.Err())
-			}
-			info, _ := host.BackgroundDocument(id)
-			return map[string]any{"success": info.State == "open", "error": info.Error, "page_count": info.PageCount}
-		})
-	}
-	ud := L.NewUserData()
-	ud.Value = &luaBackgroundDocument{id: id, path: path, plugin: instance}
-	L.SetMetatable(ud, luaBackgroundDocumentMetatable(L, r))
-	L.Push(ud)
-	return 1
 }
 
 // luaBackgroundDocumentMetatable gives a background document its fields and
@@ -171,11 +191,11 @@ func luaBackgroundDocumentMetatable(L *lua.LState, r *Runtime) *lua.LTable {
 		},
 		"page_text": func(L *lua.LState) int {
 			d := checkLuaBackgroundDocument(L, 1)
-			return luaPageTextQuery(d.plugin, "document:page_text", 2, func() any { return answerer(L, "page_text") })(L)
+			return luaPageTextQuery(r, d.owner, "document:page_text", 2, func() any { return answerer(L, "page_text") })(L)
 		},
 		"page_links": func(L *lua.LState) int {
 			d := checkLuaBackgroundDocument(L, 1)
-			return luaPageLinksQuery(d.plugin, "document:page_links", 2, func() any { return answerer(L, "page_links") })(L)
+			return luaPageLinksQuery(r, d.owner, "document:page_links", 2, func() any { return answerer(L, "page_links") })(L)
 		},
 	}
 	table := L.NewTable()
@@ -203,6 +223,6 @@ func checkLuaBackgroundDocument(L *lua.LState, n int) *luaBackgroundDocument {
 			return d
 		}
 	}
-	L.ArgError(n, "expected a background document, as plugin:open_document returns")
+	L.ArgError(n, "expected a background document, as onon.load_document returns")
 	return nil
 }
