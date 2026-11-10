@@ -2,9 +2,10 @@ package viewer
 
 import (
 	"cmp"
-	"math"
 	"slices"
 	"time"
+
+	"onon/internal/config"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
 )
@@ -36,6 +37,7 @@ type edgeSlide struct {
 type edgeMotion struct {
 	active bool
 	start  time.Time
+	anim   config.Animation // the timing of the move: edges' enter if anything comes in, else its exit
 	slides map[edgeKey]*edgeSlide
 	e      float64 // how far the move has come this frame
 }
@@ -47,15 +49,17 @@ type edgeSnapshot struct {
 	items []edgeItem
 }
 
-// edgeDuration is how long a move along the edges takes, in ms.
+// edgeDuration is how long a move along the edges may take, in ms: the
+// longer of coming in and going, 0 if neither moves.
 func (a *App) edgeDuration() float64 {
-	return a.config.Theme.Motion.Edges.Scaled(a.motionScale())
+	enter, exit := a.anim(config.MotionEdges, config.MomentEnter), a.anim(config.MotionEdges, config.MomentExit)
+	return max(enter.Duration, exit.Duration) * a.motionScale()
 }
 
 // edgeProgress is how far the move has come at now, eased: 1 once over.
 func (a *App) edgeProgress(now time.Time) float64 {
 	m := &a.edgeMotion
-	duration := a.edgeDuration()
+	duration := m.anim.Duration * a.motionScale()
 	if !m.active || duration <= 0 {
 		return 1
 	}
@@ -63,7 +67,7 @@ func (a *App) edgeProgress(now time.Time) float64 {
 	if p >= 1 {
 		return 1
 	}
-	return a.config.Theme.Motion.Edges.Ease(max(0, p))
+	return a.ease(m.anim.Easing, max(0, p))
 }
 
 // value is how far in s is at progress e.
@@ -92,6 +96,12 @@ func (a *App) edgesChanged(before edgeSnapshot) {
 	}
 	m := &a.edgeMotion
 	e := a.edgeProgress(before.now)
+	anim := a.anim(config.MotionEdges, config.MomentExit)
+	for _, item := range after {
+		if !hasEdgeKey(before.items, item.key()) {
+			anim = a.anim(config.MotionEdges, config.MomentEnter)
+		}
+	}
 	// Each slides on from where it is, so a move turned round part way
 	// goes back without a jump.
 	current := func(key edgeKey, shown bool) float64 {
@@ -120,7 +130,7 @@ func (a *App) edgesChanged(before edgeSnapshot) {
 			}
 		}
 	}
-	m.slides, m.start, m.active, m.e = slides, before.now, true, 0
+	m.slides, m.start, m.active, m.e, m.anim = slides, before.now, true, 0, anim
 	a.pendingRedraw = true
 }
 
@@ -177,34 +187,27 @@ func (a *App) edgeGhost(kind edgeKind) bool {
 	return m.active && s != nil && s.to == 0
 }
 
-// drawOnEdge draws what lines an edge, laid out at r, slid out of the
-// window as far as it is out.
+// drawOnEdge draws what lines an edge, laid out at r, as far in as it is:
+// with edges' tracks, a slide out of the window by default, at how far it
+// has come in or gone out.
 func (a *App) drawOnEdge(key edgeKey, r sdl.FRect, draw func() error) error {
 	m := &a.edgeMotion
 	s := m.slides[key]
 	if !m.active || s == nil {
 		return draw()
 	}
-	out := 1 - s.value(m.e)
-	var dx, dy float64
-	switch s.item.side {
-	case "top":
-		dy = -out * float64(r.H)
-	case "bottom":
-		dy = out * float64(r.H)
-	case "left":
-		dx = -out * float64(r.W)
-	case "right":
-		dx = out * float64(r.W)
+	in := s.value(m.e)
+	entering := s.to > s.from
+	moment, e := config.MomentEnter, in
+	if !entering {
+		moment, e = config.MomentExit, 1-in
 	}
-	if math.Round(dx) == 0 && math.Round(dy) == 0 {
-		return draw()
+	auto := float64(r.H)
+	if s.item.side == "left" || s.item.side == "right" {
+		auto = float64(r.W)
 	}
-	// Clip rects are within the viewport, so all it draws moves with it.
-	rect := sdl.Rect{X: int32(math.Round(dx)), Y: int32(math.Round(dy)), W: int32(a.winW), H: int32(a.winH)}
-	sdl.SetRenderViewport(a.renderer, &rect)
-	defer sdl.SetRenderViewport(a.renderer, nil)
-	return draw()
+	l := a.layerEased(a.anim(config.MotionEdges, moment), e, entering, layerCtx{rect: r, side: s.item.side, auto: auto})
+	return a.drawLayer(l, r, draw)
 }
 
 func hasEdgeKey(items []edgeItem, key edgeKey) bool {

@@ -32,13 +32,17 @@ jobs:
         run: pkg-config --cflags --libs mupdf sdl3
 
       # Restored everywhere, saved only from main (whose caches pull requests
-      # can read) and only when go.sum or Go itself has changed.
+      # can read) and only when go.sum, Go or the C libraries have changed.
+      # Go does not hash the headers cgo reads, so a package built against
+      # an older MuPDF would be reused, and MuPDF refuses to start when its
+      # header and library versions differ.
       - name: Locate Go cache
         id: go
         run: |
           echo "GOCACHE=${RUNNER_TEMP}/go-build" >> "$GITHUB_ENV"
           echo "GOMODCACHE=${RUNNER_TEMP}/go-mod" >> "$GITHUB_ENV"
           echo "version=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
+          echo "native=$(pacman -Q libmupdf sdl3 | tr -s ' \n' '-')" >> "$GITHUB_OUTPUT"
 
       - name: Restore Go cache
         id: go-cache
@@ -47,8 +51,8 @@ jobs:
           path: |
             ${{ env.GOCACHE }}
             ${{ env.GOMODCACHE }}
-          key: go-${{ runner.os }}-${{ steps.go.outputs.version }}-${{ hashFiles('go.sum') }}
-          restore-keys: go-${{ runner.os }}-${{ steps.go.outputs.version }}-
+          key: go-${{ runner.os }}-${{ steps.go.outputs.version }}-${{ steps.go.outputs.native }}-${{ hashFiles('go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ steps.go.outputs.version }}-${{ steps.go.outputs.native }}-
 
       - name: Test
         run: go test -count=1 ./...
@@ -93,13 +97,17 @@ jobs:
           test -f "$(brew --prefix sdl3)/lib/libSDL3.dylib"
 
       # Restored everywhere, saved only from main (whose caches pull requests
-      # can read) and only when go.sum or Go itself has changed.
+      # can read) and only when go.sum, Go or the C libraries have changed.
+      # Go does not hash the headers cgo reads, so a package built against
+      # an older MuPDF would be reused, and MuPDF refuses to start when its
+      # header and library versions differ.
       - name: Locate Go cache
         id: go
         run: |
           echo "GOCACHE=${RUNNER_TEMP}/go-build" >> "$GITHUB_ENV"
           echo "GOMODCACHE=${RUNNER_TEMP}/go-mod" >> "$GITHUB_ENV"
           echo "version=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
+          echo "native=$(brew list --versions mupdf sdl3 | tr -s ' \n' '-')" >> "$GITHUB_OUTPUT"
 
       - name: Restore Go cache
         id: go-cache
@@ -108,8 +116,8 @@ jobs:
           path: |
             ${{ env.GOCACHE }}
             ${{ env.GOMODCACHE }}
-          key: go-${{ runner.os }}-${{ steps.go.outputs.version }}-${{ hashFiles('go.sum') }}
-          restore-keys: go-${{ runner.os }}-${{ steps.go.outputs.version }}-
+          key: go-${{ runner.os }}-${{ steps.go.outputs.version }}-${{ steps.go.outputs.native }}-${{ hashFiles('go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ steps.go.outputs.version }}-${{ steps.go.outputs.native }}-
 
       - name: Build
         run: go build ./...
@@ -175,13 +183,17 @@ jobs:
         run: pkg-config --cflags --libs mupdf sdl3
 
       # Restored everywhere, saved only from main (whose caches pull requests
-      # can read) and only when go.sum or Go itself has changed.
+      # can read) and only when go.sum, Go or the C libraries have changed.
+      # Go does not hash the headers cgo reads, so a package built against
+      # an older MuPDF would be reused, and MuPDF refuses to start when its
+      # header and library versions differ.
       - name: Locate Go cache
         id: go
         run: |
           echo "GOCACHE=${RUNNER_TEMP}/go-build" >> "$GITHUB_ENV"
           echo "GOMODCACHE=${RUNNER_TEMP}/go-mod" >> "$GITHUB_ENV"
           echo "version=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
+          echo "native=$(pacman -Q mingw-w64-ucrt-x86_64-mupdf mingw-w64-ucrt-x86_64-sdl3 | tr -s ' \n' '-')" >> "$GITHUB_OUTPUT"
 
       - name: Restore Go cache
         id: go-cache
@@ -190,8 +202,8 @@ jobs:
           path: |
             ${{ env.GOCACHE }}
             ${{ env.GOMODCACHE }}
-          key: go-${{ runner.os }}-${{ steps.go.outputs.version }}-${{ hashFiles('go.sum') }}
-          restore-keys: go-${{ runner.os }}-${{ steps.go.outputs.version }}-
+          key: go-${{ runner.os }}-${{ steps.go.outputs.version }}-${{ steps.go.outputs.native }}-${{ hashFiles('go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ steps.go.outputs.version }}-${{ steps.go.outputs.native }}-
 
       - name: Test
         run: go test -count=1 ./...

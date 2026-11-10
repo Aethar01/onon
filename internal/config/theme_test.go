@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -41,7 +42,7 @@ func mustPreset(t *testing.T, name string) Theme {
 }
 
 func TestDefaultThemeIsMoss(t *testing.T) {
-	if got := Default().Theme; got != mustPreset(t, DefaultTheme) {
+	if got := Default().Theme; !reflect.DeepEqual(got, mustPreset(t, DefaultTheme)) {
 		t.Fatalf("default theme = %+v, want the %s preset", got, DefaultTheme)
 	}
 	if Default().Theme.Base != DefaultTheme {
@@ -81,7 +82,7 @@ onon.theme = {
 	want.Alt.Accent = [3]uint8{4, 5, 6}
 	want.Font.Size = 15
 	want.Radius = 3
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("theme = %+v\nwant %+v", got, want)
 	}
 }
@@ -94,7 +95,7 @@ onon.theme = { panel = "#ffffff" }
 	got := rt.Config().Theme
 	want := mustPreset(t, DefaultTheme)
 	want.Panel = [3]uint8{255, 255, 255}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("assigning a table should replace the earlier theme: got %+v", got)
 	}
 }
@@ -119,7 +120,7 @@ assert(onon.options.theme.font.family == "Iosevka")
 	want.Alt.Border = [3]uint8{0x20, 0x20, 0x20}
 	want.Font.Family = "Iosevka"
 	want.Shadow = true
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("theme = %+v\nwant %+v", got, want)
 	}
 }
@@ -135,7 +136,7 @@ onon.theme = onon.options.theme
 `)
 	want := mustPreset(t, DefaultTheme)
 	want.Accent = [3]uint8{0x12, 0x34, 0x56}
-	if got := rt.Config().Theme; got != want {
+	if got := rt.Config().Theme; !reflect.DeepEqual(got, want) {
 		t.Fatalf("theme = %+v\nwant %+v", got, want)
 	}
 }
@@ -153,7 +154,7 @@ onon.theme = mine
 	want := mustPreset(t, "birch")
 	want.Accent = [3]uint8{0x12, 0x34, 0x56}
 	want.Alt.Accent = [3]uint8{0x65, 0x43, 0x21}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("theme = %+v\nwant %+v", got, want)
 	}
 }
@@ -168,7 +169,7 @@ func TestThemeTableRoundTrips(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got != theme {
+		if !reflect.DeepEqual(got, theme) {
 			t.Errorf("%s did not survive a trip through Lua: %+v", name, got)
 		}
 	}
@@ -179,7 +180,7 @@ func TestSetThemeAtRuntime(t *testing.T) {
 	if err := rt.SetOption("theme", "birch"); err != nil {
 		t.Fatal(err)
 	}
-	if got := rt.Config().Theme; got != mustPreset(t, "birch") {
+	if got := rt.Config().Theme; !reflect.DeepEqual(got, mustPreset(t, "birch")) {
 		t.Fatalf(":set theme=birch gave %+v", got)
 	}
 	if err := rt.SetOption("theme.alt.accent", "#abcdef"); err != nil {
@@ -230,7 +231,7 @@ func TestThemeErrors(t *testing.T) {
 	if err := rt.setOption("theme", rt.state.NewTable()); err != nil {
 		t.Fatal(err)
 	}
-	if rt.Config().Theme == before {
+	if reflect.DeepEqual(rt.Config().Theme, before) {
 		t.Fatal("an empty table should reset the theme to the default")
 	}
 	tbl := rt.state.NewTable()
@@ -240,14 +241,14 @@ func TestThemeErrors(t *testing.T) {
 	if err := rt.setOption("theme", tbl); err == nil {
 		t.Fatal("expected a bad value to be rejected")
 	}
-	if rt.Config().Theme != before {
+	if !reflect.DeepEqual(rt.Config().Theme, before) {
 		t.Fatal("a rejected theme table changed the theme")
 	}
 }
 
 func TestStatusBarStyleNormalizes(t *testing.T) {
 	for raw, want := range map[string]string{"pill": "pill", " PILL ": "pill", "bar": "bar", "floating": "bar", "": "bar"} {
-		if got := NormalizeBarStyle(raw); got != want {
+		if got := NormalizeBarStyle(raw); !reflect.DeepEqual(got, want) {
 			t.Errorf("NormalizeBarStyle(%q) = %q, want %q", raw, got, want)
 		}
 	}
@@ -310,7 +311,7 @@ func TestExampleConfigThemeIsTheDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer rt.Close()
-	if got := rt.Config().Theme; got != Default().Theme {
+	if got := rt.Config().Theme; !reflect.DeepEqual(got, Default().Theme) {
 		t.Fatalf("example theme = %+v\nwant %+v", got, Default().Theme)
 	}
 }
@@ -346,7 +347,7 @@ require("fern")
 	want.Accent = [3]uint8{0x2f, 0x5d, 0x3a}
 	want.Alt.Accent = [3]uint8{0x8f, 0xbf, 0x8f}
 	want.Radius = 3
-	if got := rt.Config().Theme; got != want {
+	if got := rt.Config().Theme; !reflect.DeepEqual(got, want) {
 		t.Fatalf("theme = %+v\nwant %+v", got, want)
 	}
 }

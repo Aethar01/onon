@@ -194,7 +194,7 @@ func (a *App) touchUp(id sdl.FingerID, p sdl.FPoint, lifted bool) {
 func (a *App) flingTouch() {
 	t := &a.touch
 	// A finger that stopped before it lifted sends nothing on.
-	if time.Since(t.movedAt) > 100*time.Millisecond || a.motionScale() == 0 {
+	if time.Since(t.movedAt) > 100*time.Millisecond || a.motionScale() == 0 || a.reducedMotion() {
 		return
 	}
 	speed := math.Hypot(float64(t.velocity.X), float64(t.velocity.Y))

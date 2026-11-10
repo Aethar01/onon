@@ -49,6 +49,12 @@ func (a *App) drawElement(renderer *sdl.Renderer, st *config.Style, rect sdl.FRe
 
 // elementCanvas is the canvas a draw function draws an element's box, or
 // a plugin's view, on.
+// Animate moves a value of the canvas's, as canvas:animate does, keyed
+// within the view it draws.
+func (c *elementCanvas) Animate(key string, target float64, anim config.Animation) float64 {
+	return c.app.animate(tweenKey{kind: "canvas", view: c.view, text: key}, target, anim)
+}
+
 type elementCanvas struct {
 	app         *App
 	renderer    *sdl.Renderer

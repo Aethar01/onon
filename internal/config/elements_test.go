@@ -1,8 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -227,7 +229,7 @@ onon.theme = onon.options.theme
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != theme {
+	if !reflect.DeepEqual(got, theme) {
 		t.Fatalf("theme did not survive a trip through Lua:\n%+v\nwant %+v", got.Elements, theme.Elements)
 	}
 	if theme.Elements[ElementHint].Shape.V.Func == nil {
@@ -365,6 +367,10 @@ func (c *recordingCanvas) Input(id string, x, y, w float64, o InputOptions) (flo
 	return w, 20
 }
 func (c *recordingCanvas) Size() (float64, float64) { return 300, 200 }
+func (c *recordingCanvas) Animate(key string, target float64, anim Animation) float64 {
+	c.calls = append(c.calls, fmt.Sprintf("animate %s %v %vms", key[:strings.IndexByte(key, 0)], target, anim.Duration))
+	return target / 2
+}
 func (c *recordingCanvas) Button(id string, x, y, w float64, label string) (float64, float64) {
 	c.calls = append(c.calls, "button "+id)
 	return w, 20

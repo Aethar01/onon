@@ -161,10 +161,22 @@ func (a *App) drawTextSelection(renderer *sdl.Renderer, l *textLayout, input *te
 // through the text, and snaps to where typing or deleting puts it, which
 // a glide would only lag behind; key, which holds the text, says which.
 func (a *App) drawTextCursor(renderer *sdl.Renderer, l *textLayout, input *textInput, key tweenKey) {
-	x, y := l.at(input.Cursor)
-	x = float32(a.animate(key, float64(x), a.config.Theme.Motion.Cursor))
+	at, y := l.at(input.Cursor)
+	anim := a.viewAnim(key.view, config.MotionCursor, config.MomentChange)
+	x := float32(a.glide(key, float64(at), anim))
 	st := a.style(config.ElementCursor)
-	a.drawBox(renderer, &st, sdl.FRect{X: float32(math.Round(float64(x))), Y: y, W: a.lineWidth(st.Width.V), H: float32(l.lineHeight)})
+	box := func(x float32) sdl.FRect {
+		return sdl.FRect{X: float32(math.Round(float64(x))), Y: y, W: a.lineWidth(st.Width.V), H: float32(l.lineHeight)}
+	}
+	// Without a glide the cursor where it was goes as the new one comes.
+	changeKey := key
+	changeKey.kind += " change"
+	ctx := layerCtx{rect: box(x), side: "bottom", auto: float64(l.lineHeight)}
+	in, prev, out, leaving := a.changeLayers(changeKey, int(math.Round(float64(at))), anim, ctx)
+	if leaving {
+		_ = a.drawLayer(out, box(float32(prev)), func() error { a.drawBox(renderer, &st, box(float32(prev))); return nil })
+	}
+	_ = a.drawLayer(in, box(x), func() error { a.drawBox(renderer, &st, box(x)); return nil })
 	a.placeTextInputArea(x, y, l.lineHeight)
 }
 

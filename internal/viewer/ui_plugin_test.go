@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -948,7 +949,7 @@ end)`
 	stale := app.activeUIView()
 	app.motion.shownView = stale
 	app.reloadConfig()
-	if app.motion.shownView == stale || app.motion.closingView == stale {
+	if app.motion.shownView == stale || slices.Contains(app.motion.closing, stale) {
 		t.Fatal("a view of the old generation was left to fade out")
 	}
 	// Were it drawn all the same, its old draw function is not run.

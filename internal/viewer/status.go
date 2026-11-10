@@ -106,9 +106,9 @@ func (a *App) drawStatusBar(renderer *sdl.Renderer) error {
 	a.drawBox(renderer, &status, l.bar)
 	// The sides grow and shrink with their text, the left from the bar's
 	// left edge and the right from its right.
-	tr := a.config.Theme.Motion.Prompt
-	leftW := float32(a.animate(tweenKey{kind: "status left"}, float64(l.leftArea.W), tr))
-	rightW := float32(a.animate(tweenKey{kind: "status right"}, float64(l.rightArea.W), tr))
+	tr := a.anim(config.MotionPrompt, config.MomentChange)
+	leftW := float32(a.glide(tweenKey{kind: "status left"}, float64(l.leftArea.W), tr))
+	rightW := float32(a.glide(tweenKey{kind: "status right"}, float64(l.rightArea.W), tr))
 	leftBox := sdl.FRect{X: l.bar.X, Y: l.bar.Y, W: leftW, H: l.bar.H}
 	rightBox := sdl.FRect{X: l.bar.X + l.bar.W - rightW, Y: l.bar.Y, W: rightW, H: l.bar.H}
 	a.drawBox(renderer, &leftStyle, leftBox)
@@ -214,25 +214,33 @@ func (a *App) promptTextLayout(p promptLayout) textLayout {
 }
 
 // drawStatusMessage draws the left text outside a prompt: a new message
-// fades in, and the last text fades out once there is none.
+// comes in, and the last text goes once there is none.
 func (a *App) drawStatusMessage(renderer *sdl.Renderer, l statusLayout, st *config.Style) error {
 	m := &a.motion
-	tr := a.config.Theme.Motion.Message
-	text, opacity := l.left, 1.0
+	text, entering := l.left, true
+	var key tweenKey
 	switch {
 	case text != "":
 		m.fadingText = text
-		opacity = a.animateFrom(tweenKey{kind: "message in", text: a.message}, 0, 1, tr)
+		key = tweenKey{kind: "message in", text: a.message}
 	case m.fadingText != "":
-		text, opacity = m.fadingText, a.animateFrom(tweenKey{kind: "message out", text: m.fadingText}, 1, 0, tr)
-		if opacity <= 0 {
-			m.fadingText = ""
-		}
-	}
-	if text == "" || opacity <= 0 {
+		text, entering = m.fadingText, false
+		key = tweenKey{kind: "message out", text: m.fadingText}
+	default:
 		return nil
 	}
-	return a.faded(opacity, func() error { return a.drawText(renderer, text, l.textX, l.baseline, a.textColor(st, false)) })
+	moment := config.MomentEnter
+	if !entering {
+		moment = config.MomentExit
+	}
+	h := float32(a.fontFace.Metrics().Height.Ceil())
+	rect := sdl.FRect{X: float32(l.textX), Y: float32(l.baseline) - h*0.75, W: float32(measureText(a.fontFace, text)), H: h}
+	ly, done := a.layerAt(a.anim(config.MotionMessage, moment), a.played(key), entering, layerCtx{rect: rect, side: "bottom", auto: float64(l.bar.H)})
+	if !entering && done {
+		m.fadingText = ""
+		return nil
+	}
+	return a.drawLayer(ly, rect, func() error { return a.drawText(renderer, text, l.textX, l.baseline, a.textColor(st, false)) })
 }
 
 // promptStart is how far into the left status text the prompt begins: the

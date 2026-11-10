@@ -7,6 +7,7 @@ import (
 	"onon/internal/config"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
+	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/image/font/basicfont"
 )
 
@@ -55,6 +56,7 @@ func BenchmarkUIMenuFrame(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
+		app.beginMotionFrame()
 		app.moveUIViewSelection(view, 1-2*(i/500%2))
 		if err := app.drawUIViews(app.renderer); err != nil {
 			b.Fatal(err)
@@ -98,6 +100,7 @@ func BenchmarkUIKeybindMenuFrame(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
+		app.beginMotionFrame()
 		app.moveUIViewSelection(view, 1-2*(i/40%2))
 		if err := app.drawUIViews(app.renderer); err != nil {
 			b.Fatal(err)
@@ -113,6 +116,7 @@ func BenchmarkUIStatusPromptFrame(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
+		app.beginMotionFrame()
 		app.frameStatus = nil
 		if err := app.drawStatusBar(app.renderer); err != nil {
 			b.Fatal(err)
@@ -187,9 +191,50 @@ onon.ui.create({
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
+		app.beginMotionFrame()
 		if err := app.drawUIViews(app.renderer); err != nil {
 			b.Fatal(err)
 		}
 		flush(b, app)
+	}
+}
+
+// BenchmarkUIMenuMoving draws a menu while it is still moving, with the
+// panel, its rows and its selection all animating, for each kind of layer.
+func BenchmarkUIMenuMoving(b *testing.B) {
+	for _, tc := range []struct{ name, panel, rows, selection string }{
+		{"fade", "fade 1000000ms linear", "none", "glide 80ms"},
+		{"offset", "fade rise 1000000ms linear", "none", "glide 80ms"},
+		{"scale", "fade zoom 1000000ms linear", "none", "glide 80ms"},
+		{"rows", "none", "fade x:-8px 1000000ms linear stagger:10ms", "glide 80ms"},
+		{"crossfade", "none", "none", "crossfade 1000000ms linear"},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			app := benchUIApp(b)
+			set := func(t config.MotionTarget, value string) {
+				p, err := config.AnimationFromLua(lua.LString(value))
+				if err != nil {
+					b.Fatal(err)
+				}
+				for m := range app.config.Theme.Motion.Moves[t] {
+					app.config.Theme.Motion.Moves[t][m] = p.Apply(app.config.Theme.Motion.Moves[t][m])
+				}
+			}
+			set(config.MotionPanel, tc.panel)
+			set(config.MotionRows, tc.rows)
+			set(config.MotionSelection, tc.selection)
+			app.showCoreList("bench", "Bench", benchRows(2000), nil)
+			view := app.activeUIView()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				app.beginMotionFrame()
+				app.moveUIViewSelection(view, 1-2*(i/500%2))
+				if err := app.drawUIViews(app.renderer); err != nil {
+					b.Fatal(err)
+				}
+				flush(b, app)
+			}
+		})
 	}
 }

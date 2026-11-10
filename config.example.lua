@@ -121,13 +121,21 @@ onon.options.zoom_step = 1.15 -- Factor zoom_in multiplies the zoom by, and zoom
 --   status_bar_padding = 10, -- Horizontal status bar padding in logical pixels.
 --   tab_bar_style = "bar", -- Tab bar layout: bar, along the window's edge, or pill, tabs floating over the page as pills.
 --   motion = {
---     scale = 1, -- Speed of every transition: 1 as given, 2 twice as slow, 0 for no motion at all, as when the OS is set to reduce motion.
---     panel = "120ms ease-out", -- Menus and completion fading in as they open, and menus fading out as they close.
---     selection = "80ms ease-out", -- The selected row's highlight gliding to the next row selected.
---     prompt = "100ms ease-out", -- The sides of the status bar growing and shrinking with their text, as a pill does when a prompt opens.
---     message = "150ms ease-out", -- Status messages fading in, and out when cleared.
---     cursor = "50ms ease-out", -- The prompt's cursor gliding to where it moves.
---     edges = "160ms ease-out", -- The status bar, tab bar and docked views sliding in along the window's edges as they are shown, the bars sliding out as they are hidden, the page moving with them only where it must.
+--     scale = 1, -- Speed of every animation: 1 as given, 2 twice as slow, 0 for no motion at all.
+--     force_reduced = false, -- Use reduced motion whether or not the OS asks for less motion.
+--     panel = "fade 120ms ease-out", -- Menus, panels and completion opening and closing. A slide comes in from the side the view is anchored to.
+--     rows = "none", -- A list's rows as its view opens and closes, one after another with stagger.
+--     selection = "glide 80ms ease-out", -- The selected row's highlight moving to another row: glide moves it there, other tracks bring the new one in and take the old one out.
+--     overview_selection = "glide 80ms ease-out", -- The outline round the overview's selected page moving to another, as selection does.
+--     prompt = "glide 100ms ease-out", -- The sides of the status bar growing and shrinking with their text, as a pill does when a prompt opens; only its timing and glide count.
+--     message = "fade 150ms ease-out", -- Status messages coming in, and going once cleared.
+--     cursor = "glide 50ms ease-out", -- The text cursor moving, as selection does.
+--     edges = "slide 160ms ease-out", -- The status bar, tab bar and docked views coming in along the window's edges as they are shown and going as they are hidden, the page moving with them only where it must. The timing moves the page; the tracks follow it, a slide by default.
+--     title_bar = "fade 160ms linear", -- The window's buttons over the page appearing as the pointer reaches the top of the window.
+--     reduced = {
+--       base = "fade", -- What reduced motion starts from: fade, the motion with only its fades; none; or full, the motion as it is.
+--       scale = nil, -- Speed of every animation while motion is reduced; the motion's scale unless set.
+--     },
 --   },
 --   elements = {}, -- The style of each piece of the UI, such as panel or row_selected; see Elements in the reference.
 -- }

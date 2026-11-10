@@ -658,26 +658,41 @@ func (a *App) drawTextHighlight(renderer *sdl.Renderer, rect sdl.FRect, clr colo
 // withClip runs draw with drawing limited to rect, inside any clip already
 // in place, so content such as scrolled text stays within its box.
 func (a *App) withClip(renderer *sdl.Renderer, rect sdl.FRect, draw func() error) error {
+	a.pushClip(renderer, rect)
+	defer a.popClip(renderer)
+	return draw()
+}
+
+// pushClip limits drawing to rect, inside any clip already in place,
+// until popClip.
+func (a *App) pushClip(renderer *sdl.Renderer, rect sdl.FRect) {
 	clip := sdl.Rect{
 		X: int32(math.Floor(float64(rect.X))),
 		Y: int32(math.Floor(float64(rect.Y))),
 		W: int32(math.Ceil(float64(rect.X+rect.W))) - int32(math.Floor(float64(rect.X))),
 		H: int32(math.Ceil(float64(rect.Y+rect.H))) - int32(math.Floor(float64(rect.Y))),
 	}
-	if n := len(a.clips); n > 0 {
+	n := len(a.clips)
+	if n > 0 {
 		clip = intersectRects(clip, a.clips[n-1])
 	}
 	a.clips = append(a.clips, clip)
-	sdl.SetRenderClipRect(renderer, &clip)
-	defer func() {
-		a.clips = a.clips[:len(a.clips)-1]
-		if n := len(a.clips); n > 0 {
-			sdl.SetRenderClipRect(renderer, &a.clips[n-1])
-		} else {
-			sdl.SetRenderClipRect(renderer, nil)
-		}
-	}()
-	return draw()
+	if renderer != nil {
+		sdl.SetRenderClipRect(renderer, &a.clips[n])
+	}
+}
+
+// popClip takes away the clip pushClip put in place.
+func (a *App) popClip(renderer *sdl.Renderer) {
+	a.clips = a.clips[:len(a.clips)-1]
+	if renderer == nil {
+		return
+	}
+	if n := len(a.clips); n > 0 {
+		sdl.SetRenderClipRect(renderer, &a.clips[n-1])
+	} else {
+		sdl.SetRenderClipRect(renderer, nil)
+	}
 }
 
 func intersectRects(a, b sdl.Rect) sdl.Rect {
