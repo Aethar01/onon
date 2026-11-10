@@ -64,17 +64,31 @@ func (a *App) drawModalListHeader(renderer *sdl.Renderer, rect sdl.FRect, title,
 	x := int(rect.X + padLeft)
 	end := int(rect.X + rect.W - padRight)
 	face := a.styleFace(&st)
-	title = truncateText(face, title, end-x)
+	gap := a.ipx(st.Gap.V)
+	title, detail = fitHeader(face, a.fontFace, title, detail, end-x, gap)
 	if err := a.drawTextFace(renderer, title, x, baseline, a.textColor(&st, false), st.Bold.V); err != nil {
 		return err
 	}
 	if detail != "" {
-		x += measureText(face, title) + a.ipx(st.Gap.V)
-		if err := a.drawText(renderer, a.truncateModalListText(detail, end-x), x, baseline, a.textColor(&st, true)); err != nil {
+		x += measureText(face, title) + gap
+		if err := a.drawText(renderer, detail, x, baseline, a.textColor(&st, true)); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// fitHeader shortens a header's title and detail, drawn in titleFace and
+// detailFace gap apart, to fit width. The title gives way first, as the
+// detail is short and says something of its own, a count or a mode, but
+// keeps a third of the width; then the detail is cut to what is left.
+func fitHeader(titleFace, detailFace font.Face, title, detail string, width, gap int) (string, string) {
+	if detail == "" {
+		return truncateText(titleFace, title, width), ""
+	}
+	room := max(width-gap-measureText(detailFace, detail), width/3)
+	title = truncateText(titleFace, title, room)
+	return title, truncateText(detailFace, detail, width-measureText(titleFace, title)-gap)
 }
 
 // styleFace is the face st's text is drawn in.
