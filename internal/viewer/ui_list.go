@@ -73,7 +73,8 @@ type uiView struct {
 	detail string
 	// aside, if set, is a part of the panel beside the rows, under the
 	// header, that a function draws: see view_aside.go.
-	aside *viewAside
+	aside   *viewAside
+	asidePx int // its width, as the view was last placed
 	// header, if set, gives the header's title and detail for the rows
 	// shown, in place of the title, the detail and the query.
 	header   func(*App, *uiView, int) (string, string)

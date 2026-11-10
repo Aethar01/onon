@@ -21,8 +21,8 @@ end })`)
 	if frame.W != before.W+200 {
 		t.Fatalf("width with an aside = %v, want %v", frame.W, before.W+200)
 	}
-	if frame.H <= before.H {
-		t.Fatalf("a view with an aside kept the height of its two rows: %v", frame.H)
+	if frame.H != before.H {
+		t.Fatalf("an aside made the view %v tall, not its rows' %v", frame.H, before.H)
 	}
 	rows := app.listPart(view, frame)
 	aside := app.asideBox(view)
@@ -51,6 +51,23 @@ end })`)
 	if rows.X != frame.X+150 || app.asideBox(view).X >= rows.X {
 		t.Fatalf("a left aside: frame %+v rows %+v", frame, rows)
 	}
+	// min_rows keeps a short list tall enough for the aside, its own
+	// rows unchanged.
+	evalLua(t, app, `view:set_aside({ width = 200, min_rows = 5, draw = function() end })`)
+	if frame, _ = view.frameGeometry(app); frame.H != before.H+float32(3*app.modalListRowHeight()) {
+		t.Fatalf("an aside of 5 rows made two rows %v tall, not %v", frame.H, before.H+float32(3*app.modalListRowHeight()))
+	}
+	// A share is of the view's own width.
+	evalLua(t, app, `view:set_aside({ width = "25%", draw = function() end })`)
+	if frame, _ = view.frameGeometry(app); frame.W != before.W*1.25 {
+		t.Fatalf("a 25%% aside made the view %v wide, not %v", frame.W, before.W*1.25)
+	}
+	// One that does not grow takes its width from the rows.
+	evalLua(t, app, `view:set_aside({ width = "25%", grow = false, draw = function() end })`)
+	frame, _ = view.frameGeometry(app)
+	if frame != before || app.listPart(view, frame).W != before.W*0.75 {
+		t.Fatalf("an aside that does not grow: frame %+v rows %+v, before %+v", frame, app.listPart(view, frame), before)
+	}
 	evalLua(t, app, `view:set_aside(nil)`)
 	if frame, _ = view.frameGeometry(app); frame != before {
 		t.Fatalf("without its aside the view is %+v, not %+v", frame, before)
@@ -61,7 +78,7 @@ func TestViewAsideFromTheSpecAndItsErrors(t *testing.T) {
 	app := luaUITestApp(t, "")
 	evalLua(t, app, `onon.ui.create({ rows = { "a" }, aside = { side = "left", draw = function() error("boom") end } }):show()`)
 	view := app.activeUIView()
-	if view.aside == nil || view.aside.side != "left" || !view.aside.width.Percent || view.aside.width.Value != 40 {
+	if view.aside == nil || view.aside.side != "left" || !view.aside.width.Percent || view.aside.width.Value != 40 || !view.aside.grow {
 		t.Fatalf("aside from the spec = %+v", view.aside)
 	}
 	app.drawViewAside(nil, view)
@@ -72,6 +89,8 @@ func TestViewAsideFromTheSpecAndItsErrors(t *testing.T) {
 		`{ side = "top", draw = function() end }`,
 		`{ side = "left" }`,
 		`{ width = "wide", draw = function() end }`,
+		`{ grow = "yes", draw = function() end }`,
+		`{ min_rows = -1, draw = function() end }`,
 		`"right"`,
 	} {
 		if _, err := app.runtime.Eval(`onon.ui.create({ rows = { "a" }, aside = ` + bad + ` })`); err == nil || !strings.Contains(err.Error(), "aside") {

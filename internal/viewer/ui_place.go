@@ -303,6 +303,7 @@ func (a *App) placeView(view *uiView) (sdl.FRect, int) {
 	rowHeight, head, bottom := a.modalListRowHeight(), a.uiViewHeadHeight(view), a.viewBottomPadding(view)
 	if p.dock != "" {
 		_, rect := a.dockLayout(view)
+		view.asidePx = a.asideWidth(view, int(rect.W)) // a docked view's width is its dock's
 		return rect, max(1, (int(rect.H)-head-bottom)/rowHeight)
 	}
 	fit := view.drawBody == nil
@@ -329,21 +330,22 @@ func (a *App) placeView(view *uiView) (sdl.FRect, int) {
 		w = max(w, min(least, areaW))
 		h = max(h, min(160, areaH))
 	}
-	// An aside widens the view to its side, and keeps it its full height,
-	// however few its rows, for the aside to draw in.
-	if aside := a.asideWidth(view); aside > 0 {
-		w = min(w+aside, max(1, areaW))
+	// An aside that grows widens the view to its side, as far as there is
+	// room; one that does not takes its width from the rows.
+	view.asidePx = a.asideWidth(view, w)
+	if view.aside != nil && view.aside.grow {
+		w = min(w+view.asidePx, max(1, areaW))
 	}
 	rows := max(1, (h-head-bottom)/rowHeight)
 	full := h
 	if fit {
 		full = min(h, head+rows*rowHeight+bottom)
-		rows = min(rows, max(1, len(view.visibleRows())))
-		if view.aside == nil {
-			h = min(full, head+rows*rowHeight+bottom)
-		} else {
-			h = full
+		fitted := len(view.visibleRows())
+		if view.aside != nil {
+			fitted = max(fitted, view.aside.minRows) // tall enough for the aside to show something
 		}
+		rows = min(rows, max(1, fitted))
+		h = min(full, head+rows*rowHeight+bottom)
 	}
 	if p.at != nil {
 		return a.pinnedRect(*p.at, p.anchor, w, h), rows

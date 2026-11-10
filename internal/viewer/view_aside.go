@@ -10,47 +10,57 @@ import (
 )
 
 // An aside is a part of a list view beside its rows, on its left or right,
-// under its header: the view grows to that side by its width, and a
-// function draws in it, as a file browser draws the file selected. The
-// rows, their column titles, the scrollbar and a drawn body keep to the
-// rest of the panel.
+// under its header, that a function draws in, as a file browser draws the
+// file selected. One that grows widens the view to its side by its width;
+// one that does not takes its width from the rows. Either way the view is
+// as tall as it would be without it, or min_rows rows if that is more, and
+// the aside draws in what that gives it. The rows, their column titles, the scrollbar and a drawn body
+// keep to the rest of the panel.
 
 type viewAside struct {
-	side  string // left or right
-	width config.UISize
-	draw  func(a *App, canvas *elementCanvas, state config.DrawState) (bool, error)
+	side    string // left or right
+	width   config.UISize
+	grow    bool
+	minRows int // the fewest rows tall the view is while it has the aside
+	draw    func(a *App, canvas *elementCanvas, state config.DrawState) (bool, error)
 }
 
 // asideKey is what of an aside a view's geometry depends on.
 type asideKey struct {
-	side  string
-	width config.UISize
+	side    string
+	width   config.UISize
+	grow    bool
+	minRows int
 }
 
 func (s *viewAside) key() asideKey {
 	if s == nil {
 		return asideKey{}
 	}
-	return asideKey{s.side, s.width}
+	return asideKey{s.side, s.width, s.grow, s.minRows}
 }
 
 // maxAsideShare is the most of its view's width an aside takes, so its
 // rows keep some.
 const maxAsideShare = 0.6
 
-// asideWidth is how wide view's aside is, as asked: a share of the window,
-// or logical pixels; 0 for none.
-func (a *App) asideWidth(view *uiView) int {
+// asideWidth is how wide view's aside is, as asked, for a view width
+// wide without it: a share of that width, or logical pixels; 0 for none.
+func (a *App) asideWidth(view *uiView, width int) int {
 	if view.aside == nil {
 		return 0
 	}
-	return max(0, int(math.Round(a.uiLength(view.aside.width, float64(a.winW)))))
+	return max(0, int(math.Round(a.uiLength(view.aside.width, float64(width)))))
 }
 
-// asideSplit is how much of panel, view's frame, its aside takes.
+// asideSplit is how much of panel, view's frame, its aside takes: the
+// width placing it worked out, but at most a share of the panel, so its
+// rows keep some.
 func (a *App) asideSplit(view *uiView, panel sdl.FRect) float32 {
-	w := float32(a.asideWidth(view))
-	return min(w, panel.W*maxAsideShare)
+	if view.aside == nil {
+		return 0
+	}
+	return min(float32(view.asidePx), panel.W*maxAsideShare)
 }
 
 // listPart is the part of panel, view's frame, its rows take: all of it
@@ -140,8 +150,10 @@ func (a *App) luaAside(view *uiView, spec *config.UIAside) *viewAside {
 	rt := a.runtime
 	callback := spec.Draw
 	return &viewAside{
-		side:  spec.Side,
-		width: spec.Width,
+		side:    spec.Side,
+		width:   spec.Width,
+		grow:    spec.Grow,
+		minRows: spec.MinRows,
 		draw: func(a *App, canvas *elementCanvas, state config.DrawState) (bool, error) {
 			if a.staleLuaView(view) || callback == "" {
 				return false, nil // its function is the old generation's

@@ -143,12 +143,17 @@ type luaGeneration struct {
 }
 
 // UIAside is a part of a list view beside its rows, on its Side, left or
-// right, under its header: the view grows to that side by Width, and the
-// Lua function Draw draws in it.
+// right, under its header, Width wide: a share of the view's width, or
+// logical pixels. With Grow the view widens by it; without, the rows give
+// way. The Lua function Draw draws in it.
 type UIAside struct {
 	Side  string
 	Width UISize
-	Draw  string
+	Grow  bool
+	// MinRows is the fewest rows tall the view is while it has the aside,
+	// however few rows it has.
+	MinRows int
+	Draw    string
 }
 
 type UIOverlay struct {

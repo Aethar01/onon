@@ -368,8 +368,9 @@ func uiOverlayFromLuaSpec(L *lua.LState, rt *Runtime, spec *lua.LTable) UIOverla
 	return overlay
 }
 
-// luaUIAside reads an aside, { side =, width =, draw = }, or nil for none:
-// on the right, 40% of the window wide, unless they say.
+// luaUIAside reads an aside, { side =, width =, grow =, min_rows =, draw = }, or nil
+// for none: on the right, 40% of the view's width, widening the view,
+// unless they say.
 func luaUIAside(L *lua.LState, rt *Runtime, name string, value lua.LValue) *UIAside {
 	if value == lua.LNil {
 		return nil
@@ -378,7 +379,14 @@ func luaUIAside(L *lua.LState, rt *Runtime, name string, value lua.LValue) *UIAs
 	if !ok {
 		L.RaiseError("%s: aside is a table of side, width and draw", name)
 	}
-	aside := &UIAside{Side: "right", Width: UISize{Value: 40, Percent: true}}
+	aside := &UIAside{Side: "right", Width: UISize{Value: 40, Percent: true}, Grow: true}
+	switch grow := table.RawGetString("grow").(type) {
+	case *lua.LNilType:
+	case lua.LBool:
+		aside.Grow = bool(grow)
+	default:
+		L.RaiseError("%s: an aside's grow is true, widening the view, or false, taking from its rows", name)
+	}
 	switch side := table.RawGetString("side").(type) {
 	case *lua.LNilType:
 	case lua.LString:
@@ -395,6 +403,16 @@ func luaUIAside(L *lua.LState, rt *Runtime, name string, value lua.LValue) *UIAs
 			L.RaiseError("%s: aside width %v", name, err)
 		}
 		aside.Width = size
+	}
+	switch rows := table.RawGetString("min_rows").(type) {
+	case *lua.LNilType:
+	case lua.LNumber:
+		if rows < 0 || float64(rows) != float64(int(rows)) {
+			L.RaiseError("%s: an aside's min_rows is a whole number of rows, 0 or more", name)
+		}
+		aside.MinRows = int(rows)
+	default:
+		L.RaiseError("%s: an aside's min_rows is a whole number of rows", name)
 	}
 	fn, ok := table.RawGetString("draw").(*lua.LFunction)
 	if !ok {
