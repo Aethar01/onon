@@ -142,6 +142,9 @@ type Canvas interface {
 	// its proportions, returning the size it took. With area, it draws
 	// that part of the page in the rect instead.
 	Page(page int, x, y, w, h float64, area *PageArea) (float64, float64)
+	// DocumentPage draws a page (0-based) of the document preview id, as
+	// plugin:open_document opened it, as Page draws one of the document.
+	DocumentPage(id, page int, x, y, w, h float64) (float64, float64)
 	// Region names a rect for the pointer events over it, reporting
 	// whether the pointer is over it.
 	Region(id lua.LValue, x, y, w, h float64) bool
@@ -518,6 +521,16 @@ func luaColumnMetatable(L *lua.LState) *lua.LTable {
 			w, h := c.Page(page-1, col.x, col.y, col.w, height, luaPageArea(L, 4, height))
 			return next(L, col, w, h)
 		},
+		"document_page": func(L *lua.LState) int {
+			col, c := at(L)
+			doc := checkLuaPreview(L, 2)
+			page := L.CheckInt(3)
+			if page < 1 {
+				L.ArgError(3, "pages start at 1")
+			}
+			w, h := c.DocumentPage(doc.id, page-1, col.x, col.y, col.w, float64(L.OptNumber(4, 0)))
+			return next(L, col, w, h)
+		},
 		"image": func(L *lua.LState) int {
 			col, c := at(L)
 			w, h, err := c.Image(col.cache.imagePath(L.CheckString(2)), col.x, col.y, float64(L.OptNumber(3, 0)), float64(L.OptNumber(4, 0)))
@@ -665,6 +678,16 @@ func luaCanvasMetatable(L *lua.LState, cache *drawCache) *lua.LTable {
 			}
 			area := luaPageArea(L, 7, float64(L.OptNumber(6, 0)))
 			w, h := c.Page(page-1, float64(L.CheckNumber(3)), float64(L.CheckNumber(4)), float64(L.CheckNumber(5)), float64(L.OptNumber(6, 0)), area)
+			return push2(L, w, h)
+		},
+		"document_page": func(L *lua.LState) int {
+			c := check(L)
+			doc := checkLuaPreview(L, 2)
+			page := L.CheckInt(3)
+			if page < 1 {
+				L.ArgError(3, "pages start at 1")
+			}
+			w, h := c.DocumentPage(doc.id, page-1, float64(L.CheckNumber(4)), float64(L.CheckNumber(5)), float64(L.CheckNumber(6)), float64(L.OptNumber(7, 0)))
 			return push2(L, w, h)
 		},
 		"input": func(L *lua.LState) int {

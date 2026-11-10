@@ -93,6 +93,7 @@ func unique(paths []string) []string {
 
 func (r *Runtime) Close() {
 	r.cancelPluginOperations()
+	r.closePreviews(r.previews)
 	r.closeLuaState()
 }
 
@@ -186,6 +187,7 @@ func (r *Runtime) Reload() error {
 		if committed {
 			r.assigned = nil // loading the config is not a change to it
 			cancelPluginOperationMap(old.operations)
+			r.closePreviews(old.previews)
 			if old.state != nil {
 				old.state.Close()
 			}

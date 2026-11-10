@@ -496,6 +496,9 @@ func (r *Runtime) newPluginInstance(L *lua.LState, manifest pluginManifest, spec
 	L.SetField(module, "job", L.NewFunction(func(L *lua.LState) int {
 		return instance.startJob(L)
 	}))
+	L.SetField(module, "open_document", L.NewFunction(func(L *lua.LState) int {
+		return instance.openDocument(L)
+	}))
 
 	metatable := L.NewTable()
 	L.SetField(metatable, "__index", L.NewFunction(func(L *lua.LState) int {
