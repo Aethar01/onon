@@ -14,7 +14,14 @@ func (a *App) Metadata() (config.DocumentMetadata, error) {
 	if a.doc == nil {
 		return config.DocumentMetadata{}, fmt.Errorf("document unavailable")
 	}
-	metadata, err := a.doc.Metadata()
+	return documentMetadata(a.doc)
+}
+
+// documentMetadata, documentOutline, documentPageInfo, documentPageText
+// and documentPageLinks answer plugins' calls about doc, for a tab's
+// document and a background one alike; page is 0-based.
+func documentMetadata(doc *mupdf.Document) (config.DocumentMetadata, error) {
+	metadata, err := doc.Metadata()
 	if err != nil {
 		return config.DocumentMetadata{}, err
 	}
@@ -38,10 +45,24 @@ func (a *App) Outline() ([]config.DocumentOutlineItem, error) {
 		}
 		a.outline = outline
 	}
-	items := make([]config.DocumentOutlineItem, len(a.outline))
-	children := make([][]int, len(a.outline))
+	return outlineTree(a.outline), nil
+}
+
+func documentOutline(doc *mupdf.Document) ([]config.DocumentOutlineItem, error) {
+	outline, err := doc.Outline()
+	if err != nil {
+		return nil, err
+	}
+	return outlineTree(outline), nil
+}
+
+// outlineTree nests a document's outline, which MuPDF gives flat with
+// each item's parent, as plugins are given it.
+func outlineTree(outline []mupdf.OutlineItem) []config.DocumentOutlineItem {
+	items := make([]config.DocumentOutlineItem, len(outline))
+	children := make([][]int, len(outline))
 	rootIndices := make([]int, 0)
-	for i, item := range a.outline {
+	for i, item := range outline {
 		items[i] = config.DocumentOutlineItem{Title: item.Title, URI: item.URI, External: item.External, Page: documentPage(item.Page), X: optionalCoordinate(item.X, item.HasX), Y: optionalCoordinate(item.Y, item.HasY)}
 		parent := item.Parent
 		if parent >= 0 && parent < i {
@@ -62,7 +83,27 @@ func (a *App) Outline() ([]config.DocumentOutlineItem, error) {
 	for _, index := range rootIndices {
 		roots = append(roots, build(index))
 	}
-	return roots, nil
+	return roots
+}
+
+func documentPageInfo(doc *mupdf.Document, page int) (config.DocumentPageInfo, error) {
+	info, err := doc.PageInfo(page)
+	if err != nil {
+		return config.DocumentPageInfo{}, err
+	}
+	return pageInfoFor(page, newPageMetrics(info)), nil
+}
+
+func pageInfoFor(page int, metric pageMetrics) config.DocumentPageInfo {
+	return config.DocumentPageInfo{Page: page + 1, Label: metric.label, Width: float64(metric.bounds.X1 - metric.bounds.X0), Height: float64(metric.bounds.Y1 - metric.bounds.Y0), Bounds: documentRect(metric.bounds)}
+}
+
+func pageLinks(links []mupdf.Link) []config.DocumentPageLink {
+	result := make([]config.DocumentPageLink, len(links))
+	for i, link := range links {
+		result[i] = config.DocumentPageLink{Bounds: documentRect(link.Bounds), URI: link.URI, External: link.External, Page: documentPage(link.Page), X: optionalCoordinate(link.X, link.HasX), Y: optionalCoordinate(link.Y, link.HasY)}
+	}
+	return result
 }
 
 func (a *App) PageInfo(page int) (config.DocumentPageInfo, error) {
@@ -81,7 +122,7 @@ func (a *App) PageInfo(page int) (config.DocumentPageInfo, error) {
 		metric = newPageMetrics(info)
 		a.pageMetrics[index] = metric
 	}
-	return config.DocumentPageInfo{Page: page, Label: metric.label, Width: float64(metric.bounds.X1 - metric.bounds.X0), Height: float64(metric.bounds.Y1 - metric.bounds.Y0), Bounds: documentRect(metric.bounds)}, nil
+	return pageInfoFor(index, metric), nil
 }
 
 // Selection reports the current text selection. It reads viewer state owned by
@@ -125,11 +166,7 @@ func (t *tab) PageLinks(page int) ([]config.DocumentPageLink, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := make([]config.DocumentPageLink, len(links))
-	for i, link := range links {
-		result[i] = config.DocumentPageLink{Bounds: documentRect(link.Bounds), URI: link.URI, External: link.External, Page: documentPage(link.Page), X: optionalCoordinate(link.X, link.HasX), Y: optionalCoordinate(link.Y, link.HasY)}
-	}
-	return result, nil
+	return pageLinks(links), nil
 }
 
 func (t *tab) documentPageIndex(page int) (int, error) {
