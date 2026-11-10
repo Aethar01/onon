@@ -134,6 +134,11 @@ func TestLayerTracks(t *testing.T) {
 	if l, done := app.layerAt(anim, 100, true, ctx); !done || l != restLayer {
 		t.Fatalf("in = %+v, done %v", l, done)
 	}
+	// A track ending elsewhere than at rest stays where it ends.
+	p, _ = config.AnimationFromLua(lua.LString("scale:0.5>2 100ms linear"))
+	if l, done := app.layerAt(p.Apply(config.Animation{}), 500, true, ctx); !done || l.scale != 2 {
+		t.Fatalf("after a from>to = %+v, done %v", l, done)
+	}
 	// Stagger and track timing: a track waits for its delay.
 	p, _ = config.AnimationFromLua(lua.LString("fade 100ms linear delay:40ms"))
 	if l, _ := app.layerAt(p.Apply(config.Animation{}), 20, true, ctx); l.opacity != 0 {

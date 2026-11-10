@@ -779,17 +779,22 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 		rowsMoment = config.MomentExit
 	}
 	rowsAnim := a.viewAnim(view, config.MotionRows, rowsMoment)
+	// Once the last row shown has come in, the rows are at rest.
+	rowsMove := rowsAnim.Moves() && !(rowsEntering && rowsAnim.EndsAtRest() && rowsElapsed >= rowsAnim.Length()+rowsAnim.Stagger*float64(rows))
 	rowLayer := func(index int) layer {
-		if !rowsAnim.Moves() {
+		if !rowsMove {
 			return restLayer
 		}
 		box := a.viewRowBox(view, rect, rowY(float64(index)), rowHeight)
 		l, _ := a.layerAt(rowsAnim, rowsElapsed-rowsAnim.Stagger*float64(max(0, index-first)), rowsEntering, layerCtx{rect: box, side: "left", auto: float64(box.W)})
 		return l
 	}
-	drawRow := func(index int) error {
+	// drawRow draws a row moved by dx, dy, as its layer moves it.
+	drawRow := func(index, dx, dy int) error {
 		item := items[index]
-		y := rowY(float64(index))
+		y := rowY(float64(index)) + dy
+		rowRect := rect
+		rowRect.X += float32(dx)
 		element := config.ElementRow
 		switch {
 		case item.heading:
@@ -805,7 +810,7 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 		if item.button && element == config.ElementRowSelected {
 			st = a.selectedButtonStyle(st)
 		}
-		box := a.viewRowBox(view, rect, y, rowHeight)
+		box := a.viewRowBox(view, rowRect, y, rowHeight)
 		if element == config.ElementButton {
 			// a framed box within the row
 			inset := a.px(3)
@@ -911,6 +916,10 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 				box := a.viewRowBox(view, rect, rowY(at), rowHeight)
 				ctx := layerCtx{rect: box, side: "left", auto: float64(box.W)}
 				in, prev, out, leaving := a.changeLayers(tweenKey{kind: "selection change", view: view}, item.index, anim, ctx)
+				if !leaving && in == restLayer && !rowsMove {
+					a.drawBox(renderer, &st, box)
+					break
+				}
 				if leaving {
 					if was := slices.IndexFunc(items, func(r uiRow) bool { return r.index == prev }); was >= 0 {
 						wasBox := a.viewRowBox(view, rect, rowY(float64(was)), rowHeight)
@@ -926,8 +935,36 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 			}
 		}
 		for index := first; index < last; index++ {
+			if !rowsMove {
+				if err := drawRow(index, 0, 0); err != nil {
+					return err
+				}
+				continue
+			}
+			// A row only faded and moved is drawn where it moves to, which
+			// is cheaper than moving the viewport for each row.
+			l := rowLayer(index)
+			if l.scale == 1 && l.clip == 0 {
+				if l.opacity <= 0 {
+					continue
+				}
+				fade := a.motion.fade
+				a.motion.fade = 1 - (1-fade)*min(1, l.opacity)
+				err := drawRow(index, int(math.Round(l.dx)), int(math.Round(l.dy)))
+				a.motion.fade = fade
+				if err != nil {
+					return err
+				}
+				continue
+			}
 			box := a.viewRowBox(view, rect, rowY(float64(index)), rowHeight)
-			if err := a.drawLayer(rowLayer(index), box, func() error { return drawRow(index) }); err != nil {
+			t := a.beginLayer(l, box)
+			if t.skip {
+				continue
+			}
+			err := drawRow(index, 0, 0)
+			a.endLayer(&t)
+			if err != nil {
 				return err
 			}
 		}

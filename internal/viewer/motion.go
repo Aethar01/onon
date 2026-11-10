@@ -29,13 +29,15 @@ type motionState struct {
 	closing     []*uiView
 	// fadingText is the last status text shown, drawn leaving once cleared.
 	fadingText string
-	// viewport is the renderer's viewport while drawing is moved, nil for
-	// the whole window; layers are the textures scaled layers are drawn
+	// viewport is the renderer's viewport while drawing is moved, unless
+	// hasViewport is false for the whole window; layers are the textures scaled layers are drawn
 	// into, one for each depth of them, and layerDepth how deep it is.
-	viewport   *sdl.Rect
-	layers     []*sdl.Texture
-	layerDepth int
-	osReduced  atomic.Bool // the OS asks for less motion; see reducedMotion
+	viewport    sdl.Rect
+	hasViewport bool
+	layers      []*sdl.Texture
+	layerDepth  int
+	layersUsed  uint64      // the last frame a scaled layer was drawn
+	osReduced   atomic.Bool // the OS asks for less motion; see reducedMotion
 	// osReading is whether the OS's setting is being read, and osReadAt
 	// when it was last read; see refreshReducedMotion.
 	osReading atomic.Bool
@@ -78,6 +80,7 @@ func (a *App) beginMotionFrame() {
 	m.now = time.Now()
 	m.animating = false
 	m.fade = 0
+	a.releaseLayers()
 	// What is not asked for is dropped now and then, and whenever there
 	// is much, so a closed view is not kept by its keys.
 	if len(m.tweens)+len(m.plays)+len(m.changes) > 64 || m.frame%64 == 0 {
@@ -292,6 +295,11 @@ func (a *App) layerAt(anim config.Animation, elapsed float64, entering bool, ctx
 	if anim.Duration <= 0 || a.motionScale() <= 0 || len(anim.Tracks) == 0 {
 		return restLayer, true
 	}
+	// Once over, something come in is at rest, and the tracks need not be
+	// worked out again, unless one ends elsewhere.
+	if entering && elapsed >= anim.Length() && anim.EndsAtRest() {
+		return restLayer, true
+	}
 	l := restLayer
 	done := true
 	for _, t := range anim.Tracks {
@@ -376,16 +384,52 @@ func (a *App) applyTrack(l *layer, t config.Track, e float64, entering bool, ctx
 // drawLayer runs draw with what it draws, laid out at rect, drawn as l
 // says.
 func (a *App) drawLayer(l layer, rect sdl.FRect, draw func() error) error {
-	if l == restLayer {
-		return draw()
-	}
-	if l.opacity <= 0 || l.scale <= 0 || l.clip >= 1 {
+	t := a.beginLayer(l, rect)
+	if t.skip {
 		return nil
 	}
-	inner := draw
-	if l.opacity < 1 {
-		faded := inner
-		inner = func() error { return a.faded(l.opacity, faded) }
+	err := draw()
+	a.endLayer(&t)
+	return err
+}
+
+// layerToken is what beginLayer put in place, for endLayer to undo.
+type layerToken struct {
+	skip, active bool
+	fade         float64
+	// moved: the viewport before, and how many clips there were.
+	moved, hadViewport bool
+	viewport           sdl.Rect
+	clips              int
+	clipped            bool
+	// scaled: the texture drawn into, the target before, the region of
+	// the window it covers, the viewport's corner, and the scale.
+	scaled       bool
+	tex, target  *sdl.Texture
+	x0, y0, w, h int32
+	ox, oy       int32
+	rect         sdl.FRect
+	k            float32
+}
+
+// beginLayer starts drawing what is laid out at rect as l says: moved,
+// scaled about its centre, cut back and faded, in that order. What it
+// draws until endLayer is drawn so; with skip set, nothing need be.
+func (a *App) beginLayer(l layer, rect sdl.FRect) (t layerToken) {
+	if l == restLayer {
+		return t
+	}
+	if l.opacity <= 0 || l.scale <= 0 || l.clip >= 1 {
+		t.skip = true
+		return t
+	}
+	t.active = true
+	m := &a.motion
+	if x, y := int32(math.Round(l.dx)), int32(math.Round(l.dy)); x != 0 || y != 0 {
+		a.beginOffset(&t, x, y)
+	}
+	if math.Abs(l.scale-1) > 1e-3 {
+		a.beginScale(&t, l.scale, rect)
 	}
 	if l.clip > 0 {
 		// What shows is the part on the side it comes from.
@@ -403,112 +447,149 @@ func (a *App) drawLayer(l layer, rect sdl.FRect, draw func() error) error {
 			shown.Y += shown.H * (1 - keep)
 			shown.H *= keep
 		}
-		clipped := inner
-		inner = func() error { return a.withClip(a.renderer, shown, clipped) }
+		a.pushClip(a.renderer, shown)
+		t.clipped = true
 	}
-	if math.Abs(l.scale-1) > 1e-3 {
-		scaled := inner
-		inner = func() error { return a.withScale(l.scale, rect, scaled) }
-	}
-	return a.withOffset(l.dx, l.dy, inner)
+	t.fade = m.fade
+	m.fade = 1 - (1-m.fade)*max(0, min(1, l.opacity))
+	return t
 }
 
-// withViewport draws with r as the renderer's viewport, nil for the whole
-// window. Clip rects are within the viewport, so they move with it.
-func (a *App) withViewport(r *sdl.Rect, draw func() error) error {
+// endLayer undoes what beginLayer put in place.
+func (a *App) endLayer(t *layerToken) {
+	if !t.active {
+		return
+	}
+	a.motion.fade = t.fade
+	if t.clipped {
+		a.popClip(a.renderer)
+	}
+	if t.scaled {
+		a.endScale(t)
+	}
+	if t.moved {
+		a.endOffset(t)
+	}
+}
+
+// setViewport makes r the renderer's viewport, or the whole window.
+func (a *App) setViewport(r sdl.Rect, ok bool) {
 	m := &a.motion
-	old := m.viewport
-	m.viewport = r
-	if a.renderer != nil {
-		sdl.SetRenderViewport(a.renderer, r)
+	m.viewport, m.hasViewport = r, ok
+	if a.renderer == nil {
+		return
 	}
-	defer func() {
-		m.viewport = old
-		if a.renderer != nil {
-			sdl.SetRenderViewport(a.renderer, old)
-		}
-	}()
-	return draw()
+	if ok {
+		sdl.SetRenderViewport(a.renderer, &m.viewport)
+	} else {
+		sdl.SetRenderViewport(a.renderer, nil)
+	}
 }
 
-// withOffset draws what draw draws moved by dx, dy.
-func (a *App) withOffset(dx, dy float64, draw func() error) error {
-	x, y := int32(math.Round(dx)), int32(math.Round(dy))
-	if x == 0 && y == 0 {
-		return draw()
-	}
+// beginOffset moves what is drawn by x, y, by moving the viewport. The
+// clip in place is within the viewport; it stays where it is, so what
+// moves is cut by what it moves within, as rows by their list.
+func (a *App) beginOffset(t *layerToken, x, y int32) {
+	m := &a.motion
+	t.moved, t.viewport, t.hadViewport, t.clips = true, m.viewport, m.hasViewport, len(a.clips)
 	r := sdl.Rect{W: int32(a.winW), H: int32(a.winH)}
-	if v := a.motion.viewport; v != nil {
-		r = *v
+	if m.hasViewport {
+		r = m.viewport
 	}
 	r.X += x
 	r.Y += y
-	// The clip in place is within the viewport; it stays where it is, so
-	// what moves is cut by what it moves within, as rows by their list.
-	n := len(a.clips)
-	if n == 0 {
-		return a.withViewport(&r, draw)
+	a.setViewport(r, true)
+	if n := len(a.clips); n > 0 {
+		clip := a.clips[n-1]
+		clip.X -= x
+		clip.Y -= y
+		a.clips = append(a.clips, clip)
+		if a.renderer != nil {
+			sdl.SetRenderClipRect(a.renderer, &a.clips[n])
+		}
 	}
-	clip := a.clips[n-1]
-	clip.X -= x
-	clip.Y -= y
-	a.clips = append(a.clips, clip)
-	defer func() {
+}
+
+func (a *App) endOffset(t *layerToken) {
+	a.setViewport(t.viewport, t.hadViewport)
+	if n := t.clips; len(a.clips) > n {
 		a.clips = a.clips[:n]
 		if a.renderer != nil {
 			sdl.SetRenderClipRect(a.renderer, &a.clips[n-1])
 		}
-	}()
-	return a.withViewport(&r, func() error {
-		if a.renderer != nil {
-			sdl.SetRenderClipRect(a.renderer, &clip)
-		}
-		return draw()
-	})
+	}
 }
 
-// withScale draws what draw draws scaled by s about rect's centre: into a
-// texture the window's size, then drawn scaled.
-func (a *App) withScale(s float64, rect sdl.FRect, draw func() error) error {
+// layerMargin is how far past a scaled thing's rect its texture reaches,
+// in logical pixels, for the shadows drawn round it.
+const layerMargin = 64
+
+// beginScale draws what follows into a texture over rect and a margin
+// round it, which endScale draws scaled by s about rect's centre.
+func (a *App) beginScale(t *layerToken, s float64, rect sdl.FRect) {
 	m := &a.motion
-	tex := a.layerTexture(m.layerDepth)
+	if a.renderer == nil {
+		return
+	}
+	var ox, oy int32
+	if m.hasViewport {
+		ox, oy = m.viewport.X, m.viewport.Y
+	}
+	// The part of the window it covers, in the window's pixels.
+	margin := a.px(layerMargin)
+	x0 := max(0, int32(math.Floor(float64(rect.X-margin)))+ox)
+	y0 := max(0, int32(math.Floor(float64(rect.Y-margin)))+oy)
+	x1 := min(int32(a.winW), int32(math.Ceil(float64(rect.X+rect.W+margin)))+ox)
+	y1 := min(int32(a.winH), int32(math.Ceil(float64(rect.Y+rect.H+margin)))+oy)
+	if x1 <= x0 || y1 <= y0 {
+		return
+	}
+	tex := a.layerTexture(m.layerDepth, x1-x0, y1-y0)
 	if tex == nil {
-		return draw()
+		return
 	}
 	r := a.renderer
-	old := sdl.GetRenderTarget(r)
+	target := sdl.GetRenderTarget(r)
 	if !sdl.SetRenderTarget(r, tex) {
-		return draw()
+		return
 	}
+	*t = layerToken{skip: t.skip, active: t.active, moved: t.moved, hadViewport: t.hadViewport, viewport: t.viewport, clips: t.clips,
+		scaled: true, tex: tex, target: target, x0: x0, y0: y0, w: x1 - x0, h: y1 - y0, ox: ox, oy: oy, rect: rect, k: float32(s)}
 	m.layerDepth++
+	m.layersUsed = m.frame
 	// A texture keeps its own viewport and clip, so the ones in place are
-	// set on it, and the window's are back once it is done.
+	// set on it, moved so its corner is the region's, and the window's are
+	// back once it is done.
 	sdl.SetRenderDrawColor(r, 0, 0, 0, 0)
 	sdl.RenderClear(r)
-	sdl.SetRenderViewport(r, m.viewport)
+	vp := sdl.Rect{X: -x0, Y: -y0, W: int32(a.winW), H: int32(a.winH)}
+	if m.hasViewport {
+		vp = sdl.Rect{X: m.viewport.X - x0, Y: m.viewport.Y - y0, W: m.viewport.W, H: m.viewport.H}
+	}
+	sdl.SetRenderViewport(r, &vp)
 	if n := len(a.clips); n > 0 {
 		sdl.SetRenderClipRect(r, &a.clips[n-1])
 	} else {
 		sdl.SetRenderClipRect(r, nil)
 	}
-	err := draw()
-	m.layerDepth--
-	sdl.SetRenderTarget(r, old)
-	var ox, oy float32
-	if v := m.viewport; v != nil {
-		ox, oy = float32(v.X), float32(v.Y)
-	}
-	cx, cy, k := rect.X+rect.W/2, rect.Y+rect.H/2, float32(s)
-	dst := sdl.FRect{X: cx + (-ox-cx)*k, Y: cy + (-oy-cy)*k, W: float32(a.winW) * k, H: float32(a.winH) * k}
-	sdl.RenderTexture(r, tex, nil, &dst)
-	return err
 }
 
-// layerTexture is the texture scaled layers depth deep draw into, made
-// for the window's size.
-func (a *App) layerTexture(depth int) *sdl.Texture {
+func (a *App) endScale(t *layerToken) {
+	r := a.renderer
+	a.motion.layerDepth--
+	sdl.SetRenderTarget(r, t.target)
+	cx, cy, k := t.rect.X+t.rect.W/2, t.rect.Y+t.rect.H/2, t.k
+	left, top := float32(t.x0-t.ox), float32(t.y0-t.oy) // the region's corner within the viewport
+	src := sdl.FRect{W: float32(t.w), H: float32(t.h)}
+	dst := sdl.FRect{X: cx + (left-cx)*k, Y: cy + (top-cy)*k, W: float32(t.w) * k, H: float32(t.h) * k}
+	sdl.RenderTexture(r, t.tex, &src, &dst)
+}
+
+// layerTexture is a texture at least w by h for scaled layers depth deep
+// to draw into, grown as needed up to the window's size.
+func (a *App) layerTexture(depth int, w, h int32) *sdl.Texture {
 	m := &a.motion
-	if a.renderer == nil || a.winW <= 0 || a.winH <= 0 || depth > 3 {
+	if a.renderer == nil || depth > 3 {
 		return nil
 	}
 	for len(m.layers) <= depth {
@@ -516,25 +597,40 @@ func (a *App) layerTexture(depth int) *sdl.Texture {
 	}
 	tex := m.layers[depth]
 	if tex != nil {
-		var w, h float32
-		sdl.GetTextureSize(tex, &w, &h)
-		if int(w) != a.winW || int(h) != a.winH {
-			sdl.DestroyTexture(tex)
-			tex = nil
+		var tw, th float32
+		sdl.GetTextureSize(tex, &tw, &th)
+		if int32(tw) >= w && int32(th) >= h {
+			return tex
 		}
+		w, h = max(w, int32(tw)), max(h, int32(th))
+		sdl.DestroyTexture(tex)
 	}
+	tex = sdl.CreateTexture(a.renderer, sdl.PixelFormatRGBA32, sdl.TextureAccessTarget, w, h)
 	if tex == nil {
-		tex = sdl.CreateTexture(a.renderer, sdl.PixelFormatRGBA32, sdl.TextureAccessTarget, int32(a.winW), int32(a.winH))
-		if tex == nil {
-			return nil
-		}
-		// What is drawn into it is drawn blended over nothing, so its
-		// colours are premultiplied by their alpha.
-		sdl.SetTextureBlendMode(tex, sdl.BlendModeBlendPremultiplied)
-		sdl.SetTextureScaleMode(tex, sdl.ScaleModeLinear)
-		m.layers[depth] = tex
+		m.layers[depth] = nil
+		return nil
 	}
+	// What is drawn into it is drawn blended over nothing, so its colours
+	// are premultiplied by their alpha.
+	sdl.SetTextureBlendMode(tex, sdl.BlendModeBlendPremultiplied)
+	sdl.SetTextureScaleMode(tex, sdl.ScaleModeLinear)
+	m.layers[depth] = tex
 	return tex
+}
+
+// releaseLayers frees the textures scaled layers drew into once a frame
+// has gone by without one.
+func (a *App) releaseLayers() {
+	m := &a.motion
+	if len(m.layers) == 0 || m.layersUsed+1 >= m.frame {
+		return
+	}
+	for _, tex := range m.layers {
+		if tex != nil {
+			sdl.DestroyTexture(tex)
+		}
+	}
+	m.layers = nil
 }
 
 // faded runs draw with what it draws faded to opacity, within any fade

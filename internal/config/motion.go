@@ -272,6 +272,17 @@ func (a Animation) Length() float64 {
 	return length
 }
 
+// EndsAtRest reports whether each of a's tracks ends where it rests once
+// it has come in, as all but a from>to track ending elsewhere do.
+func (a Animation) EndsAtRest() bool {
+	for _, t := range a.Tracks {
+		if t.Pair && t.To != t.Rest() {
+			return false
+		}
+	}
+	return true
+}
+
 // Moves reports whether a moves anything.
 func (a Animation) Moves() bool { return a.Duration > 0 && (a.Glide || len(a.Tracks) > 0) }
 
@@ -320,7 +331,7 @@ func (p *AnimationPatch) Apply(a Animation) Animation {
 		a.Glide = p.Glide.V
 	}
 	if p.SetTracks {
-		a.Tracks = slices.Clone(p.Tracks)
+		a.Tracks = p.Tracks // tracks are never changed in place, so they are shared
 	}
 	return a
 }
@@ -486,7 +497,9 @@ func fadeOnly(t MotionTarget, a Animation) Animation {
 		return Animation{Easing: a.Easing}
 	}
 	a.Glide = false
-	a.Tracks = slices.DeleteFunc(slices.Clone(a.Tracks), func(t Track) bool { return t.Prop != "opacity" })
+	if slices.ContainsFunc(a.Tracks, func(t Track) bool { return t.Prop != "opacity" }) {
+		a.Tracks = slices.DeleteFunc(slices.Clone(a.Tracks), func(t Track) bool { return t.Prop != "opacity" })
+	}
 	return a
 }
 
