@@ -264,6 +264,7 @@ func uiOverlayFromLuaSpec(L *lua.LState, rt *Runtime, spec *lua.LTable) UIOverla
 			*field = size
 		}
 	}
+	overlay.Aside = luaUIAside(L, rt, "ui.create", spec.RawGetString("aside"))
 	anchorGiven := false
 	switch anchor := spec.RawGetString("anchor").(type) {
 	case *lua.LNilType:
@@ -365,6 +366,42 @@ func uiOverlayFromLuaSpec(L *lua.LState, rt *Runtime, spec *lua.LTable) UIOverla
 		}
 	}
 	return overlay
+}
+
+// luaUIAside reads an aside, { side =, width =, draw = }, or nil for none:
+// on the right, 40% of the window wide, unless they say.
+func luaUIAside(L *lua.LState, rt *Runtime, name string, value lua.LValue) *UIAside {
+	if value == lua.LNil {
+		return nil
+	}
+	table, ok := value.(*lua.LTable)
+	if !ok {
+		L.RaiseError("%s: aside is a table of side, width and draw", name)
+	}
+	aside := &UIAside{Side: "right", Width: UISize{Value: 40, Percent: true}}
+	switch side := table.RawGetString("side").(type) {
+	case *lua.LNilType:
+	case lua.LString:
+		if side != "left" && side != "right" {
+			L.RaiseError("%s: an aside's side is left or right, not %q", name, string(side))
+		}
+		aside.Side = string(side)
+	default:
+		L.RaiseError("%s: an aside's side is left or right", name)
+	}
+	if width := table.RawGetString("width"); width != lua.LNil {
+		size, err := luaUISize(width)
+		if err != nil {
+			L.RaiseError("%s: aside width %v", name, err)
+		}
+		aside.Width = size
+	}
+	fn, ok := table.RawGetString("draw").(*lua.LFunction)
+	if !ok {
+		L.RaiseError("%s: an aside needs a draw function", name)
+	}
+	aside.Draw = rt.registerCallback(fn)
+	return aside
 }
 
 // luaUISize reads a size: a number of logical pixels, or a string such as
@@ -488,6 +525,13 @@ func newLuaView(L *lua.LState, rt *Runtime, overlay UIOverlay) *lua.LTable {
 		L.SetField(view, "detail", lua.LString(overlay.Detail))
 		if shown() {
 			rt.host.SetUIDetail(overlay.ID, overlay.Detail)
+		}
+		return 0
+	}))
+	L.SetField(view, "set_aside", L.NewFunction(func(L *lua.LState) int {
+		overlay.Aside = luaUIAside(L, rt, "view:set_aside", L.Get(2))
+		if shown() {
+			rt.host.SetUIAside(overlay.ID, overlay.Aside)
 		}
 		return 0
 	}))

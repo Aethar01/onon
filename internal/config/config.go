@@ -142,12 +142,23 @@ type luaGeneration struct {
 	themeChoice     string
 }
 
+// UIAside is a part of a list view beside its rows, on its Side, left or
+// right, under its header: the view grows to that side by Width, and the
+// Lua function Draw draws in it.
+type UIAside struct {
+	Side  string
+	Width UISize
+	Draw  string
+}
+
 type UIOverlay struct {
 	ID    string
 	Title string
 	// Detail is drawn muted on the right of the header, as onon's own
 	// menus draw their counts.
-	Detail     string
+	Detail string
+	// Aside, if set, is a part of a list view beside its rows.
+	Aside      *UIAside
 	Rows       []UIListRow
 	Selected   int
 	Scroll     int
@@ -395,6 +406,8 @@ type Host interface {
 	// fields.
 	SetUITitle(id, title string)
 	SetUIDetail(id, detail string)
+	// SetUIAside gives a view an aside, or takes it away for nil.
+	SetUIAside(id string, aside *UIAside)
 	UIFields(id string) map[string]string
 	// UIField and SetUIField get and set the text of a view's text field.
 	UIField(id, field string) string

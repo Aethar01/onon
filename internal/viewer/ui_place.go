@@ -262,7 +262,7 @@ func (a *App) viewGeometry(view *uiView) (sdl.FRect, int) {
 		winW: a.winW, winH: a.winH, status: a.statusVisible(), doc: edges.doc, panel: edges.panel(view), styles: a.styles, font: a.fontFace, scale: a.uiScale,
 		panels: a.views.layoutGen, rows: len(view.visibleRows()), place: view.place,
 		headless: view.headless, titles: view.hasColumnTitles(), body: view.drawBody != nil,
-		content: a.listContentWidth(view),
+		content: a.listContentWidth(view), aside: view.aside.key(),
 	}
 	if g := &view.geometry; g.ok && g.key == key {
 		return g.rect, g.rows
@@ -285,6 +285,7 @@ type viewGeometryKey struct {
 	panels                 uint64
 	rows                   int
 	place                  viewPlacement
+	aside                  asideKey
 	headless, titles, body bool
 	content                int
 }
@@ -328,12 +329,21 @@ func (a *App) placeView(view *uiView) (sdl.FRect, int) {
 		w = max(w, min(least, areaW))
 		h = max(h, min(160, areaH))
 	}
+	// An aside widens the view to its side, and keeps it its full height,
+	// however few its rows, for the aside to draw in.
+	if aside := a.asideWidth(view); aside > 0 {
+		w = min(w+aside, max(1, areaW))
+	}
 	rows := max(1, (h-head-bottom)/rowHeight)
 	full := h
 	if fit {
 		full = min(h, head+rows*rowHeight+bottom)
 		rows = min(rows, max(1, len(view.visibleRows())))
-		h = min(full, head+rows*rowHeight+bottom)
+		if view.aside == nil {
+			h = min(full, head+rows*rowHeight+bottom)
+		} else {
+			h = full
+		}
 	}
 	if p.at != nil {
 		return a.pinnedRect(*p.at, p.anchor, w, h), rows

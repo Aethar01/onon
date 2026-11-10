@@ -71,6 +71,9 @@ type uiView struct {
 	title      string
 	// detail is drawn muted on the right of the header, after the title.
 	detail string
+	// aside, if set, is a part of the panel beside the rows, under the
+	// header, that a function draws: see view_aside.go.
+	aside *viewAside
 	// header, if set, gives the header's title and detail for the rows
 	// shown, in place of the title, the detail and the query.
 	header   func(*App, *uiView, int) (string, string)
@@ -424,12 +427,14 @@ func (a *App) viewBottomPadding(view *uiView) int {
 // drawn, or a draw function draws.
 func (a *App) uiViewBody(view *uiView) sdl.FRect {
 	rect, _ := view.frameGeometry(a)
+	rect = a.listPart(view, rect)
 	head := float32(a.uiViewHeadHeight(view))
 	return sdl.FRect{X: rect.X, Y: rect.Y + head, W: rect.W, H: max(0, rect.H-head)}
 }
 
 // viewRowBox is the box of a row of view at y.
 func (a *App) viewRowBox(view *uiView, panel sdl.FRect, y, rowHeight int) sdl.FRect {
+	panel = a.listPart(view, panel)
 	_, right, _, left := a.viewInsets(view)
 	return sdl.FRect{X: panel.X + left, Y: float32(y), W: panel.W - left - right, H: float32(rowHeight)}
 }
@@ -743,6 +748,7 @@ func (a *App) drawUIViewContent(renderer *sdl.Renderer, view *uiView, rect sdl.F
 		err = drawRows()
 	}
 	a.drawViewScrollbar(renderer, view)
+	a.drawViewAside(renderer, view)
 	return err
 }
 
@@ -1139,6 +1145,7 @@ func (a *App) uiViewIndexAt(view *uiView, x, y int) (uiRow, bool) {
 		return uiRow{}, false
 	}
 	rect, rows := view.frameGeometry(a)
+	rect = a.listPart(view, rect)
 	rowHeight, head := a.modalListRowHeight(), a.uiViewHeadHeight(view)
 	if _, ok := a.modalListRowAt(rect, rows, head, rowHeight, x, y); !ok {
 		return uiRow{}, false

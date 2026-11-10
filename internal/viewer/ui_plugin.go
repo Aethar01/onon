@@ -192,6 +192,7 @@ func (a *App) createLuaView(spec config.UIOverlay) *uiView {
 		view.searchable = false // typing goes to the prompt, without /
 	}
 	rt := a.runtime
+	view.aside = a.luaAside(view, spec.Aside)
 	if spec.Draw != "" {
 		view.drawBody = func(a *App, canvas *elementCanvas, state config.DrawState) (bool, error) {
 			if a.staleLuaView(view) {
