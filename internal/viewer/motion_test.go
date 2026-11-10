@@ -4,6 +4,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"unsafe"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
 	lua "github.com/yuin/gopher-lua"
@@ -234,4 +235,46 @@ func TestReducedMotionIsReadAtMostOnceAWhile(t *testing.T) {
 	app.motion.osReadAt = time.Now().Add(-osMotionReadInterval)
 	app.refreshReducedMotion()
 	<-reads
+}
+
+// TestMovedWithinScaledLayer draws something moved within a scaled layer,
+// as a menu's rows drift in while the menu zooms, and something after it,
+// and finds both where they are moved to: the viewport moving them is set
+// on the layer's texture, whose corner is not the window's.
+func TestMovedWithinScaledLayer(t *testing.T) {
+	surface := sdl.CreateSurface(200, 200, sdl.PixelFormatARGB8888)
+	renderer := sdl.CreateSoftwareRenderer(surface)
+	if renderer == nil {
+		t.Skip("no software renderer")
+	}
+	defer func() { sdl.DestroyRenderer(renderer); sdl.DestroySurface(surface) }()
+	app := testLayoutApp(1)
+	app.winW, app.winH = 200, 200
+	app.renderer = renderer
+	app.beginMotionFrame()
+
+	sdl.SetRenderDrawColor(renderer, 0, 0, 0, 255)
+	sdl.RenderClear(renderer)
+	panel := sdl.FRect{X: 80, Y: 80, W: 40, H: 40}
+	outer := app.beginLayer(layer{opacity: 1, scale: 1.002}, panel)
+	inner := app.beginLayer(layer{opacity: 1, scale: 1, dy: 4}, panel)
+	sdl.SetRenderDrawColor(renderer, 255, 0, 0, 255)
+	sdl.RenderFillRect(renderer, &sdl.FRect{X: 90, Y: 90, W: 6, H: 6})
+	app.endLayer(&inner)
+	sdl.SetRenderDrawColor(renderer, 0, 255, 0, 255)
+	sdl.RenderFillRect(renderer, &sdl.FRect{X: 110, Y: 110, W: 6, H: 6})
+	app.endLayer(&outer)
+	sdl.FlushRenderer(renderer)
+
+	pix := unsafe.Slice((*byte)(surface.Pixels), int(surface.H)*int(surface.Pitch))
+	at := func(x, y int) (r, g byte) {
+		i := y*int(surface.Pitch) + x*4 // ARGB8888 is B, G, R, A in memory
+		return pix[i+2], pix[i+1]
+	}
+	if r, _ := at(93, 97); r < 200 {
+		t.Errorf("moved rect not at (90, 94): red %d there", r)
+	}
+	if _, g := at(113, 113); g < 200 {
+		t.Errorf("rect after the move not at (110, 110): green %d there", g)
+	}
 }

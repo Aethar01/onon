@@ -34,10 +34,13 @@ type motionState struct {
 	// into, one for each depth of them, and layerDepth how deep it is.
 	viewport    sdl.Rect
 	hasViewport bool
-	layers      []*sdl.Texture
-	layerDepth  int
-	layersUsed  uint64      // the last frame a scaled layer was drawn
-	osReduced   atomic.Bool // the OS asks for less motion; see reducedMotion
+	// regionX, regionY is the window corner of the scaled layer's texture
+	// being drawn into, which the viewport is set on less that corner.
+	regionX, regionY int32
+	layers           []*sdl.Texture
+	layerDepth       int
+	layersUsed       uint64      // the last frame a scaled layer was drawn
+	osReduced        atomic.Bool // the OS asks for less motion; see reducedMotion
 	// osReading is whether the OS's setting is being read, and osReadAt
 	// when it was last read; see refreshReducedMotion.
 	osReading atomic.Bool
@@ -410,6 +413,8 @@ type layerToken struct {
 	ox, oy       int32
 	rect         sdl.FRect
 	k            float32
+	// regionX, regionY: the corner of the texture drawn into before.
+	regionX, regionY int32
 }
 
 // beginLayer starts drawing what is laid out at rect as l says: moved,
@@ -472,18 +477,25 @@ func (a *App) endLayer(t *layerToken) {
 	}
 }
 
-// setViewport makes r the renderer's viewport, or the whole window.
+// setViewport makes r, in the window, the renderer's viewport, or the
+// whole window. Within a scaled layer it is set on the layer's texture,
+// moved by the texture's corner.
 func (a *App) setViewport(r sdl.Rect, ok bool) {
 	m := &a.motion
 	m.viewport, m.hasViewport = r, ok
 	if a.renderer == nil {
 		return
 	}
-	if ok {
-		sdl.SetRenderViewport(a.renderer, &m.viewport)
-	} else {
+	if !ok && m.regionX == 0 && m.regionY == 0 {
 		sdl.SetRenderViewport(a.renderer, nil)
+		return
 	}
+	if !ok {
+		r = sdl.Rect{W: int32(a.winW), H: int32(a.winH)}
+	}
+	r.X -= m.regionX
+	r.Y -= m.regionY
+	sdl.SetRenderViewport(a.renderer, &r)
 }
 
 // beginOffset moves what is drawn by x, y, by moving the viewport. The
@@ -554,19 +566,18 @@ func (a *App) beginScale(t *layerToken, s float64, rect sdl.FRect) {
 		return
 	}
 	*t = layerToken{skip: t.skip, active: t.active, moved: t.moved, hadViewport: t.hadViewport, viewport: t.viewport, clips: t.clips,
-		scaled: true, tex: tex, target: target, x0: x0, y0: y0, w: x1 - x0, h: y1 - y0, ox: ox, oy: oy, rect: rect, k: float32(s)}
+		scaled: true, tex: tex, target: target, x0: x0, y0: y0, w: x1 - x0, h: y1 - y0, ox: ox, oy: oy, rect: rect, k: float32(s),
+		regionX: m.regionX, regionY: m.regionY}
 	m.layerDepth++
 	m.layersUsed = m.frame
 	// A texture keeps its own viewport and clip, so the ones in place are
 	// set on it, moved so its corner is the region's, and the window's are
-	// back once it is done.
+	// back once it is done. Viewports set while drawing into it are moved
+	// the same way; see setViewport.
 	sdl.SetRenderDrawColor(r, 0, 0, 0, 0)
 	sdl.RenderClear(r)
-	vp := sdl.Rect{X: -x0, Y: -y0, W: int32(a.winW), H: int32(a.winH)}
-	if m.hasViewport {
-		vp = sdl.Rect{X: m.viewport.X - x0, Y: m.viewport.Y - y0, W: m.viewport.W, H: m.viewport.H}
-	}
-	sdl.SetRenderViewport(r, &vp)
+	m.regionX, m.regionY = x0, y0
+	a.setViewport(m.viewport, m.hasViewport)
 	if n := len(a.clips); n > 0 {
 		sdl.SetRenderClipRect(r, &a.clips[n-1])
 	} else {
@@ -576,7 +587,9 @@ func (a *App) beginScale(t *layerToken, s float64, rect sdl.FRect) {
 
 func (a *App) endScale(t *layerToken) {
 	r := a.renderer
-	a.motion.layerDepth--
+	m := &a.motion
+	m.layerDepth--
+	m.regionX, m.regionY = t.regionX, t.regionY
 	sdl.SetRenderTarget(r, t.target)
 	cx, cy, k := t.rect.X+t.rect.W/2, t.rect.Y+t.rect.H/2, t.k
 	left, top := float32(t.x0-t.ox), float32(t.y0-t.oy) // the region's corner within the viewport
