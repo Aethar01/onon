@@ -28,8 +28,6 @@ type windowGroup struct {
 	// nativeTabs is whether the system gathers the windows into tabs, as
 	// native_tabs said when the first opened.
 	nativeTabs *bool
-	// previews are the documents plugins opened without a tab.
-	previews previewState
 }
 
 // windowGroup returns the group a belongs to, a group of its own for an

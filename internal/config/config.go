@@ -127,7 +127,6 @@ type luaGeneration struct {
 	pluginCatalog    *pluginCatalog
 	plugins          *pluginState
 	operations       map[int]*pluginOperation
-	previews         map[int]bool // documents plugins opened without a tab, by id
 	pluginGeneration int
 	draw             drawCache
 	// loadingConfig is set while config.lua runs, which records its
