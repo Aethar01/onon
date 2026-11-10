@@ -52,6 +52,24 @@ func (a *App) promptInBar() bool {
 	return a.mode != modeNormal && !floating
 }
 
+// setMode opens, closes or switches the prompt. A prompt in the status bar
+// shows the bar while it is open, so when that shows or hides the bar the
+// change is a relayout like the bar toggled: it slides as motion.edges
+// says, and the page keeps its place.
+func (a *App) setMode(m mode) {
+	old := a.mode
+	if m == old {
+		return
+	}
+	before := a.statusVisible()
+	a.mode = m
+	if a.statusVisible() == before {
+		return
+	}
+	a.mode = old
+	a.relayoutWithViewportAnchor(func() { a.mode = m })
+}
+
 func (a *App) promptLayout() promptLayout {
 	p, floating := a.floatingPrompt()
 	if !floating {

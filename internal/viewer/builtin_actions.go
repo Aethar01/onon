@@ -149,7 +149,7 @@ func (a *App) startPan() {
 
 func (a *App) openInputMode(m mode) {
 	a.closeAllUI()
-	a.mode = m
+	a.setMode(m)
 	a.input.Reset()
 }
 

@@ -437,7 +437,7 @@ func (a *App) commitInputMode() {
 	if verbatim {
 		input = a.input.Value
 	}
-	a.mode = modeNormal
+	a.setMode(modeNormal)
 	a.input.Reset()
 	a.closeCompletion()
 	if input == "" && !verbatim {

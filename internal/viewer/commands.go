@@ -129,7 +129,7 @@ func (a *App) closeAllUIWithCallbacks(callCallbacks bool) {
 		if a.mode == modePrompt {
 			a.cancelPrompt()
 		}
-		a.mode = modeNormal
+		a.setMode(modeNormal)
 		a.input.Reset()
 		a.ignoreText = ""
 	}
@@ -151,7 +151,7 @@ func (a *App) closeActiveUI() {
 		if a.mode == modePrompt {
 			a.cancelPrompt()
 		}
-		a.mode = modeNormal
+		a.setMode(modeNormal)
 		a.input.Reset()
 		a.ignoreText = ""
 		return
