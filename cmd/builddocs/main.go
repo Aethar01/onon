@@ -91,6 +91,7 @@ func renderReference(luaRefs []config.LuaReferenceEntry, luaDocs map[string]stri
 	b.WriteString("Every table onon gives Lua code or takes from it, with its fields. A type such as `string[]` is a list, and `{ [string]: string }` a table keyed by strings. The fields of a table onon takes may be left out unless they say they are required.\n\n")
 	b.WriteString("- `onon.document`: see [Document](#document).\n")
 	b.WriteString("- `onon.platform`: see [Platform](#platform).\n")
+	b.WriteString("- `onon.config`: the configuration's own [Plugin module](#plugin-module); see [Plugins in config.lua](#plugins-in-configlua).\n")
 	b.WriteString("- `onon.options` (alias `onon.o`): all entries from the configuration-options table.\n")
 	b.WriteString("- `onon.theme`: the theme; see [Theme](#theme). Read or assign whole, or one field at a time.\n")
 	b.WriteString("- `onon.themes`: each built-in theme as a fresh table, such as `onon.themes.birch`.\n")

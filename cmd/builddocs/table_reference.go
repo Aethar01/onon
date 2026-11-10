@@ -132,7 +132,7 @@ var luaTableGroups = []luaTableGroup{
 				{"default", "any", "Its value until set; `false`, `0`, `\"\"` or `{}`, by its type, unless given."},
 				{"description", "string", "What it does."},
 			}},
-			{"Plugin module", "What `onon.plugin.register` and `require(\"plugin-id\")` return. Its functions are methods, called with `:` as `plugin:on(\"page_changed\", callback)`; the `register_*` functions and `on` work only while the plugin is loading. Fields assigned on it are kept as the plugin's own.", []luaField{
+			{"Plugin module", "What `onon.plugin.register` and `require(\"plugin-id\")` return; `onon.config` is the configuration's own. Its functions are methods, called with `:` as `plugin:on(\"page_changed\", callback)`; the `register_*` functions and `on` work only while the plugin is loading. Fields assigned on it are kept as the plugin's own.", []luaField{
 				{"id", "string", "The plugin's ID."},
 				{"version", "string", "The manifest's version, or empty."},
 				{"actions", "table", "The plugin's actions by name, as `register_action` returned them."},
@@ -247,7 +247,7 @@ var luaTableGroups = []luaTableGroup{
 // a section of their own.
 var luaEventTables = luaTableGroup{
 	name:  "Events",
-	intro: "What `plugin:on(event, callback)` gives its callback. `shutdown` gives an empty table.",
+	intro: "What `plugin:on(event, callback)` and `onon.config:on(event, callback)` give their callbacks. `shutdown` gives an empty table.",
 	tables: []luaTable{
 		{"Document event", "`app_ready`, `document_opened`, `document_reloaded`, `config_reloaded`, `document_close_pre` and `document_closed`.", []luaField{
 			{"document", "table", "`path`, `name`, and `page_count`, an integer, of the document concerned; `path` is empty when none is open."},
@@ -317,7 +317,7 @@ var luaTableLocations = map[string]string{
 	"Plugin manifest":    "`onon-plugin.json`",
 	"Plugin spec":        "`onon.plugin.register(id[, spec])`",
 	"Option declaration": "plugin spec `options`",
-	"Plugin module":      "`onon.plugin.register()` / `require()` result",
+	"Plugin module":      "`onon.plugin.register()` / `require()` result, and `onon.config`",
 	"Action spec":        "`plugin:register_action()`",
 	"Command spec":       "`plugin:register_command()`",
 	"Command context":    "plugin command callback",
