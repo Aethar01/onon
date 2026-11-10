@@ -1,7 +1,6 @@
 package viewer
 
 import (
-	"fmt"
 	"image/color"
 	"math"
 	"slices"
@@ -40,53 +39,26 @@ type uiRow struct {
 	highlight [2]int
 }
 
-// splitHeader splits a panel header such as "Outline /query (3/10)" into
-// its title and the detail after it, drawn muted.
-func splitHeader(header string) (title, detail string) {
-	cut := len(header)
-	for _, sep := range []string{" /", " ("} {
-		if i := strings.Index(header, sep); i > 0 && i < cut {
-			cut = i
-		}
-	}
-	title, detail = header[:cut], strings.TrimSpace(header[cut:])
-	// Only the parentheses around the trailing count go; a query keeps its own.
-	if strings.HasSuffix(detail, ")") {
-		if i := strings.LastIndex(detail, " ("); i >= 0 {
-			detail = detail[:i] + "  " + detail[i+2:len(detail)-1]
-		} else if strings.HasPrefix(detail, "(") {
-			detail = detail[1 : len(detail)-1]
-		}
-	}
-	return title, detail
-}
-
 // headerText is the title of view's header and the detail drawn muted on
 // its right, with the query and its count while the rows are searched.
 func (v *uiView) headerText(a *App, shown int) (title, detail string) {
 	if v.header != nil {
-		return splitHeader(v.header(a, v, shown))
+		return v.header(a, v, shown)
 	}
-	search := ""
-	if v.searching || v.query != "" {
-		search = fmt.Sprintf("/%s (%d/%d)", v.query, shown, len(v.rows))
-	}
-	title = v.title
+	title, detail = v.title, v.detail
 	if title == "" {
 		title = "Menu"
 	}
-	if !v.ownTitle {
-		if search != "" {
-			title += " " + search
-		}
-		return splitHeader(title)
-	}
-	detail = v.detail
-	if search != "" {
-		_, search = splitHeader("_ " + search)
-		detail = strings.TrimSpace(detail + "  " + search)
+	if v.searching || v.query != "" {
+		detail = strings.TrimSpace(detail + "  " + searchDetail(v.query, shown, len(v.rows)))
 	}
 	return title, detail
+}
+
+// searchDetail is what a header's detail says while its rows are searched:
+// the query, and how many of them match it.
+func searchDetail(query string, shown, total int) string {
+	return "/" + query + "  " + formatCount(shown, total)
 }
 
 // uiView is a menu or panel: onon's own and plugins' alike. Its body is
@@ -97,14 +69,11 @@ type uiView struct {
 	owner      string
 	generation int
 	title      string
-	// detail is drawn muted on the right of the header. A view with
-	// ownTitle, as plugins' are, draws its title as it is; onon's own
-	// split theirs with splitHeader.
-	detail   string
-	ownTitle bool
-	// header, if set, is the header's text for the rows shown, in place of
-	// the title and the query; empty is what an empty list says.
-	header   func(*App, *uiView, int) string
+	// detail is drawn muted on the right of the header, after the title.
+	detail string
+	// header, if set, gives the header's title and detail for the rows
+	// shown, in place of the title, the detail and the query.
+	header   func(*App, *uiView, int) (string, string)
 	empty    func(*App, *uiView) string
 	headless bool           // no header: the rows or body start below the panel's padding
 	element  config.Element // the panel's

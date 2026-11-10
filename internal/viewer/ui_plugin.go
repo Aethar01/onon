@@ -163,7 +163,6 @@ func (a *App) createLuaView(spec config.UIOverlay) *uiView {
 		generation: spec.Generation,
 		title:      spec.Title,
 		detail:     spec.Detail,
-		ownTitle:   true,
 		rows:       uiRowsFromConfig(spec.Rows),
 		selected:   selected,
 		scroll:     max(0, spec.Scroll),

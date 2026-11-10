@@ -79,21 +79,6 @@ func TestStatusBarStylePillFloatsOverThePage(t *testing.T) {
 	}
 }
 
-func TestSplitHeader(t *testing.T) {
-	for header, want := range map[string][2]string{
-		"Help":                          {"Help", ""},
-		"Outline (12)":                  {"Outline", "12"},
-		"Outline /intro (3/12)":         {"Outline", "/intro  3/12"},
-		"Outline /foo(bar) (3/10)":      {"Outline", "/foo(bar)  3/10"},
-		"Outline /a (b) (1/2)":          {"Outline", "/a (b)  1/2"},
-		"Press keys for zoom (Esc ...)": {"Press keys for zoom", "Esc ..."},
-	} {
-		if title, detail := splitHeader(header); title != want[0] || detail != want[1] {
-			t.Errorf("splitHeader(%q) = %q, %q; want %q, %q", header, title, detail, want[0], want[1])
-		}
-	}
-}
-
 func TestShortListPanelFitsItsRows(t *testing.T) {
 	app := testStyleApp("bar")
 	list := func(n int) *uiView {

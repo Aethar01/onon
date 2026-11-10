@@ -1,7 +1,6 @@
 package viewer
 
 import (
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -29,7 +28,8 @@ func (a *App) showSearchMatches() {
 		rows[i] = uiRow{index: i, key: "p. " + a.pageLabel(ref.page), text: text, highlight: highlight, value: strconv.Itoa(i)}
 	}
 	current := a.search.current
-	view := a.showRowList("matches", fmt.Sprintf("Matches for /%s", a.search.query), rows, 80, 40, func(view *uiView) {
+	view := a.showRowList("matches", "Matches for", rows, 80, 40, func(view *uiView) {
+		view.detail = "/" + a.search.query
 		preview := a.previewDocument(view, func(a *App, row uiRow) { a.previewSearchMatch(view, row.index) })
 		view.onClose = func(a *App) {
 			preview.restore(a)

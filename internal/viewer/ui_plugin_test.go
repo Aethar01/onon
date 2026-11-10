@@ -307,10 +307,14 @@ view:show()`)
 	if _, detail := v.headerText(app, 2); detail != "newest first" {
 		t.Fatalf("detail after set_detail = %q", detail)
 	}
-	// onon's own views still split theirs.
-	own := &uiView{title: "Outline (3)"}
-	if title, detail := own.headerText(app, 3); title != "Outline" || detail != "3" {
+	// onon's own titles are drawn whole too, as Print does a document's name.
+	own := &uiView{title: "Print Paper (draft).pdf", rows: []uiRow{{text: "a"}, {text: "b"}, {text: "c"}}}
+	if title, detail := own.headerText(app, 3); title != "Print Paper (draft).pdf" || detail != "" {
 		t.Fatalf("own header = %q, %q", title, detail)
+	}
+	own.query = "a (b)"
+	if _, detail := own.headerText(app, 1); detail != "/a (b)  1/3" {
+		t.Fatalf("own searched detail = %q", detail)
 	}
 }
 
