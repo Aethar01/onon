@@ -71,44 +71,59 @@ func newLuaDocumentTable(L *lua.LState, rt *Runtime) *lua.LTable {
 
 func newLuaPluginDocument(L *lua.LState, instance *pluginInstance) *lua.LTable {
 	document := L.NewTable()
-	L.SetField(document, "page_text", L.NewFunction(func(L *lua.LState) int {
-		page := L.CheckInt(2)
-		callback, ok := L.Get(3).(*lua.LFunction)
+	host := func() any { return instance.runtime.documentHost() }
+	r, owner := instance.runtime, instance.manifest.ID
+	L.SetField(document, "page_text", L.NewFunction(luaPageTextQuery(r, owner, "document.page_text", 2, host)))
+	L.SetField(document, "page_links", L.NewFunction(luaPageLinksQuery(r, owner, "document.page_links", 2, host)))
+	return document
+}
+
+// luaPageTextQuery and luaPageLinksQuery read a page's text and links on
+// an operation of owner's, page and callback at arg and arg+1, of the
+// document host gives as they are called: plugin.document's, or a
+// background document's.
+func luaPageTextQuery(r *Runtime, owner, name string, arg int, host func() any) lua.LGFunction {
+	return func(L *lua.LState) int {
+		page := L.CheckInt(arg)
+		callback, ok := L.Get(arg + 1).(*lua.LFunction)
 		if !ok {
-			L.RaiseError("plugin %s document.page_text: expected callback", instance.manifest.ID)
+			L.RaiseError("%s: expected callback", name)
 		}
-		host, ok := instance.runtime.documentHost().(DocumentPageTextHost)
+		h, ok := host().(DocumentPageTextHost)
 		if !ok {
-			L.RaiseError("plugin %s document.page_text: viewer host unavailable", instance.manifest.ID)
+			L.RaiseError("%s: viewer host unavailable", name)
 		}
-		id := instance.runtime.startPluginOperation(instance.manifest.ID, "document.page_text", callback, func(ctx context.Context) map[string]any {
+		id := r.startPluginOperation(owner, name, callback, func(ctx context.Context) map[string]any {
 			if err := ctx.Err(); err != nil {
 				return operationError(err)
 			}
-			text, err := host.PageText(page)
+			text, err := h.PageText(page)
 			if err != nil {
 				return operationError(err)
 			}
 			return map[string]any{"success": true, "error": "", "page": page, "text": text}
 		})
-		L.Push(newPluginOperationHandle(L, instance.runtime, id))
+		L.Push(newPluginOperationHandle(L, r, id))
 		return 1
-	}))
-	L.SetField(document, "page_links", L.NewFunction(func(L *lua.LState) int {
-		page := L.CheckInt(2)
-		callback, ok := L.Get(3).(*lua.LFunction)
+	}
+}
+
+func luaPageLinksQuery(r *Runtime, owner, name string, arg int, host func() any) lua.LGFunction {
+	return func(L *lua.LState) int {
+		page := L.CheckInt(arg)
+		callback, ok := L.Get(arg + 1).(*lua.LFunction)
 		if !ok {
-			L.RaiseError("plugin %s document.page_links: expected callback", instance.manifest.ID)
+			L.RaiseError("%s: expected callback", name)
 		}
-		host, ok := instance.runtime.documentHost().(DocumentPageLinksHost)
+		h, ok := host().(DocumentPageLinksHost)
 		if !ok {
-			L.RaiseError("plugin %s document.page_links: viewer host unavailable", instance.manifest.ID)
+			L.RaiseError("%s: viewer host unavailable", name)
 		}
-		id := instance.runtime.startPluginOperation(instance.manifest.ID, "document.page_links", callback, func(ctx context.Context) map[string]any {
+		id := r.startPluginOperation(owner, name, callback, func(ctx context.Context) map[string]any {
 			if err := ctx.Err(); err != nil {
 				return operationError(err)
 			}
-			links, err := host.PageLinks(page)
+			links, err := h.PageLinks(page)
 			if err != nil {
 				return operationError(err)
 			}
@@ -118,10 +133,9 @@ func newLuaPluginDocument(L *lua.LState, instance *pluginInstance) *lua.LTable {
 			}
 			return map[string]any{"success": true, "error": "", "page": page, "links": values}
 		})
-		L.Push(newPluginOperationHandle(L, instance.runtime, id))
+		L.Push(newPluginOperationHandle(L, r, id))
 		return 1
-	}))
-	return document
+	}
 }
 
 func luaDocumentMetadata(L *lua.LState, value DocumentMetadata) *lua.LTable {

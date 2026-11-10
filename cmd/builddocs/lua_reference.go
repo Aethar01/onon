@@ -97,7 +97,7 @@ var luaFunctionGroups = []struct {
 	name      string
 	functions []string
 }{
-	{"Opening documents", []string{"open", "open_external", "recent_files", "pick_file", "pick_directory", "register_scheme", "formats.extensions", "formats.supports"}},
+	{"Opening documents", []string{"open", "load_document", "open_external", "recent_files", "pick_file", "pick_directory", "register_scheme", "formats.extensions", "formats.supports"}},
 	{"Pages and view", []string{"page", "page_count", "goto_document_point", "zoom", "fit_mode", "rotation", "render_mode", "fullscreen"}},
 	{"Search", []string{"search", "search_query", "search_match_count", "search_match_index"}},
 	{"Tabs", []string{"tabs.list", "tabs.current", "tabs.open", "tabs.select", "tabs.close"}},

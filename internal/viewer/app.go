@@ -131,6 +131,7 @@ func (a *App) Close() {
 	if f := g.focused; f != nil && f.window != nil {
 		f.rememberTabs() // only a window that was shown, not one a test made
 	}
+	a.closeBackgroundDocuments()
 	for _, w := range g.windows {
 		w.closeWindow()
 	}
@@ -153,6 +154,7 @@ func (a *App) closeWindow() {
 	for _, t := range a.tabList() {
 		a.withTab(t, a.closeTabDocument)
 	}
+	a.dropBackgroundPages()
 	a.stopTextInput()
 	a.sdlState.Close()
 }
