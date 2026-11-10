@@ -67,7 +67,7 @@ func renderPortableReference(b *strings.Builder) {
 // module's functions, and the life of what it starts.
 func renderPluginReference(b *strings.Builder) {
 	b.WriteString("\n## Plugins\n\n")
-	b.WriteString("Plugins are discovered without being executed. Enable one explicitly with `local plugin = require(\"plugin-id\")`; only the required plugin and its declared dependencies execute. The entrypoint must call `onon.plugin.register(\"plugin-id\"[, spec])`; `require` returns the registered module.\n\n")
+	b.WriteString("Plugins are discovered without being executed. Enable one explicitly with `local plugin = require(\"plugin-id\")`; only the required plugin and its declared dependencies execute. The entrypoint must call `onon.plugin.register(\"plugin-id\"[, spec])`; `require` returns the registered module. A plugin's own modules load as Lua's `require` finds them, from its `lua` directory: `require(\"plugin-id.util\")` loads `lua/plugin-id/util.lua`, beside the entrypoint, and `require(\"util\")` loads `lua/util.lua`. Each plugin's modules are its own.\n\n")
 	b.WriteString("A plugin may describe itself in a [Plugin manifest](#plugin-manifest), `onon-plugin.json`, and declares its options in a [Plugin spec](#plugin-spec). The [Plugin module](#plugin-module) `register` returns has the functions below, and those that register actions, commands and event callbacks. Registered actions use `plugin-id.action`; commands use `:plugin-id-command`, where the command name cannot contain `-`; options use `plugin-id.option`.\n\n")
 	renderAPITable(b, "Function", pluginFunctions)
 

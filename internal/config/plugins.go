@@ -319,9 +319,12 @@ func containsPluginDependency(dependencies []string, id string) bool {
 	return false
 }
 
+// pluginLocalModulePath finds a plugin's own module as Lua's require
+// does, its lua directory being the root: "plugin-id.util" is
+// lua/plugin-id/util.lua or lua/plugin-id/util/init.lua, beside the
+// entrypoint, and "util" lua/util.lua.
 func pluginLocalModulePath(manifest pluginManifest, name string) (string, string, bool) {
 	name = strings.TrimSpace(name)
-	name = strings.TrimPrefix(name, manifest.ID+".")
 	if name == "" || strings.ContainsAny(name, `/\\`) || strings.Contains(name, "..") {
 		return "", "", false
 	}

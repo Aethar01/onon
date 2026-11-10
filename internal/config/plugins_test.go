@@ -307,6 +307,34 @@ return M
 	}
 }
 
+func TestPluginLocalModulesResolveAsLuaRequireDoes(t *testing.T) {
+	root := writeTestPlugin(t, "sample", `
+local helper = require("sample.helper")
+local util = require("util")
+assert(not pcall(require, "sample.util"), "sample.util found lua/util.lua")
+local M = onon.plugin.register("sample")
+M.value = helper.value .. " " .. util.value
+return M
+`)
+	dir := filepath.Join(root, "sample", "lua")
+	for path, source := range map[string]string{
+		"sample/helper.lua": `return { value = "beside the entrypoint" }`,
+		"util.lua":          `return { value = "at the root" }`,
+	} {
+		if err := os.WriteFile(filepath.Join(dir, path), []byte(source), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rt, err := OpenWithOptions(filepath.Join(t.TempDir(), "missing.lua"), "", OpenOptions{PluginPaths: []string{root}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+	if _, err := rt.Eval(`assert(require("sample").value == "beside the entrypoint at the root")`); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDeferredOpenRunsAfterAllEventSubscribers(t *testing.T) {
 	second := filepath.Join(t.TempDir(), "second.pdf")
 	root := writeTestPlugin(t, "sample", `
