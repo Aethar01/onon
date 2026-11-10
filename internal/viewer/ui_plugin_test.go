@@ -318,6 +318,31 @@ view:show()`)
 	}
 }
 
+func TestHeaderTitleGivesWayToItsDetail(t *testing.T) {
+	face := basicfont.Face7x13 // 7 pixels a character, its ellipsis "..."
+	cases := []struct {
+		title, detail string
+		width         int
+		want          [2]string
+	}{
+		{"short", "by name", 200, [2]string{"short", "by name"}},
+		// The title is cut so the detail shows whole.
+		{"/a/very/long/directory/path", "by name", 140, [2]string{"/a/very/l...", "by name"}},
+		// The title keeps a third of the width; the detail takes the rest.
+		{"/a/very/long/directory/path", "a detail far too long to fit", 90, [2]string{"/...", "a de..."}},
+		{"title only, cut", "", 70, [2]string{"title o...", ""}},
+	}
+	for _, c := range cases {
+		title, detail := fitHeader(face, face, c.title, c.detail, c.width, 7)
+		if title != c.want[0] || detail != c.want[1] {
+			t.Errorf("fitHeader(%q, %q, %d) = %q, %q; want %q, %q", c.title, c.detail, c.width, title, detail, c.want[0], c.want[1])
+		}
+		if w := measureText(face, title) + measureText(face, detail); detail != "" && w+7 > c.width {
+			t.Errorf("fitHeader(%q, %q, %d) is %d wide", c.title, c.detail, c.width, w+7)
+		}
+	}
+}
+
 func TestLuaUIKeyAndActionCallbacks(t *testing.T) {
 	app := luaUITestApp(t, "")
 	evalLua(t, app, `
