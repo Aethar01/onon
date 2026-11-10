@@ -936,7 +936,7 @@ func luaCacheClear(rt *Runtime) lua.LGFunction {
 // pinned to a point or page, or docked.
 //
 // The spec may contain id, title, detail, rows, selected, scroll, query, searchable,
-// filter, empty, columns, prompt, modal, stack, width, height, anchor, at,
+// filter, empty, columns, aside, prompt, modal, stack, width, height, anchor, at,
 // dock, resizable, draw, and the callbacks on_select, on_selection_changed,
 // on_query_changed, on_input, on_submit, on_click, on_key, on_action,
 // on_mouse, and on_close. Rows may be strings or row tables with text,

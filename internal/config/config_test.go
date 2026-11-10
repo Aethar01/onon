@@ -102,6 +102,7 @@ func (h *stubHost) UIQuery(id string) string { return h.ui.Query }
 
 func (h *stubHost) SetUITitle(id, title string)             { h.ui.Title = title }
 func (h *stubHost) SetUIDetail(id, detail string)           { h.ui.Detail = detail }
+func (h *stubHost) SetUIAside(id string, aside *UIAside)    { h.ui.Aside = aside }
 func (h *stubHost) UIFields(id string) map[string]string    { return h.ui.Fields }
 func (h *stubHost) RedrawUI(id string)                      {}
 func (h *stubHost) UIField(id, field string) string         { return h.ui.Fields[field] }
