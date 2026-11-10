@@ -13,7 +13,7 @@ type promptState struct {
 func (a *App) askPrompt(label, initial string, answer func(string)) {
 	a.closeAllUI()
 	a.promptState = promptState{label: label, answer: answer}
-	a.mode = modePrompt
+	a.setMode(modePrompt)
 	a.input.Set(initial)
 }
 

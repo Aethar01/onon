@@ -73,10 +73,10 @@ func (a *App) activateHelpRow(row uiRow) {
 	a.closeAllUI()
 	switch row.id {
 	case helpRowCommand:
-		a.mode = modeCommand
+		a.setMode(modeCommand)
 		a.input.Set(row.value)
 	case helpRowSearch:
-		a.mode = modeSearch
+		a.setMode(modeSearch)
 		a.searchInput = searchModeForward
 		a.input.Set(row.value)
 	case helpRowAction:

@@ -282,7 +282,7 @@ func (a *App) resetForNewDocument(password string) {
 	a.keybindMenu = keybindMenuState{}
 	a.closeAllUIViews(true)
 	a.completion = completionState{}
-	a.mode = modeNormal
+	a.mode = modeNormal // not setMode: the new document is laid out afresh
 	a.input.Reset()
 	a.ignoreText = ""
 	a.sequence = nil
@@ -298,7 +298,7 @@ func (a *App) resetForNewDocument(password string) {
 
 func (a *App) promptDocumentPassword(path string, opts openDocumentOptions) {
 	a.closeAllUI()
-	a.mode = modePassword
+	a.setMode(modePassword)
 	a.input.Reset()
 	a.passwordPrompt = pendingPasswordPrompt{path: path, opts: opts}
 	a.message = "password required: " + config.DocumentName(path)

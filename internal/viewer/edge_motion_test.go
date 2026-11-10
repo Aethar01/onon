@@ -227,3 +227,27 @@ func TestEdgesDoNotMoveWithoutMotion(t *testing.T) {
 		t.Fatal("want the document laid out at once with motion.edges at none")
 	}
 }
+
+func TestPromptInTheHiddenBarSlidesItInAndOut(t *testing.T) {
+	app := movingEdges(t)
+	toggleStatusBar(app) // hide it
+	app.edgeMotion = edgeMotion{}
+	app.openInputMode(modeCommand)
+	m := &app.edgeMotion
+	if s := m.slides[edgeKey{kind: edgeStatus}]; !m.active || s == nil || s.to != 1 {
+		t.Fatalf("slide %+v: want the bar sliding in with the prompt", s)
+	}
+	app.edgeMotion = edgeMotion{}
+	app.closeActiveUI()
+	if s := m.slides[edgeKey{kind: edgeStatus}]; !m.active || s == nil || s.to != 0 {
+		t.Fatalf("slide %+v: want the bar sliding out with the prompt", s)
+	}
+}
+
+func TestPromptInTheShownBarLeavesTheEdges(t *testing.T) {
+	app := movingEdges(t)
+	app.openInputMode(modeCommand)
+	if app.edgeMotion.active {
+		t.Fatal("want a prompt in a bar already shown to leave the edges still")
+	}
+}
