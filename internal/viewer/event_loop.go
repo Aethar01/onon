@@ -103,11 +103,7 @@ func (a *App) openWindow() error {
 	a.setWindowTitle()
 	sdl.SetRenderDrawBlendMode(a.renderer, sdl.BlendModeBlend)
 	sdl.SetDefaultTextureScaleMode(a.renderer, sdl.ScaleModeLinear)
-	var outputW, outputH int32
-	if sdl.GetRenderOutputSize(a.renderer, &outputW, &outputH) {
-		w, h := outputW, outputH
-		a.winW, a.winH = int(w), int(h)
-	}
+	a.syncWindowSize(nil)
 	if err := a.openInitialDocument(); err != nil {
 		return err
 	}
@@ -241,6 +237,22 @@ func (a *App) eventWaitTimeoutMS() int {
 	return 100
 }
 
+// syncWindowSize sets winW and winH to the window's size in pixels, as
+// onon lays out and draws, and as pointer events are converted to: what
+// the renderer gives. Without a renderer it goes by e, a resize, only if
+// that is in pixels; EventWindowResized gives the window's size in points,
+// half its pixels on a 2x display.
+func (a *App) syncWindowSize(e *sdl.WindowEvent) {
+	var w, h int32
+	if a.renderer != nil && sdl.GetRenderOutputSize(a.renderer, &w, &h) {
+		a.winW, a.winH = int(w), int(h)
+		return
+	}
+	if e != nil && e.Type == sdl.EventWindowPixelSizeChanged {
+		a.winW, a.winH = int(e.Data1), int(e.Data2)
+	}
+}
+
 func (a *App) convertPointerEventToRenderCoordinates(event *sdl.Event) {
 	if a.renderer == nil || event == nil {
 		return
@@ -279,10 +291,7 @@ func (a *App) handleSDLEvent(event *sdl.Event) error {
 		a.relayoutWithViewportAnchor(a.loadUIFont)
 	case sdl.EventWindowResized, sdl.EventWindowPixelSizeChanged:
 		e := event.Window()
-		a.relayoutWithViewportAnchor(func() {
-			a.winW = int(e.Data1)
-			a.winH = int(e.Data2)
-		})
+		a.relayoutWithViewportAnchor(func() { a.syncWindowSize(&e) })
 	case sdl.EventWindowEnterFullscreen:
 		a.fullscreen = true
 		redraw = false
@@ -517,10 +526,7 @@ func (a *App) drawFrame() error {
 	if a.renderer == nil {
 		return nil
 	}
-	var w, h int32
-	if sdl.GetRenderOutputSize(a.renderer, &w, &h) {
-		a.winW, a.winH = int(w), int(h)
-	}
+	a.syncWindowSize(nil)
 	bg := a.backgroundColor()
 	a.showWindowColors(bg)
 	if !sdl.SetRenderDrawColor(a.renderer, bg.R, bg.G, bg.B, bg.A) {

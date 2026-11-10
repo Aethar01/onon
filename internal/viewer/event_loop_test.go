@@ -361,3 +361,19 @@ func TestTabsOffOpensDocumentsAsBeforeTabs(t *testing.T) {
 		t.Fatalf("an empty tab: started %q, %d tabs; want a new window", started, len(app.tabList()))
 	}
 }
+
+// The window's size is kept in pixels, as onon lays out and draws in: a
+// resize's size in points, half its pixels on a 2x display, is not taken
+// for it.
+func TestWindowSizeIsKeptInPixels(t *testing.T) {
+	app := testLayoutApp(0)
+	app.winW, app.winH = 2000, 1600
+	app.syncWindowSize(&sdl.WindowEvent{CommonEvent: sdl.CommonEvent{Type: sdl.EventWindowResized}, Data1: 1100, Data2: 900})
+	if app.winW != 2000 || app.winH != 1600 {
+		t.Fatalf("a resize in points made the window %dx%d", app.winW, app.winH)
+	}
+	app.syncWindowSize(&sdl.WindowEvent{CommonEvent: sdl.CommonEvent{Type: sdl.EventWindowPixelSizeChanged}, Data1: 2200, Data2: 1800})
+	if app.winW != 2200 || app.winH != 1800 {
+		t.Fatalf("a resize in pixels made the window %dx%d, not 2200x1800", app.winW, app.winH)
+	}
+}
