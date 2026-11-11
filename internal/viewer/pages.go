@@ -27,14 +27,35 @@ func (a *App) drawContinuousPages(renderer *sdl.Renderer) {
 	margin := a.renderMargin()
 	minY := a.scrollY - margin
 	maxY := a.scrollY + float64(viewportH) + margin
+	var shown []shownPage
 	a.forEachContinuousPage(minY, maxY, func(page int, x, y, width, height float64) {
 		if x+width < 0 || x > float64(viewportW) || y+height < 0 || y > float64(viewportH) {
 			return
 		}
-		a.drawPage(renderer, page, x, y, width, height)
+		shown = append(shown, shownPage{page, x, y, width, height})
 	})
+	a.drawShownPages(renderer, shown)
 	a.drawSelection(renderer)
 	a.drawOverviewSelection(renderer)
+}
+
+// shownPage is a page drawn this frame, and where.
+type shownPage struct {
+	page                int
+	x, y, width, height float64
+}
+
+// drawShownPages draws the pages on screen, each knowing where the others
+// are, for its shadow to fall beside them and not over them.
+func (a *App) drawShownPages(renderer *sdl.Renderer, shown []shownPage) {
+	a.pageBoxes = a.pageBoxes[:0]
+	for _, p := range shown {
+		a.pageBoxes = append(a.pageBoxes, pixelRect(sdl.FRect{X: float32(p.x), Y: float32(p.y), W: float32(p.width), H: float32(p.height)}))
+	}
+	for _, p := range shown {
+		a.drawPage(renderer, p.page, p.x, p.y, p.width, p.height)
+	}
+	a.pageBoxes = a.pageBoxes[:0]
 }
 
 func (a *App) drawSinglePage(renderer *sdl.Renderer) {
@@ -43,13 +64,15 @@ func (a *App) drawSinglePage(renderer *sdl.Renderer) {
 	}
 	viewportW, viewportH := a.viewportSize()
 	row := a.rows[a.pageToRow[a.page]]
+	var shown []shownPage
 	for i, page := range row.pages {
 		x, y := a.rowPageScreenOrigin(row, i)
 		if x+row.pageW[i] < 0 || x > float64(viewportW) || y+row.pageH[i] < 0 || y > float64(viewportH) {
 			continue
 		}
-		a.drawPage(renderer, page, x, y, row.pageW[i], row.pageH[i])
+		shown = append(shown, shownPage{page, x, y, row.pageW[i], row.pageH[i]})
 	}
+	a.drawShownPages(renderer, shown)
 	a.drawSelection(renderer)
 }
 
@@ -87,7 +110,8 @@ func (a *App) drawPage(renderer *sdl.Renderer, page int, x, y, width, height flo
 
 // finishPageBox draws what goes over a page: the canvas over the corners
 // its shape leaves, then its shadow, cut away where the page is so it
-// falls only beside it, then its border.
+// falls only beside it, and kept off the other pages on screen, as one
+// under them all would be, then its border.
 func (a *App) finishPageBox(renderer *sdl.Renderer, st *config.Style, rect sdl.FRect) {
 	box := pixelRect(rect)
 	if box.W <= 0 || box.H <= 0 {
@@ -106,9 +130,56 @@ func (a *App) finishPageBox(renderer *sdl.Renderer, st *config.Style, rect sdl.F
 		}
 		dx, dy := int32(math.Round(float64(a.px(layer.X)))), int32(math.Round(float64(a.px(layer.Y))))
 		spec := maskSpec{shape: shape, w: box.W, h: box.H, spread: a.px(layer.Spread), blur: a.px(layer.Blur), cut: true, cutX: float32(-dx), cutY: float32(-dy)}
-		a.drawMask(renderer, spec, box.X+dx, box.Y+dy, clr)
+		// As far as the shadow reaches, and a little, for the clips.
+		reach := int32(math.Ceil(float64(a.px(math.Abs(layer.Spread))))) + blurMargin(spec.blur) + 2
+		extent := sdl.Rect{X: box.X + dx - reach, Y: box.Y + dy - reach, W: box.W + 2*reach, H: box.H + 2*reach}
+		beside, whole := rectsOutside(extent, a.pageBoxes, box)
+		if whole {
+			a.drawMask(renderer, spec, box.X+dx, box.Y+dy, clr)
+			continue
+		}
+		for _, part := range beside {
+			a.pushClip(renderer, sdl.FRect{X: float32(part.X), Y: float32(part.Y), W: float32(part.W), H: float32(part.H)})
+			a.drawMask(renderer, spec, box.X+dx, box.Y+dy, clr)
+			a.popClip(renderer)
+		}
 	}
 	a.drawDefaultBox(renderer, st, rect, boxBorder)
+}
+
+// rectsOutside is the parts of r outside every one of holes but own, and
+// whether that is the whole of r, none of them reaching into it.
+func rectsOutside(r sdl.Rect, holes []sdl.Rect, own sdl.Rect) (parts []sdl.Rect, whole bool) {
+	parts, whole = []sdl.Rect{r}, true
+	for _, hole := range holes {
+		if hole == own {
+			continue
+		}
+		var next []sdl.Rect
+		for _, p := range parts {
+			cut := intersectRects(p, hole)
+			if cut.W == 0 || cut.H == 0 {
+				next = append(next, p)
+				continue
+			}
+			whole = false
+			// The strips above and below the hole, then those beside it.
+			if cut.Y > p.Y {
+				next = append(next, sdl.Rect{X: p.X, Y: p.Y, W: p.W, H: cut.Y - p.Y})
+			}
+			if bottom := p.Y + p.H; cut.Y+cut.H < bottom {
+				next = append(next, sdl.Rect{X: p.X, Y: cut.Y + cut.H, W: p.W, H: bottom - cut.Y - cut.H})
+			}
+			if cut.X > p.X {
+				next = append(next, sdl.Rect{X: p.X, Y: cut.Y, W: cut.X - p.X, H: cut.H})
+			}
+			if right := p.X + p.W; cut.X+cut.W < right {
+				next = append(next, sdl.Rect{X: cut.X + cut.W, Y: cut.Y, W: right - cut.X - cut.W, H: cut.H})
+			}
+		}
+		parts = next
+	}
+	return parts, whole
 }
 
 // drawTile draws a tile of the page whose screen origin is (x, y). The
