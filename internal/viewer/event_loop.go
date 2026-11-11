@@ -156,11 +156,19 @@ func (a *App) tick() error {
 	return nil
 }
 
-// createRenderer makes the renderer the renderer option names, or SDL's own
-// choice for "auto", or when SDL_RENDER_DRIVER in the environment chooses
-// one, or when the one named cannot start, which the note then says.
+// createRenderer makes the renderer the renderer option names. For "auto"
+// that is SDL's GPU renderer, which runs themes' shaders, or SDL's own
+// choice where it cannot start. SDL's choice is also what is made when
+// SDL_RENDER_DRIVER in the environment chooses one, or when the one named
+// cannot start, which the note then says.
 func createRenderer(window *sdl.Window, name string) (*sdl.Renderer, string) {
-	if name == "" || name == "auto" || os.Getenv("SDL_RENDER_DRIVER") != "" {
+	if os.Getenv("SDL_RENDER_DRIVER") != "" {
+		return sdl.CreateRenderer(window, ""), ""
+	}
+	if name == "" || name == "auto" {
+		if renderer := sdl.CreateRenderer(window, "gpu"); renderer != nil {
+			return renderer, ""
+		}
 		return sdl.CreateRenderer(window, ""), ""
 	}
 	if renderer := sdl.CreateRenderer(window, name); renderer != nil {
