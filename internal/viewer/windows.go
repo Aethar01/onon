@@ -263,6 +263,7 @@ func (g *windowGroup) newWindow(from *App, path string, page int) (*App, error) 
 	w := newApp(from.runtime, from.iconBytes, NewOptions{Verbose: from.verbose, LaunchArgs: from.launchArgs})
 	w.group = g
 	w.singleInstance = from.singleInstance
+	w.jumpBack = from.jumpsForNewTab()
 	w.initialDocPath = path
 	if page > 0 {
 		w.initialStartPage, w.initialPageSet = page-1, true

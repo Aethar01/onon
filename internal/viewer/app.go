@@ -47,6 +47,9 @@ func New(docPath string, runtime *config.Runtime, startPage int, iconBytes []byt
 	app := newApp(runtime, iconBytes, opts)
 	app.logf("create viewer doc=%q startPage=%d", remote.Display(docPath), startPage+1)
 	app.page = startPage
+	if runtime.Config().SessionDatabase {
+		app.jumpBack = storedJumps(runtime.Config().JumpListMax)
+	}
 	remote.SetPrompter(app.askRemote)
 	runtime.AttachHost(app)
 	runtime.SetWake(app.wakeLoop)
@@ -130,6 +133,7 @@ func (a *App) Close() {
 	g := a.windowGroup()
 	if f := g.focused; f != nil && f.window != nil {
 		f.rememberTabs() // only a window that was shown, not one a test made
+		f.rememberJumps()
 	}
 	a.closeBackgroundDocuments()
 	for _, w := range g.windows {

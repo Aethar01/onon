@@ -620,6 +620,7 @@ func init() {
 		},
 		"open_file_picker": func(a *App, _ string) { a.runAction("open_file_picker") },
 		"recent":           func(a *App, _ string) { a.showRecentFiles() },
+		"jumps":            func(a *App, _ string) { a.showJumps() },
 		"lua":              (*App).runLuaCommand,
 		"help":             func(a *App, _ string) { a.toggleHelp() },
 		"version":          func(a *App, _ string) { a.message = "onon " + config.Version },

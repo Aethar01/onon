@@ -319,13 +319,18 @@ func (a *App) handleMarkToken(token string) bool {
 		}
 		mode := a.pendingMark
 		a.pendingMark = ""
-		if !isMarkName(token) {
+		switch {
+		case mode == "jump" && token == "'":
+			a.jumpPrevious()
+		case !isMarkName(token):
 			a.message = "mark must be a letter"
-			return true
-		}
-		if mode == "set" {
+		case !a.config.SessionDatabase:
+			a.message = "marks require session_database"
+		case a.docPath == "":
+			a.message = "no document open"
+		case mode == "set":
 			a.setDocumentMark(token)
-		} else {
+		default:
 			a.jumpDocumentMark(token)
 		}
 		return true
@@ -344,20 +349,14 @@ func (a *App) handleMarkToken(token string) bool {
 		}
 		return false
 	}
-	if !a.config.SessionDatabase {
-		a.message = "marks require session_database"
-		return true
-	}
-	if a.docPath == "" {
-		a.message = "no document open"
-		return true
-	}
+	// The letter is checked once it is chosen: ' may follow ' instead,
+	// for the place before the last jump, which needs no marks.
 	if token == "\"" {
 		a.pendingMark = "set"
 		a.message = "mark: choose letter"
 	} else {
 		a.pendingMark = "jump"
-		a.message = "jump mark: choose letter"
+		a.message = "jump mark: choose letter, or ' for the place before the last jump"
 	}
 	return true
 }

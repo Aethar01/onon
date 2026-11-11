@@ -769,6 +769,7 @@ var configOptions = map[string]optionDesc{
 	"tab_drag":               boolOption("Let the pointer drag tabs in onon's tab bar to reorder them.", func(c *Config) bool { return c.TabDrag }, func(c *Config, v bool) { c.TabDrag = v }),
 	"status_bar_order":       intOption("Where the status bar sits among the bars and docked views along the window's edges, as tab_bar_order says; lower is nearer the edge.", func(c *Config) int { return c.StatusBarOrder }, func(c *Config, v int) { c.StatusBarOrder = v }),
 	"restore_tabs":           boolOption("Open the tabs the window had when onon last closed with several, when it starts with no document named, each loaded when first shown.", func(c *Config) bool { return c.RestoreTabs }, func(c *Config, v bool) { c.RestoreTabs = v }),
+	"jump_list_max":          intOption("Maximum places a jump list keeps, the oldest dropped first; 0 keeps them all.", func(c *Config) int { return c.JumpListMax }, func(c *Config, v int) { c.JumpListMax = max(0, v) }),
 	"recent_files_max":       intOption("Maximum recent files retained and displayed.", func(c *Config) int { return c.RecentFilesMax }, func(c *Config, v int) { c.RecentFilesMax = max(0, v) }),
 	"scroll_step":            intOption("Keyboard and mouse scroll distance in pixels.", func(c *Config) int { return c.ScrollStep }, func(c *Config, v int) { c.ScrollStep = v }),
 	"page_gap": intOption("Vertical gap between pages; aliases page_gap_vertical.", func(c *Config) int { return c.PageGap }, func(c *Config, v int) {

@@ -19,12 +19,13 @@ onon.options.fit_mode = "page" -- Initial fit mode: page, width, height, or manu
 onon.options.hint_chars = "asdfghjkl" -- Characters used for link hint labels, in order of preference.
 onon.options.http_headers = {} -- Headers sent when fetching remote documents, by host, host:port or *.domain, such as an API token; :set shows only their names.
 onon.options.invert_scroll = { mouse = false, trackpad = false } -- Invert horizontal and vertical wheel scrolling for selected inputs; true or false sets both, and a table updates only the mouse and trackpad fields it names.
+onon.options.jump_list_max = 100 -- Maximum places a jump list keeps, the oldest dropped first; 0 keeps them all.
 onon.options.link_preview = true -- Preview the destination of an internal link after hovering it briefly.
 onon.options.link_preview_delay_ms = 400 -- Milliseconds to hover an internal link before its preview appears.
 onon.options.link_schemes = {"http", "https", "mailto"} -- URI schemes that document links may open externally; other links only show their target.
 onon.options.loading_indicator = true -- Animate a loading indicator on pages still rendering for the first time.
 onon.options.max_zoom = 8 -- Maximum manual zoom scale.
-onon.options.menus = {} -- Where onon's own menus sit, by name, such as { outline = { anchor = "left", width = "40%" } }: each takes width and height, the most of the window it takes, in logical pixels or a percentage, and anchor, as views do, or beside, for a menu opened over another, beside the row it was opened from, as keybind_keys and printers are unless set. Menus: annotation, choice, colors, help, keybind_keys, keybinds, matches, options, outline, print, printers, recent, tabs, themes.
+onon.options.menus = {} -- Where onon's own menus sit, by name, such as { outline = { anchor = "left", width = "40%" } }: each takes width and height, the most of the window it takes, in logical pixels or a percentage, and anchor, as views do, or beside, for a menu opened over another, beside the row it was opened from, as keybind_keys and printers are unless set. Menus: annotation, choice, colors, help, jumps, keybind_keys, keybinds, matches, options, outline, print, printers, recent, tabs, themes.
 onon.options.min_zoom = 0.5 -- Minimum manual zoom scale.
 onon.options.mouse_text_select = true -- Enable text selection with the left mouse button.
 onon.options.mupdf_store_mb = 256 -- MuPDF cache for fonts and decoded images in MiB; applies to newly opened documents.
@@ -225,6 +226,7 @@ if onon.platform.os == "macos" then
   onon.bind("<D-S-=>", onon.zoom_in)
   onon.bind("<D-->", onon.zoom_out)
   onon.bind("<D-0>", onon.reset_zoom)
+  onon.bind("<D-S-r>", onon.reload_config)
   onon.bind("<D-,>", onon.open_config)
   onon.bind("<D-z>", onon.undo)
   onon.bind("<D-S-z>", onon.redo)
@@ -232,7 +234,9 @@ if onon.platform.os == "macos" then
   onon.bind("<D-x>", onon.cut)
   onon.bind("<D-v>", onon.paste)
   onon.bind("<D-]>", onon.jump_forward)
+  onon.bind("<A-Right>", onon.jump_forward)
   onon.bind("<D-[>", onon.jump_backward)
+  onon.bind("<A-Left>", onon.jump_backward)
   onon.bind("<D-o>", onon.open_file_picker)
   onon.bind("<D-s>", onon.save)
   onon.bind("<D-p>", onon.print)
@@ -302,3 +306,5 @@ onon.bind_mouse("wheel_down", onon.scroll_down)
 onon.bind_mouse("wheel_left", onon.scroll_left)
 onon.bind_mouse("wheel_right", onon.scroll_right)
 onon.bind_mouse("wheel_up", onon.scroll_up)
+onon.bind_mouse("x1_down", onon.jump_backward)
+onon.bind_mouse("x2_down", onon.jump_forward)

@@ -56,7 +56,10 @@ func (a *App) openKeybindMenu(over bool) {
 func (a *App) newKeybindView() *uiView {
 	return &uiView{
 		id: "core:keybinds", owner: "core", modal: true, searchable: true, element: config.ElementPanel, place: menuPlace(76, 80),
-		header: func(a *App, _ *uiView, _ int) (string, string) {
+		header: func(a *App, view *uiView, shown int) (string, string) {
+			if view.searching || view.query != "" {
+				return "Keybinds", searchDetail(view.query, shown, len(a.keybindMenu.actions))
+			}
 			return "Keybinds", strconv.Itoa(len(a.keybindMenu.actions))
 		},
 		onAction: func(a *App, _ *uiView, action string) bool { return a.keybindMenuAction(action) },
