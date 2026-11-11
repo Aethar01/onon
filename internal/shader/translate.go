@@ -11,7 +11,7 @@ type Format int
 const (
 	FormatSPIRV Format = iota // SPIR-V, for Vulkan
 	FormatMSL                 // Metal's shading language
-	FormatDXBC                // Direct3D's bytecode
+	FormatDXIL                // Direct3D 12's bytecode
 )
 
 // Translate is a fragment shader's SPIR-V in format, with the name of the

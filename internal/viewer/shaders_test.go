@@ -113,6 +113,9 @@ func runShaderProbe(dir string) int {
 		}
 	}
 	app.endShaderFrame()
+	if failed != 0 {
+		fmt.Println("SDL:", sdl.GetError())
+	}
 	return failed
 }
 

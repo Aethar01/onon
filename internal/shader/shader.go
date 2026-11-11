@@ -1,7 +1,8 @@
 // Package shader turns the GLSL fragment shaders themes are written with
 // into what a GPU takes: SPIR-V, by glslang, which Vulkan takes as it is,
-// and from that Metal's shading language or Direct3D's bytecode, by
-// SPIRV-Cross, on the systems that have them.
+// and from that, on the systems that have them, Metal's shading language
+// or Direct3D's, by SPIRV-Cross; Direct3D's is then compiled by Microsoft's
+// DirectX Shader Compiler.
 package shader
 
 /*

@@ -277,8 +277,8 @@ func (a *App) compileShader(path string) (*shaderProgram, error) {
 		format, info.Format = shader.FormatSPIRV, sdl.GPUShaderFormatSPIRV
 	case formats&sdl.GPUShaderFormatMSL != 0:
 		format, info.Format = shader.FormatMSL, sdl.GPUShaderFormatMSL
-	case formats&sdl.GPUShaderFormatDXBC != 0:
-		format, info.Format = shader.FormatDXBC, sdl.GPUShaderFormatDXBC
+	case formats&sdl.GPUShaderFormatDXIL != 0:
+		format, info.Format = shader.FormatDXIL, sdl.GPUShaderFormatDXIL
 	default:
 		return nil, fmt.Errorf("the %s GPU driver takes shaders in no form onon translates to", sdl.GetGPUDeviceDriver(device))
 	}

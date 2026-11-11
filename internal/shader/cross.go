@@ -50,7 +50,7 @@ static char *onon_cross(const unsigned int *words, size_t count, int hlsl, char 
 	}
 	if (spvc_compiler_create_compiler_options(compiler, &options) != SPVC_SUCCESS ||
 		spvc_compiler_options_set_uint(options, hlsl ? SPVC_COMPILER_OPTION_HLSL_SHADER_MODEL : SPVC_COMPILER_OPTION_MSL_VERSION,
-			hlsl ? 51 : SPVC_MAKE_MSL_VERSION(2, 1, 0)) != SPVC_SUCCESS ||
+			hlsl ? 60 : SPVC_MAKE_MSL_VERSION(2, 1, 0)) != SPVC_SUCCESS ||
 		spvc_compiler_install_compiler_options(compiler, options) != SPVC_SUCCESS ||
 		spvc_compiler_compile(compiler, &result) != SPVC_SUCCESS)
 		goto fail;
