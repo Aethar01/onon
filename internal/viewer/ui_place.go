@@ -340,7 +340,15 @@ func (a *App) placeView(view *uiView) (sdl.FRect, int) {
 	}
 	if p.attach != nil {
 		if rect, ok := a.attachedRect(*p.attach, area, head, w, h); ok {
+			if p.attach.row != nil {
+				view.attachedAt = &sdl.FPoint{X: rect.X, Y: rect.Y}
+			}
 			return rect, rows
+		}
+		if at := view.attachedAt; at != nil && p.attach.row != nil {
+			// Its menu closed, as on Escape: it stays where it was, rather
+			// than jump to its anchor as it fades out.
+			return sdl.FRect{X: at.X, Y: at.Y, W: float32(w), H: float32(h)}, rows
 		}
 	}
 	x, y := anchorIn(area, p.anchor, w, full, gap)
