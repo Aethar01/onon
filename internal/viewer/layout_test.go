@@ -130,7 +130,7 @@ func TestSmoothWheelQueuesPreciseScrollDelta(t *testing.T) {
 	app.recomputeLayout(1000, 100)
 	app.scrollY = 100
 
-	app.handleAnimatedMouseWheel(&sdl.MouseWheelEvent{X: 0.25, Y: 0.1})
+	app.handleMouseWheel(&sdl.MouseWheelEvent{X: 0.25, Y: 0.1})
 
 	assertClose(t, app.scrollX, 0)
 	assertClose(t, app.scrollY, 100)
@@ -155,7 +155,7 @@ func TestSmoothWheelPrefersPreciseDeltaOverAccumulatedIntegerTicks(t *testing.T)
 	app.recomputeLayout(1000, 100)
 	app.scrollY = 100
 
-	app.handleAnimatedMouseWheel(&sdl.MouseWheelEvent{Y: 0.1, IntegerY: 1})
+	app.handleMouseWheel(&sdl.MouseWheelEvent{Y: 0.1, IntegerY: 1})
 
 	state := app.smoothScrollState()
 	if state == nil {
@@ -177,7 +177,7 @@ func TestSmoothWheelUsesScrollStepForIntegerDelta(t *testing.T) {
 	app.recomputeLayout(1000, 100)
 	app.scrollY = 100
 
-	app.handleAnimatedMouseWheel(&sdl.MouseWheelEvent{Y: 1, IntegerY: 1})
+	app.handleMouseWheel(&sdl.MouseWheelEvent{Y: 1, IntegerY: 1})
 
 	state := app.smoothScrollState()
 	if state == nil {
@@ -200,14 +200,14 @@ func TestTrackpadSmoothingCanBeSelectedWithoutMouseWheelSmoothing(t *testing.T) 
 	app.recomputeLayout(1000, 100)
 	app.scrollY = 100
 
-	app.handleAnimatedMouseWheel(&sdl.MouseWheelEvent{Y: 0.1})
+	app.handleMouseWheel(&sdl.MouseWheelEvent{Y: 0.1})
 	if !app.smoothScrollActive() {
 		t.Fatal("expected fractional trackpad input to animate")
 	}
 	app.cancelSmoothScroll()
 	app.scrollY = 100
 
-	app.handleAnimatedMouseWheel(&sdl.MouseWheelEvent{Y: 1})
+	app.handleMouseWheel(&sdl.MouseWheelEvent{Y: 1})
 	assertClose(t, app.scrollY, 36)
 	if app.smoothScrollActive() {
 		t.Fatal("expected detented mouse-wheel input to remain immediate")
@@ -229,7 +229,7 @@ func TestInvertScrollInvertsBothTrackpadAxes(t *testing.T) {
 	app.scrollX = 32
 	app.scrollY = 100
 
-	app.handleAnimatedMouseWheel(&sdl.MouseWheelEvent{X: 0.25, Y: 0.5})
+	app.handleMouseWheel(&sdl.MouseWheelEvent{X: 0.25, Y: 0.5})
 
 	state := app.smoothScrollState()
 	if state == nil {
@@ -251,25 +251,25 @@ func TestInvertScrollTreatsMouseAndTrackpadSeparately(t *testing.T) {
 	app.recomputeLayout(1000, 100)
 
 	app.scrollY = 100
-	app.handleAnimatedMouseWheel(&sdl.MouseWheelEvent{Y: 1})
+	app.handleMouseWheel(&sdl.MouseWheelEvent{Y: 1})
 	assertClose(t, app.scrollY, 164)
 
 	// A swipe that reports a whole delta mid-gesture is still the trackpad.
 	app.scrollY = 100
 	swipe := sdl.MouseWheelEvent{Y: 0.5}
 	swipe.Timestamp = uint64(time.Second)
-	app.handleAnimatedMouseWheel(&swipe)
+	app.handleMouseWheel(&swipe)
 	assertClose(t, app.scrollY, 36)
 	app.scrollY = 100
 	swipe = sdl.MouseWheelEvent{Y: 1}
 	swipe.Timestamp = uint64(time.Second + 16*time.Millisecond)
-	app.handleAnimatedMouseWheel(&swipe)
+	app.handleMouseWheel(&swipe)
 	assertClose(t, app.scrollY, 36)
 
 	app.scrollY = 100
 	click := sdl.MouseWheelEvent{Y: 1}
 	click.Timestamp = uint64(2 * time.Second)
-	app.handleAnimatedMouseWheel(&click)
+	app.handleMouseWheel(&click)
 	assertClose(t, app.scrollY, 164)
 }
 
@@ -286,7 +286,7 @@ func TestDisabledSmoothScrollUsesDiscreteWheelPath(t *testing.T) {
 	app.recomputeLayout(1000, 100)
 	app.scrollY = 100
 
-	app.handleAnimatedMouseWheel(&sdl.MouseWheelEvent{Y: 1})
+	app.handleMouseWheel(&sdl.MouseWheelEvent{Y: 1})
 
 	assertClose(t, app.scrollY, 36)
 	if app.smoothScrollActive() {

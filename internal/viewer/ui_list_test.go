@@ -69,11 +69,12 @@ func TestUIViewCloseClearsFilterBeforeClosing(t *testing.T) {
 	}
 }
 
-func TestModalWheelRowsHonorsFlippedDirection(t *testing.T) {
-	normal := modalWheelRows(&sdl.MouseWheelEvent{Y: 1})
-	flipped := modalWheelRows(&sdl.MouseWheelEvent{Y: 1, Direction: sdl.MouseWheelFlipped})
-	if normal != -flipped {
-		t.Fatalf("expected flipped modal wheel direction, normal=%v flipped=%v", normal, flipped)
+func TestResolvedWheelHonorsFlippedDirection(t *testing.T) {
+	app, _ := testListApp(10)
+	normal := app.resolveWheel(&sdl.MouseWheelEvent{Y: 1})
+	flipped := app.resolveWheel(&sdl.MouseWheelEvent{Y: 1, Direction: sdl.MouseWheelFlipped})
+	if normal.dy != -flipped.dy {
+		t.Fatalf("expected flipped wheel direction, normal=%+v flipped=%+v", normal, flipped)
 	}
 }
 

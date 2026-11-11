@@ -633,14 +633,11 @@ func (a *App) resizeTabBar(x float32) {
 
 // handleTabBarWheel scrolls the tabs with a wheel over the bar, reporting
 // whether it was.
-func (a *App) handleTabBarWheel(e *sdl.MouseWheelEvent) bool {
-	if !a.overTabBar(e.MouseX, e.MouseY) {
+func (a *App) handleTabBarWheel(w wheelInput) bool {
+	if !a.overTabBar(w.x, w.y) {
 		return false
 	}
-	dx, dy := e.X, e.Y
-	if e.Direction == sdl.MouseWheelFlipped {
-		dx, dy = -dx, -dy
-	}
+	dx, dy := w.dx, w.dy
 	l := a.tabBarLayout()
 	amount := -dy
 	if !l.vertical {

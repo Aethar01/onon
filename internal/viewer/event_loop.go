@@ -336,10 +336,7 @@ func (a *App) handleSDLEvent(event *sdl.Event) error {
 			break
 		}
 		e := event.Wheel()
-		if a.handleTabBarWheel(&e) {
-			break
-		}
-		a.handleAnimatedMouseWheel(&e)
+		a.handleMouseWheel(&e)
 		redraw = false
 	case sdl.EventPinchBegin:
 		a.beginPinch()

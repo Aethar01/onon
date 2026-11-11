@@ -78,19 +78,6 @@ func withSmoothInputSource(a *App, source smoothInputSource, run func()) {
 	run()
 }
 
-func (a *App) wheelInputSource(e *sdl.MouseWheelEvent) smoothInputSource {
-	followsTrackpad := a.lastTrackpadWheel != 0 && e.Timestamp-a.lastTrackpadWheel < uint64(trackpadWheelGap)
-	if hasFractionalWheelDelta(e.X) || hasFractionalWheelDelta(e.Y) || followsTrackpad {
-		a.lastTrackpadWheel = e.Timestamp
-		return smoothInputSourceTrackpad
-	}
-	return smoothInputSourceMouse
-}
-
-func hasFractionalWheelDelta(delta float32) bool {
-	return delta != 0 && float64(delta) != math.Trunc(float64(delta))
-}
-
 func smoothToward(current, target, dampening float64, elapsed, frame time.Duration) float64 {
 	if elapsed <= 0 {
 		return current
@@ -141,113 +128,6 @@ func (a *App) updateDisplayFrame() {
 	}
 	a.displayFrame = time.Duration(float64(time.Second) / float64(mode.RefreshRate))
 	a.logf("display refresh %.2fHz", mode.RefreshRate)
-}
-
-func normalizedWheelDeltas(e *sdl.MouseWheelEvent) (float32, float32) {
-	wx, wy := e.X, e.Y
-	if wx == 0 {
-		wx = float32(e.IntegerX)
-	}
-	if wy == 0 {
-		wy = float32(e.IntegerY)
-	}
-	if e.Direction == sdl.MouseWheelFlipped {
-		wx = -wx
-		wy = -wy
-	}
-	return wx, wy
-}
-
-func invertWheelDeltas(wx, wy float32, invert bool) (float32, float32) {
-	if invert {
-		return -wx, -wy
-	}
-	return wx, wy
-}
-
-func modalWheelRows(e *sdl.MouseWheelEvent) float64 {
-	_, wy := normalizedWheelDeltas(e)
-	return -float64(wy)
-}
-
-func (a *App) handleAnimatedMouseWheel(e *sdl.MouseWheelEvent) {
-	source := a.wheelInputSource(e)
-	if !a.smoothScrollInputEnabled(source) {
-		a.cancelSmoothScroll()
-		withSmoothInputSource(a, source, func() { a.handleSDLMouseWheel(e) })
-		a.pendingRedraw = true
-		return
-	}
-	if view := a.activeModalUIView(); view != nil {
-		if !a.viewWheel(view, e) {
-			a.queueModalSmoothScroll(view, modalWheelRows(e))
-		}
-		return
-	}
-	if a.handlePanelMouseWheel(e) {
-		a.pendingRedraw = true
-		return
-	}
-
-	wx, wy := normalizedWheelDeltas(e)
-	if sdl.GetModState()&sdl.KeymodCtrl != 0 {
-		a.cancelSmoothScroll()
-		withSmoothInputSource(a, source, func() { a.handleSDLMouseWheel(e) })
-		a.pendingRedraw = true
-		return
-	}
-
-	if !a.canSmoothWheel(wx, wy) {
-		withSmoothInputSource(a, source, func() { a.runDiscreteMouseWheel(wx, wy) })
-		return
-	}
-
-	wx, wy = invertWheelDeltas(wx, wy, a.scrollInverted(source))
-	// SDL wheel units may be fractional for continuous devices. Scaling the
-	// float delta keeps the target precise while preserving scroll_step as the
-	// distance of one ordinary wheel unit.
-	a.queueSmoothScroll(float64(wx)*a.pageStep, -float64(wy)*a.pageStep)
-}
-
-func (a *App) runDiscreteMouseWheel(wx, wy float32) {
-	a.cancelSmoothScroll()
-	wx, wy = invertWheelDeltas(wx, wy, a.scrollInverted(a.currentSmoothInputSource()))
-	a.dispatchDiscreteWheel(wx, wy)
-	a.pendingRedraw = true
-}
-
-func (a *App) dispatchDiscreteWheel(wx, wy float32) {
-	if wy > 0 {
-		a.runMouseBinding("wheel_up")
-	}
-	if wy < 0 {
-		a.runMouseBinding("wheel_down")
-	}
-	if wx > 0 {
-		a.runMouseBinding("wheel_right")
-	}
-	if wx < 0 {
-		a.runMouseBinding("wheel_left")
-	}
-}
-
-func (a *App) canSmoothWheel(wx, wy float32) bool {
-	if wx == 0 && wy == 0 {
-		return true
-	}
-	if wy > 0 && a.mouseBindings["wheel_up"] != "scroll_up" {
-		return false
-	}
-	if wy < 0 && a.mouseBindings["wheel_down"] != "scroll_down" {
-		return false
-	}
-	if wx > 0 && a.mouseBindings["wheel_right"] != "scroll_right" {
-		return false
-	}
-	if wx < 0 && a.mouseBindings["wheel_left"] != "scroll_left" {
-		return false
-	}
-	return true
 }
 
 func (a *App) modalSmoothScrollBounds(view *uiView) (int, bool) {

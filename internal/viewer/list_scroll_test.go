@@ -194,11 +194,12 @@ func TestWheelWithoutSmoothScrollingMovesAWholeRow(t *testing.T) {
 	_, rows := view.frameGeometry(app)
 	app.listOffset(view, rows, 100)
 	app.scrollListTo(view, 5)
+	app.config.SmoothScrollSources = 0
 	for _, step := range []struct {
 		y    float32
 		want float64
 	}{{-0.1, 6}, {-6, 7}, {2.5, 6}} {
-		app.handleSDLMouseWheel(&sdl.MouseWheelEvent{Y: step.y})
+		app.handleMouseWheel(&sdl.MouseWheelEvent{Y: step.y})
 		if view.offset != step.want || view.scroll != int(step.want) {
 			t.Fatalf("after a wheel of %v: offset %v scroll %d, want %v", step.y, view.offset, view.scroll, step.want)
 		}
@@ -252,5 +253,22 @@ func TestMenusOptionPlacesOnonsMenus(t *testing.T) {
 	}
 	if config.MenuViews["help"] != helpViewID {
 		t.Errorf("the menus option's help is view %q, help is %q", config.MenuViews["help"], helpViewID)
+	}
+}
+
+// invert_scroll turns a list the way it turns the page.
+func TestInvertScrollInvertsAListToo(t *testing.T) {
+	for _, smooth := range []config.SmoothInputSources{0, config.SmoothInputWheel} {
+		app, view := testListApp(100)
+		_, rows := view.frameGeometry(app)
+		app.listOffset(view, rows, 100)
+		app.scrollListTo(view, 5)
+		app.config.SmoothScrollSources = smooth
+		app.config.InvertScrollSources = config.SmoothInputMouse
+		app.handleMouseWheel(&sdl.MouseWheelEvent{Y: -1})
+		app.advanceSmoothScrollBy(time.Second)
+		if view.offset >= 5 {
+			t.Fatalf("smooth %v: an inverted wheel down left the list at %v, want it above 5", smooth, view.offset)
+		}
 	}
 }

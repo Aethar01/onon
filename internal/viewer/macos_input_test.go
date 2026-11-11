@@ -173,7 +173,7 @@ func TestDiscreteWheelDoesNotReenterSmoothScrolling(t *testing.T) {
 	}
 	app.recomputeLayout(1000, 100)
 
-	app.handleAnimatedMouseWheel(&sdl.MouseWheelEvent{Y: 1})
+	app.handleMouseWheel(&sdl.MouseWheelEvent{Y: 1})
 
 	if app.smoothScrollActive() {
 		t.Fatal("expected custom wheel binding to stay on the discrete path")

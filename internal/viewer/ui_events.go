@@ -273,30 +273,29 @@ func (a *App) viewMouseMotion(view *uiView, e *sdl.MouseMotionEvent) bool {
 	return a.uiViewHover(view, int(e.X), int(e.Y)) || redraw
 }
 
-// viewWheel gives a wheel event over view to its mouse hook, then scrolls
-// what it draws, reporting whether either took it. A list's rows are left
-// to the caller, which scrolls them smoothly where that is on.
-func (a *App) viewWheel(view *uiView, e *sdl.MouseWheelEvent) bool {
-	ev, inside := a.viewMouseEvent(view, e.MouseX, e.MouseY)
+// viewWheel gives a wheel over view to its mouse hook, then scrolls what
+// it draws, reporting whether either took it. A list's rows are left to
+// the caller, which scrolls them smoothly where that is on.
+func (a *App) viewWheel(view *uiView, w wheelInput) bool {
+	ev, inside := a.viewMouseEvent(view, w.x, w.y)
 	if !inside {
 		return false
 	}
-	wx, wy := normalizedWheelDeltas(e)
 	if view.mouseHook != nil {
-		ev.Type, ev.DX, ev.DY = "wheel", float64(wx), -float64(wy)
+		ev.Type, ev.DX, ev.DY = "wheel", float64(w.dx), -float64(w.dy)
 		if view.mouseHook(a, ev) {
 			return true
 		}
 	}
-	return a.scrollViewBodyBy(view, -float64(wy)*float64(3*a.uiLineHeight()))
+	return a.scrollViewBodyBy(view, -float64(w.dy)*float64(3*a.uiLineHeight()))
 }
 
-// scrollUIViewByWheel scrolls view's list a row for a wheel event, as a
+// scrollListByWheel scrolls view's list a row for a wheel event, as a
 // list does without smooth scrolling, however far the wheel says.
-func (a *App) scrollUIViewByWheel(view *uiView, e *sdl.MouseWheelEvent) {
-	if _, wy := normalizedWheelDeltas(e); wy != 0 {
+func (a *App) scrollListByWheel(view *uiView, w wheelInput) {
+	if w.dy != 0 {
 		delta := 1
-		if wy > 0 {
+		if w.dy > 0 {
 			delta = -1
 		}
 		a.scrollListTo(view, float64(view.scroll+delta))
@@ -453,17 +452,4 @@ func (a *App) handlePanelMouseMotion(e *sdl.MouseMotionEvent) (taken, redraw boo
 		return false, redraw
 	}
 	return true, a.viewMouseMotion(view, e) || redraw
-}
-
-// handlePanelMouseWheel gives a wheel event over a panel to the panel,
-// reporting whether one took it.
-func (a *App) handlePanelMouseWheel(e *sdl.MouseWheelEvent) bool {
-	view := a.panelAt(e.MouseX, e.MouseY)
-	if view == nil {
-		return false
-	}
-	if !a.viewWheel(view, e) {
-		a.scrollUIViewByWheel(view, e)
-	}
-	return true
 }

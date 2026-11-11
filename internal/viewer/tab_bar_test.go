@@ -118,8 +118,8 @@ func TestTabsAtTheSideStackAndScroll(t *testing.T) {
 	if shown.Y < l.area.Y || shown.Y+shown.H > l.area.Y+l.area.H+0.5 || l.tabs[0].X != shown.X {
 		t.Fatalf("shown tab %v outside the area %v, or not under the others", shown, l.area)
 	}
-	e := sdl.MouseWheelEvent{MouseX: l.bar.X + 5, MouseY: l.bar.Y + l.bar.H/2, Y: 1000}
-	if !app.handleTabBarWheel(&e) || app.tabBarLayout().scroll != 0 {
+	w := wheelInput{x: l.bar.X + 5, y: l.bar.Y + l.bar.H/2, dy: 1000}
+	if !app.handleTabBarWheel(w) || app.tabBarLayout().scroll != 0 {
 		t.Fatal("the wheel over the bar did not scroll it to the first tab")
 	}
 }
