@@ -2,6 +2,7 @@ package viewer
 
 import (
 	"math"
+	"slices"
 	"strings"
 
 	"onon/internal/config"
@@ -264,7 +265,7 @@ func (a *App) viewGeometry(view *uiView) (sdl.FRect, int) {
 		headless: view.headless, titles: view.hasColumnTitles(), body: view.drawBody != nil,
 		content: a.listContentWidth(view),
 	}
-	if g := &view.geometry; g.ok && g.key == key {
+	if g := &view.geometry; g.ok && g.key == key && view.sizeFrom == nil {
 		return g.rect, g.rows
 	}
 	rect, rows := a.placeView(view)
@@ -328,6 +329,7 @@ func (a *App) placeView(view *uiView) (sdl.FRect, int) {
 		w = max(w, min(least, areaW))
 		h = max(h, min(160, areaH))
 	}
+	w, h = a.glideViewSize(view, w, h)
 	rows := max(1, (h-head-bottom)/rowHeight)
 	full := h
 	if fit {
@@ -571,6 +573,61 @@ func (a *App) UIViewSize(id string) (float64, float64) {
 		return 0, 0
 	}
 	return a.viewSize(view)
+}
+
+// glideViewSize is the size a view heading for w by h is now: on its way
+// there from the size it had when it was resized, as its panel's timing
+// for opening says, or there at once with motion reduced to less than all
+// of it.
+func (a *App) glideViewSize(view *uiView, w, h int) (int, int) {
+	from := view.sizeFrom
+	if from == nil {
+		return w, h
+	}
+	anim := a.viewAnim(view, config.MotionPanel, config.MomentEnter)
+	anim.Delay = 0
+	if a.reducedMotion() && a.config.Theme.Motion.Reduced.Base != "full" {
+		anim.Duration = 0 // a glide is no fade
+	}
+	gw := a.animateFrom(tweenKey{kind: "view width", view: view}, float64(from.X), float64(w), anim)
+	gh := a.animateFrom(tweenKey{kind: "view height", view: view}, float64(from.Y), float64(h), anim)
+	view.sizeTo = sdl.FPoint{X: float32(w), Y: float32(h)}
+	if gw == float64(w) && gh == float64(h) {
+		view.sizeFrom = nil
+	}
+	return int(math.Round(gw)), int(math.Round(gh))
+}
+
+// SetUISize gives a view another width or height, those not nil, where
+// it is: it neither closes nor comes in again, and one that has been
+// drawn glides to its new size. What lies beside a docked view is laid
+// out again, at once.
+func (a *App) SetUISize(id string, width, height *config.UISize) {
+	view := a.views.views[id]
+	if view == nil {
+		return
+	}
+	if drawn := a.motion.shownView == view || slices.Contains(a.motion.shownPanels, view); drawn && view.place.dock == "" {
+		rect, _ := view.frameGeometry(a)
+		view.sizeFrom = &sdl.FPoint{X: rect.W, Y: rect.H}
+	}
+	resize := func() {
+		if width != nil {
+			view.place.width = *width
+		}
+		if height != nil {
+			view.place.height = *height
+		}
+	}
+	if view.place.dock != "" {
+		a.relayoutWithViewportAnchor(func() {
+			resize()
+			a.views.layoutGen++ // every view sits beside it
+		})
+	} else {
+		resize()
+	}
+	a.pendingRedraw = true
 }
 
 // viewSize is view's size in logical pixels.

@@ -27,6 +27,15 @@ type BackgroundDocumentHost interface {
 	CloseBackgroundDocument(id int)
 }
 
+// BackgroundPageHost is the optional extension to Host for rendering a
+// background document's page before it is drawn.
+type BackgroundPageHost interface {
+	// PrepareBackgroundPage renders page (1-based) of the document id as
+	// it is drawn width logical pixels wide, returning a channel sent nil
+	// once it is rendered, or why it could not be.
+	PrepareBackgroundPage(id, page int, width float64) (<-chan error, error)
+}
+
 const luaBackgroundDocumentType = "onon.background_document"
 
 type luaBackgroundDocument struct {
@@ -116,7 +125,8 @@ func luaLoadDocument(r *Runtime) lua.LGFunction {
 
 // luaBackgroundDocumentMetatable gives a background document its fields and
 // methods: those of onon.document that read it, metadata, outline and
-// page_info, and those of plugin.document, page_text and page_links.
+// page_info, those of plugin.document, page_text and page_links, and
+// prepare_page, which renders a page before it is drawn.
 func luaBackgroundDocumentMetatable(L *lua.LState, r *Runtime) *lua.LTable {
 	mt := L.NewTypeMetatable(luaBackgroundDocumentType)
 	if mt.RawGetString("__index") != lua.LNil {
@@ -187,6 +197,42 @@ func luaBackgroundDocumentMetatable(L *lua.LState, r *Runtime) *lua.LTable {
 				L.RaiseError("document:page_info: %v", err)
 			}
 			L.Push(luaPageInfo(L, value))
+			return 1
+		},
+		"prepare_page": func(L *lua.LState) int {
+			d := checkLuaBackgroundDocument(L, 1)
+			answerer(L, "prepare_page") // it is open
+			page, width := L.CheckInt(2), float64(L.CheckNumber(3))
+			if width <= 0 {
+				L.ArgError(3, "expected a width in logical pixels, more than 0")
+			}
+			callback, _ := L.Get(4).(*lua.LFunction)
+			if L.Get(4) != lua.LNil && callback == nil {
+				L.ArgError(4, "expected a function")
+			}
+			host, ok := r.host.(BackgroundPageHost)
+			if !ok {
+				L.RaiseError("document:prepare_page: viewer host unavailable")
+			}
+			done, err := host.PrepareBackgroundPage(d.id, page, width)
+			if err != nil {
+				L.RaiseError("document:prepare_page: %v", err)
+			}
+			if callback == nil {
+				return 0
+			}
+			id := r.startPluginOperation(d.owner, "document:prepare_page", callback, func(ctx context.Context) map[string]any {
+				select {
+				case err := <-done:
+					if err != nil {
+						return operationError(err)
+					}
+					return map[string]any{"success": true, "error": "", "page": page}
+				case <-ctx.Done():
+					return operationError(ctx.Err())
+				}
+			})
+			L.Push(newPluginOperationHandle(L, r, id))
 			return 1
 		},
 		"page_text": func(L *lua.LState) int {

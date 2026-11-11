@@ -76,7 +76,7 @@ type motionTargetInfo struct {
 var enterExit, change = []Moment{MomentEnter, MomentExit}, []Moment{MomentChange}
 
 var motionTargets = [MotionTargetCount]motionTargetInfo{
-	MotionPanel:             {"panel", "Menus, panels and completion opening and closing. A slide comes in from the side the view is anchored to.", enterExit},
+	MotionPanel:             {"panel", "Menus, panels and completion opening and closing. A slide comes in from the side the view is anchored to. A view given another size glides to it in the time it takes to open.", enterExit},
 	MotionRows:              {"rows", "A list's rows as its view opens and closes, one after another with stagger.", enterExit},
 	MotionSelection:         {"selection", "The selected row's highlight moving to another row: glide moves it there, other tracks bring the new one in and take the old one out.", change},
 	MotionOverviewSelection: {"overview_selection", "The outline round the overview's selected page moving to another, as selection does.", change},

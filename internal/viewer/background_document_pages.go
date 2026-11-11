@@ -1,6 +1,7 @@
 package viewer
 
 import (
+	"errors"
 	"math"
 
 	"onon/internal/config"
@@ -58,6 +59,15 @@ type backgroundPages struct {
 	bounds   map[int]mupdf.Rect
 	kept     map[backgroundPageKey]*backgroundPage
 	pending  map[backgroundPageKey]float64
+	waiting  map[backgroundPageKey][]backgroundPageWaiter
+}
+
+// backgroundPageWaiter is someone waiting for a page rendered at scale or
+// sharper, as PrepareBackgroundPage's caller is: done is sent nil once it
+// is, or why it will not be.
+type backgroundPageWaiter struct {
+	scale float64
+	done  chan error // buffered, for the one answer
 }
 
 func newBackgroundPages() backgroundPages {
@@ -66,6 +76,7 @@ func newBackgroundPages() backgroundPages {
 		bounds:   map[int]mupdf.Rect{},
 		kept:     map[backgroundPageKey]*backgroundPage{},
 		pending:  map[backgroundPageKey]float64{},
+		waiting:  map[backgroundPageKey][]backgroundPageWaiter{},
 	}
 }
 
@@ -82,6 +93,11 @@ func (p *backgroundPages) drop(window *App) {
 	for key := range p.pending {
 		if window == nil || key.window == window {
 			delete(p.pending, key)
+		}
+	}
+	for key := range p.waiting {
+		if window == nil || key.window == window {
+			p.settle(key, errNotOpen)
 		}
 	}
 }
@@ -156,17 +172,33 @@ func (a *App) acceptBackgroundPage(s *backgroundDocuments, r backgroundPageResul
 	}
 	key := backgroundPageKey{r.request.window, r.request.page}
 	delete(d.pages.pending, key)
+	// Those waiting for the page hear what became of it, and the pages
+	// others wait for are asked for again, should the asking have been
+	// dropped.
+	var failed error
+	defer func() {
+		d.pages.settle(key, failed)
+		for other := range d.pages.waiting {
+			d.pages.settle(other, nil)
+		}
+	}()
 	if r.err != nil {
 		a.logf("background document %q page %d: %v", d.path, r.request.page+1, r.err)
+		failed = r.err
 		return
 	}
 	d.pages.bounds[r.request.page] = r.bounds
 	w := r.request.window
 	if !a.windowGroupHas(w) {
+		failed = errNotOpen
 		return // the window closed meanwhile
 	}
 	w.pendingRedraw = true
-	if r.rendered == nil || r.rendered.Image.Bounds().Empty() {
+	if r.rendered == nil {
+		return // its size only
+	}
+	if r.rendered.Image.Bounds().Empty() {
+		failed = errors.New("page is empty")
 		return
 	}
 	page := &backgroundPage{scale: r.scale, used: s.clock}
@@ -174,6 +206,7 @@ func (a *App) acceptBackgroundPage(s *backgroundDocuments, r backgroundPageResul
 		tex, err := textureFromRGBA(w.renderer, r.rendered.Image)
 		if err != nil {
 			a.logf("background document %q page %d texture: %v", d.path, r.request.page+1, err)
+			failed = err
 			return
 		}
 		page.texture = tex
@@ -238,7 +271,7 @@ func (p *backgroundPages) want(w *App, page int, scale float64) {
 
 // DocumentPage draws page (0-based) of the background document id fitted
 // to a rect, a height of 0 keeping its proportions: the page's colour until
-// it renders.
+// it renders. In a panel with round corners, the page is cut to them.
 func (c *elementCanvas) DocumentPage(id, page int, x, y, w, h float64) (float64, float64) {
 	a := c.app
 	s := a.windowGroup().backgroundDocuments()
@@ -264,7 +297,7 @@ func (c *elementCanvas) DocumentPage(id, page int, x, y, w, h float64) (float64,
 	if info.State == "open" {
 		scale := 0.0 // the page's size first, to fit it
 		if known {
-			scale = math.Min(float64(box.W)/math.Max(1, pw), overviewThumbLongSide/math.Max(1, math.Max(pw, ph)))
+			scale = backgroundPageScale(bounds, float64(box.W))
 		}
 		d.pages.want(a, page, scale)
 	}
@@ -275,13 +308,88 @@ func (c *elementCanvas) DocumentPage(id, page int, x, y, w, h float64) (float64,
 	if c.renderer == nil {
 		return w, h
 	}
-	if kept != nil && kept.texture != nil {
+	outline := c.panelOutline()
+	switch {
+	case kept != nil && kept.texture != nil:
 		alpha := a.styleColor(config.Color{RGB: [3]uint8{0xff, 0xff, 0xff}, Alpha: 1}, c.style.Opacity.V).A
 		sdl.SetTextureAlphaMod(kept.texture, alpha)
-		sdl.RenderTexture(c.renderer, kept.texture, nil, &box)
+		if outline != nil {
+			drawClippedTexture(c.renderer, kept.texture, box, outline)
+		} else {
+			sdl.RenderTexture(c.renderer, kept.texture, nil, &box)
+		}
 		sdl.SetTextureAlphaMod(kept.texture, 0xff)
-	} else {
+	case outline != nil:
+		fillClipped(c.renderer, box, outline, a.styleColor(config.Color{RGB: a.palette().Page, Alpha: 1}, c.style.Opacity.V))
+	default:
 		fillRect(c.renderer, box, a.styleColor(config.Color{RGB: a.palette().Page, Alpha: 1}, c.style.Opacity.V))
 	}
 	return w, h
+}
+
+// backgroundPageScale is the scale, in device pixels to the point, a page
+// of those bounds is rendered at to be drawn width output pixels wide: no
+// sharper than a thumbnail.
+func backgroundPageScale(bounds mupdf.Rect, width float64) float64 {
+	pw, ph := float64(bounds.X1-bounds.X0), float64(bounds.Y1-bounds.Y0)
+	return math.Min(width/math.Max(1, pw), overviewThumbLongSide/math.Max(1, math.Max(pw, ph)))
+}
+
+// PrepareBackgroundPage renders page (1-based) of the background document
+// id for this window, as it is drawn width logical pixels wide, before it
+// is drawn. The channel it returns is sent nil once the page is rendered,
+// at once if it already is, or why it could not be.
+func (a *App) PrepareBackgroundPage(id, page int, width float64) (<-chan error, error) {
+	s := a.windowGroup().backgroundDocuments()
+	d := s.open[id]
+	if d == nil {
+		return nil, errNotOpen
+	}
+	s.touch(d)
+	doc, index, err := d.document(page)
+	if err != nil {
+		return nil, err
+	}
+	bounds, known := d.pages.bounds[index]
+	if !known {
+		info, err := doc.PageInfo(index)
+		if err != nil {
+			return nil, err
+		}
+		bounds = info.Bounds
+		d.pages.bounds[index] = bounds
+	}
+	key := backgroundPageKey{a, index}
+	waiter := backgroundPageWaiter{scale: backgroundPageScale(bounds, float64(a.px(width))), done: make(chan error, 1)}
+	d.pages.waiting[key] = append(d.pages.waiting[key], waiter)
+	d.pages.settle(key, nil)
+	return waiter.done, nil
+}
+
+// settle tells those waiting for key's page what became of it: err, if it
+// failed, or that it is rendered as sharp as they asked. For the rest it
+// is asked for again.
+func (p *backgroundPages) settle(key backgroundPageKey, err error) {
+	waiting := p.waiting[key]
+	if len(waiting) == 0 {
+		return
+	}
+	kept := p.kept[key]
+	var rest []backgroundPageWaiter
+	for _, w := range waiting {
+		switch {
+		case err != nil:
+			w.done <- err
+		case kept != nil && kept.scale >= w.scale*renderUpgradeTolerance:
+			w.done <- nil
+		default:
+			p.want(key.window, key.page, w.scale)
+			rest = append(rest, w)
+		}
+	}
+	if len(rest) == 0 {
+		delete(p.waiting, key)
+	} else {
+		p.waiting[key] = rest
+	}
 }

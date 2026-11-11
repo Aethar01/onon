@@ -110,6 +110,7 @@ func (h *stubHost) EditUIRow(id string, index int)          { h.editedRow = inde
 func (h *stubHost) FocusUI(id string, focus bool)           {}
 func (h *stubHost) UIFocused(id string) bool                { return false }
 func (h *stubHost) UIViewSize(id string) (float64, float64) { return 0, 0 }
+func (h *stubHost) SetUISize(id string, w, ht *UISize)      {}
 
 func (h *stubHost) Page() int {
 	return h.page

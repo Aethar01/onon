@@ -88,7 +88,12 @@ type uiView struct {
 	// attachedAt is where a view attached beside a menu's row last sat,
 	// kept for while the menu is gone, as the view fades out after it.
 	attachedAt *sdl.FPoint
-	visible    bool
+	// sizeFrom is the size, in output pixels, a view resized while shown
+	// had before, which it glides from until it is the size it was given,
+	// sizeTo.
+	sizeFrom *sdl.FPoint
+	sizeTo   sdl.FPoint
+	visible  bool
 
 	rows []uiRow
 	// fitRows, if set, are the rows a fitted list's width is measured
@@ -421,6 +426,21 @@ func (a *App) drawCells(renderer *sdl.Renderer, view *uiView, cells []string, le
 func (a *App) viewBottomPadding(view *uiView) int {
 	_, _, bottom, _ := a.viewInsets(view)
 	return int(math.Round(float64(bottom)))
+}
+
+// uiViewLaidOutBody is view's body at the size the view is heading for,
+// while it glides to one it was given: what is drawn in it is laid out as
+// it will be at rest, and the view's frame, on its way there, shows as
+// much of that as it has room for, rather than the body's being laid out
+// again in each frame of the glide.
+func (a *App) uiViewLaidOutBody(view *uiView) sdl.FRect {
+	body := a.uiViewBody(view)
+	if view.sizeFrom != nil {
+		rect, _ := view.frameGeometry(a)
+		body.W = max(0, body.W+view.sizeTo.X-rect.W)
+		body.H = max(0, body.H+view.sizeTo.Y-rect.H)
+	}
+	return body
 }
 
 // uiViewBody is the part of view below its header, where its rows are

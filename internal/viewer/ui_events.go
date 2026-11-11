@@ -306,7 +306,7 @@ func (a *App) scrollUIViewByWheel(view *uiView, e *sdl.MouseWheelEvent) {
 // bodyScrolls reports whether what view's draw function draws is taller
 // than its body, so it, not the rows, scrolls.
 func (a *App) bodyScrolls(view *uiView) bool {
-	return view.drawBody != nil && view.extent > float64(a.uiViewBody(view).H)
+	return view.drawBody != nil && view.extent > float64(a.uiViewLaidOutBody(view).H)
 }
 
 // scrollViewBodyBy scrolls what view's draw function draws by delta output
@@ -325,7 +325,7 @@ func (a *App) viewScrollAction(view *uiView, action string) bool {
 	if len(view.rows) > 0 {
 		return false
 	}
-	line, page := float64(3*a.uiLineHeight()), float64(a.uiViewBody(view).H)
+	line, page := float64(3*a.uiLineHeight()), float64(a.uiViewLaidOutBody(view).H)
 	delta := map[string]float64{
 		"scroll_down": line, "scroll_up": -line, "next_page": page, "prev_page": -page,
 		"last_page": view.extent, "first_page": -view.extent,
@@ -339,7 +339,7 @@ func (a *App) viewScrollAction(view *uiView, action string) bool {
 // draw function draws.
 func (a *App) viewScrollRange(view *uiView) (shown, total int, offset float64) {
 	if a.bodyScrolls(view) {
-		return int(a.uiViewBody(view).H), int(math.Ceil(view.extent)), view.scrollPx
+		return int(a.uiViewLaidOutBody(view).H), int(math.Ceil(view.extent)), view.scrollPx
 	}
 	_, rows := view.frameGeometry(a)
 	return rows, len(view.visibleRows()), view.offset
@@ -348,7 +348,7 @@ func (a *App) viewScrollRange(view *uiView) (shown, total int, offset float64) {
 // setViewScroll scrolls view to offset, in viewScrollRange's units.
 func (a *App) setViewScroll(view *uiView, offset float64) {
 	if a.bodyScrolls(view) {
-		view.scrollPx = clampFloat(offset, 0, view.extent-float64(a.uiViewBody(view).H))
+		view.scrollPx = clampFloat(offset, 0, view.extent-float64(a.uiViewLaidOutBody(view).H))
 		a.pendingRedraw = true
 		return
 	}

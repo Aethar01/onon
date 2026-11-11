@@ -103,6 +103,36 @@ view:show()`)
 	evalLua(t, app, `assert(size == "0x0.0 0x0", size)`)
 }
 
+// prepare_page renders a page before anything draws it, and says once it
+// has: at once for one already rendered, and that it failed for a document
+// closed meanwhile.
+func TestBackgroundDocumentPreparesAPageBeforeItIsDrawn(t *testing.T) {
+	app, _ := openBackgroundTestDocument(t)
+	d := app.windowGroup().backgroundDocuments().open[1]
+	evalLua(t, app, `doc:prepare_page(2, 100, function(r) prepared = r end)`)
+	if len(d.pages.kept) != 0 {
+		t.Fatal("the page was rendered before it was asked for")
+	}
+	pollBackgroundUntil(t, app, func() bool { return luaHolds(app, "prepared ~= nil") })
+	evalLua(t, app, `assert(prepared.success and prepared.page == 2, prepared.error)`)
+	if page := d.pages.kept[backgroundPageKey{app, 1}]; page == nil || page.scale <= 0 {
+		t.Fatalf("prepared page kept = %+v, want it rendered", page)
+	}
+	evalLua(t, app, `prepared = nil; doc:prepare_page(2, 100, function(r) prepared = r end)`)
+	if len(d.pages.waiting) != 0 {
+		t.Fatal("a page already rendered was waited for")
+	}
+	pollBackgroundUntil(t, app, func() bool { return luaHolds(app, "prepared ~= nil and prepared.success") })
+	evalLua(t, app, `
+assert(not pcall(doc.prepare_page, doc, 9, 100), "a page it does not have")
+assert(not pcall(doc.prepare_page, doc, 1, 0), "no width")
+doc:prepare_page(3, 100, function(r) closed = r end)
+doc:close()
+assert(not pcall(doc.prepare_page, doc, 1, 100), "a closed document")`)
+	pollBackgroundUntil(t, app, func() bool { return luaHolds(app, "closed ~= nil") })
+	evalLua(t, app, `assert(not closed.success and closed.error ~= "", "prepared a closed document's page")`)
+}
+
 func TestBackgroundDocumentReportsAFileItCannotOpen(t *testing.T) {
 	app := luaUITestApp(t, "")
 	evalLua(t, app, `doc = onon.load_document(`+strconv.Quote(t.TempDir()+"/missing.pdf")+`, function(r) result = r end)`)
