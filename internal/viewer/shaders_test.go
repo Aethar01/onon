@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"unsafe"
 
@@ -67,6 +68,7 @@ func runShaderProbe(dir string) int {
 		return shaderProbeSkip
 	}
 	app := &App{tab: &tab{}, config: config.Default()}
+	app.config.Shaders = true
 	app.renderer = renderer
 	app.winW, app.winH = 200, 200
 	panel := &app.config.Theme.Elements[config.ElementPanel]
@@ -132,4 +134,33 @@ func readPixel(renderer *sdl.Renderer, x, y int32) ([3]uint8, error) {
 	}
 	defer sdl.DestroySurface(converted)
 	return [3]uint8(unsafe.Slice((*uint8)(converted.Pixels), 4)), nil
+}
+
+func TestShadersOffIsNotedWhenTheThemeIsChosen(t *testing.T) {
+	app := &App{tab: &tab{}, config: config.Default()}
+	app.config.Theme.Elements[config.ElementPanel].Shader = config.Opt[string]{V: "liquid.glsl", Set: true}
+	if note := app.shadersOffNote(); !strings.Contains(note, "onon.options.shaders") {
+		t.Fatalf("note %q, want the shaders option named", note)
+	}
+	app.showConfigWarnings()
+	if app.message != "" {
+		t.Errorf("config warning %q: shaders being off is not a fault of the config", app.message)
+	}
+	app.beginShaderFrame()
+	if app.shaders.framing {
+		t.Error("the frame is drawn for shaders that are off")
+	}
+}
+
+func TestNoNoteOfShadersWhenOnOrUnused(t *testing.T) {
+	app := &App{tab: &tab{}, config: config.Default()}
+	if note := app.shadersOffNote(); note != "" {
+		t.Errorf("note %q for a theme with no shaders", note)
+	}
+	app.config.Shaders = true
+	app.config.Theme.Elements[config.ElementPanel].Shader = config.Opt[string]{V: "liquid.glsl", Set: true}
+	app.styles = nil
+	if note := app.shadersOffNote(); note != "" {
+		t.Errorf("note %q with shaders on", note)
+	}
 }

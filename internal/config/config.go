@@ -12,6 +12,7 @@ type Config struct {
 	StatusBarVisible      bool
 	RenderMode            string
 	Renderer              string
+	Shaders               bool
 	RenderOversample      float64
 	MinZoom               float64
 	MaxZoom               float64

@@ -92,6 +92,16 @@ func (a *App) themeHasShaders() bool {
 	return false
 }
 
+// shadersOffNote says that the theme's shaders are off, for when it is
+// chosen, so it is not left looking plain without a word; "" when there is
+// nothing to say.
+func (a *App) shadersOffNote() string {
+	if a.config.Shaders || !a.themeHasShaders() {
+		return ""
+	}
+	return "its shaders are off (onon.options.shaders)"
+}
+
 // beginShaderFrame draws the frame into a texture if the theme's shaders
 // are to run on it.
 func (a *App) beginShaderFrame() {
@@ -102,10 +112,22 @@ func (a *App) beginShaderFrame() {
 		s.releaseTextures()
 		return
 	}
+	if !a.config.Shaders {
+		s.releaseTextures()
+		return
+	}
 	if !a.shadersAvailable() {
 		if !s.noted {
 			s.noted = true
-			a.logf("the %s renderer runs no shaders; the theme's are left out", sdl.GetRendererName(a.renderer))
+			name := "no"
+			if a.renderer != nil {
+				name = "the " + sdl.GetRendererName(a.renderer)
+			}
+			a.logf("%s renderer runs no shaders; the theme's are left out", name)
+			if a.config.Renderer == "auto" {
+				// Shaders were turned on after the renderer was chosen.
+				a.message = "restart onon to run theme shaders"
+			}
 		}
 		return
 	}
