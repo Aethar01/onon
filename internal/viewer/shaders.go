@@ -2,6 +2,7 @@ package viewer
 
 import (
 	"fmt"
+	"image/color"
 	"log"
 	"os"
 	"path/filepath"
@@ -30,6 +31,7 @@ var (
 	sdlSetGPURenderStateFragmentUniforms func(unsafe.Pointer, uint32, unsafe.Pointer, uint32) bool
 	sdlSetGPURenderState                 func(*sdl.Renderer, unsafe.Pointer) bool
 	sdlDestroyGPURenderState             func(unsafe.Pointer)
+	sdlComposeCustomBlendMode            func(sdl.BlendFactor, sdl.BlendFactor, sdl.BlendOperation, sdl.BlendFactor, sdl.BlendFactor, sdl.BlendOperation) sdl.BlendMode
 )
 
 // renderStateSymbols loads them, reporting whether the SDL in use has them.
@@ -39,6 +41,7 @@ var renderStateSymbols = sync.OnceValue(func() bool {
 		"SDL_SetGPURenderStateFragmentUniforms": &sdlSetGPURenderStateFragmentUniforms,
 		"SDL_SetGPURenderState":                 &sdlSetGPURenderState,
 		"SDL_DestroyGPURenderState":             &sdlDestroyGPURenderState,
+		"SDL_ComposeCustomBlendMode":            &sdlComposeCustomBlendMode,
 	} {
 		if err := loadSDLSymbol(name, dst); err != nil {
 			log.Printf("shaders unavailable: %s: %v", name, err)
@@ -211,6 +214,21 @@ func (a *App) drawShader(renderer *sdl.Renderer, st *config.Style, box sdl.Rect,
 	sdl.RenderTextureRotated(renderer, s.frame, &src, nil, 0, nil, sdl.FlipVertical)
 	sdl.SetRenderTarget(renderer, target)
 
+	dst := sdl.FRect{X: float32(box.X), Y: float32(box.Y), W: float32(box.W), H: float32(box.H)}
+	// The shader cuts itself to a rect or pill, its corners being in its
+	// uniforms. A path it cannot know, so the shader is drawn into a
+	// texture of its own, cut to the path's mask there, and then drawn.
+	var cut *sdl.Texture
+	if shape.Kind == "path" {
+		if cut = s.backdrop(renderer, box.W, box.H); cut == nil || !sdl.SetRenderTarget(renderer, cut) {
+			sdl.SetRenderTarget(renderer, target)
+			return
+		}
+		sdl.SetRenderDrawColor(renderer, 0, 0, 0, 0)
+		sdl.RenderClear(renderer)
+		dst.X, dst.Y = 0, 0
+	}
+
 	uniforms := shader.Uniforms{
 		Width: float32(box.W), Height: float32(box.H),
 		Time:  float32(time.Since(startTime).Seconds()),
@@ -224,13 +242,43 @@ func (a *App) drawShader(renderer *sdl.Renderer, st *config.Style, box sdl.Rect,
 	sdlSetGPURenderStateFragmentUniforms(program.state, 0, unsafe.Pointer(&data[0]), uint32(len(data)))
 	sdl.SetTextureAlphaMod(backdrop, uint8(255*min(1, alpha)+0.5))
 	sdlSetGPURenderState(renderer, program.state)
-	dst := sdl.FRect{X: float32(box.X), Y: float32(box.Y), W: float32(box.W), H: float32(box.H)}
 	sdl.RenderTexture(renderer, backdrop, nil, &dst)
 	sdlSetGPURenderState(renderer, nil)
 	// The uniforms are the state's, so what was drawn with them is sent
 	// before the next box changes them.
 	sdl.FlushRenderer(renderer)
 	s.animated = s.animated || program.animated
+	if cut != nil {
+		a.cutToShape(renderer, cut, target, box, shape)
+	}
+}
+
+// cutToShape draws cut, a shader drawn into a texture box's size, at box
+// in target, with what lies outside shape taken away. Drawn over a clear
+// texture, the shader is there premultiplied by its alpha; the shape's
+// mask then multiplies all four channels by its coverage.
+func (a *App) cutToShape(renderer *sdl.Renderer, cut, target *sdl.Texture, box sdl.Rect, shape boxShape) {
+	defer sdl.SetTextureBlendMode(cut, sdl.BlendModeBlend) // a backdrop again next time
+	m, ok := a.shapeMask(renderer, maskSpec{shape: shape, w: box.W, h: box.H})
+	if ok {
+		keep := sdlComposeCustomBlendMode(
+			sdl.BlendFactorZero, sdl.BlendFactorSrcAlpha, sdl.BlendOperationAdd,
+			sdl.BlendFactorZero, sdl.BlendFactorSrcAlpha, sdl.BlendOperationAdd)
+		if !sdl.SetTextureBlendMode(m.texture, keep) {
+			ok = false
+		} else {
+			a.drawMask(renderer, maskSpec{shape: shape, w: box.W, h: box.H}, 0, 0, color.RGBA{R: 255, G: 255, B: 255, A: 255})
+			sdl.SetTextureBlendMode(m.texture, sdl.BlendModeBlend)
+		}
+	}
+	sdl.SetRenderTarget(renderer, target)
+	if !ok {
+		return // drawn uncut, the shader would cover what the shape leaves out
+	}
+	sdl.SetTextureBlendMode(cut, sdl.BlendModeBlendPremultiplied)
+	sdl.SetTextureAlphaMod(cut, 255)
+	dst := sdl.FRect{X: float32(box.X), Y: float32(box.Y), W: float32(box.W), H: float32(box.H)}
+	sdl.RenderTexture(renderer, cut, nil, &dst)
 }
 
 // backdrop is a texture w by h for a box's backdrop.

@@ -114,6 +114,33 @@ func runShaderProbe(dir string) int {
 			failed = 1
 		}
 	}
+	// A path the shader cannot cut itself to: a triangle over the box's
+	// top left half, which the shader must leave the bottom right of.
+	app.config.Theme.Elements[config.ElementPanel].Shape = config.Opt[config.Shape]{V: config.Shape{Kind: "path", Path: "M0,0 L100%,0 L0,100% Z"}, Set: true}
+	app.styles = nil
+	fillRect(renderer, sdl.FRect{W: 200, H: 200}, color.RGBA{R: 255, A: 255})
+	st = app.style(config.ElementPanel)
+	app.drawDefaultBox(renderer, &st, sdl.FRect{X: 50, Y: 50, W: 100, H: 100}, boxAll)
+	sdl.SetRenderTarget(renderer, app.shaders.frame)
+	for _, check := range []struct {
+		what string
+		x, y int32
+		want [3]uint8
+	}{
+		{"inside the path", 70, 70, [3]uint8{255, 0, 255}},
+		{"in the box, outside the path", 130, 130, [3]uint8{255, 0, 0}},
+		{"beside the box", 20, 100, [3]uint8{255, 0, 0}},
+	} {
+		got, err := readPixel(renderer, check.x, check.y)
+		if err != nil {
+			fmt.Println(err)
+			return 1
+		}
+		if got != check.want {
+			fmt.Printf("path shape, %s: %v, want %v\n", check.what, got, check.want)
+			failed = 1
+		}
+	}
 	app.endShaderFrame()
 	if failed != 0 {
 		fmt.Println("SDL:", sdl.GetError())
