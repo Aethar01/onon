@@ -29,6 +29,7 @@ func TestLuaPlatformModule(t *testing.T) {
 local platform = require("onon.platform")
 assert(platform.os == ` + luaQuote(wantOS) + `)
 assert(platform.arch == ` + luaQuote(runtime.GOARCH) + `)
+assert(type(platform.hostname) == "string" and not platform.hostname:find(".", 1, true))
 assert(type(platform.home_dir) == "string")
 assert(type(platform.config_dir) == "string")
 assert(type(platform.data_dir) == "string")

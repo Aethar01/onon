@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	lua "github.com/yuin/gopher-lua"
 )
@@ -13,6 +14,7 @@ func NewLuaPlatformModule(L *lua.LState) *lua.LTable {
 	mod := L.NewTable()
 	L.SetField(mod, "os", lua.LString(LuaOSName(runtime.GOOS)))
 	L.SetField(mod, "arch", lua.LString(runtime.GOARCH))
+	L.SetField(mod, "hostname", lua.LString(hostname()))
 	L.SetField(mod, "home_dir", lua.LString(homeDir()))
 	L.SetField(mod, "config_dir", lua.LString(platformLuaConfigDir()))
 	L.SetField(mod, "data_dir", lua.LString(DataDir()))
@@ -27,6 +29,13 @@ func LuaOSName(goos string) string {
 		return "macos"
 	}
 	return goos
+}
+
+// hostname is the machine's name up to its first dot, as `hostname -s` gives it.
+func hostname() string {
+	name, _ := os.Hostname()
+	short, _, _ := strings.Cut(name, ".")
+	return short
 }
 
 func homeDir() string {

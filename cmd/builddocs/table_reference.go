@@ -34,6 +34,7 @@ var luaTableGroups = []luaTableGroup{
 			{"Platform", "`onon.platform`, also `require(\"onon.platform\")`. Directories are absolute when the system gives one, and empty when it does not.", []luaField{
 				{"os", "string", "`linux`, `macos` or `windows`."},
 				{"arch", "string", "The processor architecture, as Go names it: `amd64`, `arm64` and so on."},
+				{"hostname", "string", "The machine's name, up to its first dot; empty when the system gives none."},
 				{"home_dir", "string", "The user's home directory."},
 				{"config_dir", "string", "The directory onon reads `config.lua` from."},
 				{"data_dir", "string", "onon's data directory."},
