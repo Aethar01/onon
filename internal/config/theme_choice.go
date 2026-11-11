@@ -138,6 +138,12 @@ func (r *Runtime) loadTheme(name string) (Theme, error) {
 	} else if err != nil {
 		r.warn(err)
 	}
+	// A shader is beside the theme's file unless it says where it is.
+	for i := range theme.Elements {
+		if s := &theme.Elements[i].Shader; s.V != "" && !filepath.IsAbs(s.V) {
+			s.V = filepath.Join(filepath.Dir(path), s.V)
+		}
+	}
 	return theme, nil
 }
 

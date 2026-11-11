@@ -146,3 +146,24 @@ func TestThemeFilesCanBeChosen(t *testing.T) {
 		t.Fatalf("warnings %q", warnings)
 	}
 }
+
+func TestThemeFileShaderIsBesideIt(t *testing.T) {
+	setTestDataDir(t)
+	dir := t.TempDir()
+	rt := openThemeChoiceRuntime(t, dir, "", map[string]string{
+		"frosty": `return { elements = { panel = { shader = "frost.glsl" }, hint = { shader = "/abs/hint.glsl" }, row = { shader = false } } }`,
+	})
+	if err := rt.PreviewTheme("frosty"); err != nil {
+		t.Fatal(err)
+	}
+	theme := rt.Config().Theme
+	if got, want := theme.Style(ElementPanel).Shader.V, filepath.Join(dir, "themes", "frost.glsl"); got != want {
+		t.Errorf("panel shader = %q, want %q", got, want)
+	}
+	if got := theme.Style(ElementHint).Shader.V; got != "/abs/hint.glsl" {
+		t.Errorf("hint shader = %q, want its absolute path", got)
+	}
+	if got := theme.Style(ElementRow).Shader.V; got != "" {
+		t.Errorf("row shader = %q, want none", got)
+	}
+}
