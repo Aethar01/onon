@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,6 +21,9 @@ type openDocumentOptions struct {
 	// remote is the fetched copy of a remote document; until it is set,
 	// opening one fetches it first.
 	remote *remote.Info
+	// jump is the place in the document the jump list is going to, which
+	// is no jump of its own.
+	jump *jumpPosition
 }
 
 // Open opens path in place of the document in the tab shown, or shows the
@@ -191,6 +195,12 @@ func (a *App) openDocumentWithPassword(path string, opts openDocumentOptions, pa
 	if pages > 0 && startPage >= pages {
 		startPage = pages - 1
 	}
+	// The jump list outlives the document: opening another over it is a
+	// jump from where it was.
+	jumpBack, jumpAhead := a.jumpBack, a.jumpAhead
+	if opts.jump == nil && a.doc != nil && !sameDocument(path, a.docPath) {
+		jumpBack, jumpAhead = appendJump(slices.Clone(jumpBack), a.currentJumpPosition()), nil
+	}
 	a.saveDocumentSession() // first, so reopening this document resumes where it is
 	savedState, hasSavedState := a.documentSessionViewState(path)
 	switch {
@@ -251,6 +261,13 @@ func (a *App) openDocumentWithPassword(path string, opts openDocumentOptions, pa
 	}
 	if opts.startPageExplicit || !hasSavedState && opts.preserveView == nil {
 		a.alignPageToAnchor(startPage)
+	}
+	a.jumpBack, a.jumpAhead = jumpBack, jumpAhead
+	a.trimJumps()
+	if opts.jump != nil {
+		a.placeJump(*opts.jump, true)
+	} else {
+		a.dropStoredJumpHere()
 	}
 	a.resetRenderScale()
 	a.pendingRedraw = true

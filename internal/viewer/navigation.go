@@ -2,8 +2,11 @@ package viewer
 
 import (
 	"math"
+	"slices"
+	"strconv"
 
 	"onon/internal/config"
+	"onon/internal/instance"
 )
 
 func (a *App) currentScaleFromRows(viewportW, viewportH int, baseRows []rowLayout) float64 {
@@ -221,45 +224,186 @@ func (a *App) alignPageToDocumentPoint(page int, x, y float64) {
 	a.clampScroll()
 }
 
+// The jump list is the tab's, as Vim's is the window's, and its places
+// name their documents: going to one in another document shows the tab
+// that has it open, or opens it in this one. A new tab starts with the
+// list of the tab it was opened from and where that was, and onon with the
+// list it closed with.
+
 func (a *App) recordJump() {
-	pos := a.currentJumpPosition()
-	if len(a.jumpBack) == 0 || a.jumpBack[len(a.jumpBack)-1] != pos {
-		a.jumpBack = append(a.jumpBack, pos)
+	if a.hasJumpPosition() {
+		a.jumpBack = appendJump(a.jumpBack, a.currentJumpPosition())
 	}
 	a.jumpAhead = nil
+	a.trimJumps()
 }
 
-func (a *App) jumpForward() {
-	if len(a.jumpAhead) == 0 {
-		return
+// appendJump adds pos to the end of jumps unless it ends them already.
+func appendJump(jumps []jumpPosition, pos jumpPosition) []jumpPosition {
+	if len(jumps) > 0 && jumps[len(jumps)-1] == pos {
+		return jumps
 	}
-	current := a.currentJumpPosition()
-	jump := a.jumpAhead[len(a.jumpAhead)-1]
-	a.jumpAhead = a.jumpAhead[:len(a.jumpAhead)-1]
-	if len(a.jumpBack) == 0 || a.jumpBack[len(a.jumpBack)-1] != current {
-		a.jumpBack = append(a.jumpBack, current)
-	}
-	a.restoreJump(jump)
+	return append(jumps, pos)
 }
 
-func (a *App) jumpBackward() {
-	if len(a.jumpBack) == 0 {
+// trimJumps keeps the tab's jump list to jump_list_max places, dropping
+// the oldest.
+func (a *App) trimJumps() {
+	limit := a.config.JumpListMax
+	if limit <= 0 {
 		return
 	}
-	current := a.currentJumpPosition()
-	jump := a.jumpBack[len(a.jumpBack)-1]
-	a.jumpBack = a.jumpBack[:len(a.jumpBack)-1]
-	if len(a.jumpAhead) == 0 || a.jumpAhead[len(a.jumpAhead)-1] != current {
-		a.jumpAhead = append(a.jumpAhead, current)
+	if over := len(a.jumpBack) + len(a.jumpAhead) - limit; over > 0 {
+		drop := min(over, len(a.jumpBack))
+		a.jumpBack = a.jumpBack[drop:]
+		a.jumpAhead = a.jumpAhead[over-drop:]
 	}
-	a.restoreJump(jump)
+}
+
+// hasJumpPosition reports whether the tab shows somewhere to come back to.
+func (a *App) hasJumpPosition() bool {
+	return a.docPath != "" || len(a.pageToRow) > 0
+}
+
+func (a *App) jumpForward() { a.followJump(&a.jumpAhead, &a.jumpBack, 1) }
+
+func (a *App) jumpBackward() { a.followJump(&a.jumpBack, &a.jumpAhead, 1) }
+
+// followJump goes to the nth place from the end of to, which loses it and
+// those after it, leaving where the tab was and then those at the end of
+// from, for the way back.
+func (a *App) followJump(to, from *[]jumpPosition, n int) {
+	n = min(n, len(*to))
+	if n <= 0 {
+		return
+	}
+	jump := (*to)[len(*to)-n]
+	here, ok := a.leaveForJump(jump)
+	if !ok {
+		return
+	}
+	if a.hasJumpPosition() {
+		*from = appendJump(*from, a.currentJumpPosition())
+	}
+	passed := (*to)[len(*to)-n+1:]
+	for i := len(passed) - 1; i >= 0; i-- {
+		*from = append(*from, passed[i])
+	}
+	*to = (*to)[:len(*to)-n]
+	a.goToJump(jump, here)
+}
+
+// jumpPrevious goes to the place before the last jump, as two quotes do in Vim:
+// where the tab was takes its place, so doing it again comes back.
+func (a *App) jumpPrevious() {
+	n := len(a.jumpBack)
+	if n == 0 {
+		a.message = "no place to jump back to"
+		return
+	}
+	jump := a.jumpBack[n-1]
+	here, ok := a.leaveForJump(jump)
+	if !ok {
+		return
+	}
+	a.jumpBack = a.jumpBack[:n-1]
+	if a.hasJumpPosition() {
+		a.jumpBack = appendJump(a.jumpBack, a.currentJumpPosition())
+	}
+	a.message = ""
+	a.goToJump(jump, here)
+}
+
+// leaveForJump reports whether jump is in the tab's document, and whether
+// the tab may go to it: not when that would lose unsaved edits, before a
+// second asking.
+func (a *App) leaveForJump(jump jumpPosition) (here, ok bool) {
+	here = jump.path == "" || sameDocument(jump.path, a.docPath)
+	return here, here || a.tabShowing(jump.path) >= 0 || a.confirmDiscard("jumping")
+}
+
+func (a *App) goToJump(jump jumpPosition, here bool) {
+	if here {
+		a.placeJump(jump, jump.stored)
+	} else {
+		a.openJump(jump)
+	}
+	a.pendingRedraw = true
+}
+
+// showJumps lists the jump list, oldest first as Vim's :jumps does, with
+// where the tab is among its places; choosing one goes there.
+func (a *App) showJumps() {
+	back, ahead := a.jumpBack, a.jumpAhead
+	if len(back)+len(ahead) == 0 {
+		a.message = "no jumps"
+		return
+	}
+	var rows []uiRow
+	add := func(jump jumpPosition, steps int) {
+		name, folder := "this document", ""
+		if jump.path != "" {
+			name, folder = recentFileParts(jump.path)
+		}
+		rows = append(rows, uiRow{index: len(rows), text: name, secondary: folder, key: "p. " + strconv.Itoa(jump.page+1), value: strconv.Itoa(steps)})
+	}
+	for i, jump := range back {
+		add(jump, i-len(back))
+	}
+	selected := len(rows) - 1
+	if a.hasJumpPosition() {
+		selected = len(rows)
+		add(a.currentJumpPosition(), 0)
+		rows[selected].hint = "here"
+	}
+	for i := len(ahead) - 1; i >= 0; i-- {
+		add(ahead[i], len(ahead)-i)
+	}
+	a.showRowList("jumps", "Jumps", rows, 70, 70, func(view *uiView) {
+		view.selected = selected
+		view.onSelect = func(a *App, row uiRow) {
+			a.CloseUI("jumps")
+			switch steps, _ := strconv.Atoi(row.value); {
+			case steps < 0:
+				a.followJump(&a.jumpBack, &a.jumpAhead, -steps)
+			case steps > 0:
+				a.followJump(&a.jumpAhead, &a.jumpBack, steps)
+			}
+		}
+	})
+}
+
+// openJump goes to a place in another document: the tab that has it open,
+// as it is, or the document opened in this tab, there.
+func (a *App) openJump(jump jumpPosition) {
+	if a.showOpenDocument(jump.path, 0) {
+		return
+	}
+	opts := openDocumentOptions{jump: &jump}
+	if a.doc != nil {
+		state := a.captureViewState().atDocumentStart()
+		opts.reloadConfig, opts.preserveView = a.windowGroup().documentsOpen() <= 1, &state
+	}
+	if err := a.openDocument(jump.path, opts); err != nil {
+		a.message = err.Error()
+	}
+}
+
+// sameDocument reports whether two paths name one document.
+func sameDocument(a, b string) bool {
+	if a == "" || b == "" {
+		return a == b
+	}
+	return instance.Key(config.AbsoluteDocumentPath(a)) == instance.Key(config.AbsoluteDocumentPath(b))
 }
 
 func (a *App) currentJumpPosition() jumpPosition {
 	return jumpPosition{
+		path:    a.docPath,
 		page:    a.page,
 		scrollX: a.scrollX,
 		scrollY: a.scrollY,
+		anchor:  a.captureViewportAnchor(),
 	}
 }
 
@@ -268,7 +412,94 @@ func (a *App) restoreJump(jump jumpPosition) {
 	a.scrollX = jump.scrollX
 	a.scrollY = jump.scrollY
 	a.recomputeLayout(a.viewportSize())
-	a.clampScroll()
+}
+
+// placeJump shows jump's place in the tab's document: by its scroll, or
+// byAnchor when the document has been laid out again since, by what was
+// at the viewport's anchor.
+func (a *App) placeJump(jump jumpPosition, byAnchor bool) {
+	if !byAnchor {
+		a.restoreJump(jump)
+		return
+	}
+	back, ahead := a.jumpBack, a.jumpAhead
+	a.page = clampInt(jump.page, 0, max(0, a.pageCount-1))
+	a.recomputeLayout(a.viewportSize())
+	if jump.anchor.valid {
+		a.restoreViewportAnchor(jump.anchor)
+	} else {
+		a.alignPageToAnchor(a.page)
+	}
+	a.jumpBack, a.jumpAhead = back, ahead
+	a.pendingRedraw = true
+}
+
+// dropStoredJumpHere forgets the last place of an earlier run when the
+// document has just opened there, as the one onon closed with does.
+func (a *App) dropStoredJumpHere() {
+	n := len(a.jumpBack)
+	if n == 0 {
+		return
+	}
+	last, here := a.jumpBack[n-1], a.captureViewportAnchor()
+	if !last.stored || !sameDocument(last.path, a.docPath) {
+		return
+	}
+	same := last.page == a.page
+	if last.anchor.valid && here.valid {
+		same = last.anchor.page == here.page &&
+			math.Abs(last.anchor.point.X-here.point.X) < 2 && math.Abs(last.anchor.point.Y-here.point.Y) < 2
+	}
+	if same {
+		a.jumpBack = a.jumpBack[:n-1]
+	}
+}
+
+// jumpsForNewTab is the jump list a tab opened from this one starts with:
+// this one's, and where it is.
+func (a *App) jumpsForNewTab() []jumpPosition {
+	jumps := slices.DeleteFunc(slices.Clone(a.jumpBack), func(j jumpPosition) bool { return j.path == "" })
+	if a.docPath != "" && a.pageCount > 0 {
+		jumps = appendJump(jumps, a.currentJumpPosition())
+	}
+	if limit := a.config.JumpListMax; limit > 0 && len(jumps) > limit {
+		jumps = jumps[len(jumps)-limit:]
+	}
+	return jumps
+}
+
+// rememberJumps records the jump list of the tab shown, for the windows
+// opened next.
+func (a *App) rememberJumps() {
+	if !a.config.SessionDatabase {
+		return
+	}
+	jumps := a.jumpsForNewTab()
+	entries := make([]config.JumpEntry, len(jumps))
+	for i, jump := range jumps {
+		entries[i] = config.JumpEntry{Path: jump.path, DocumentMark: config.DocumentMark{
+			Page: jump.page, AnchorPage: jump.anchor.page, AnchorX: jump.anchor.point.X, AnchorY: jump.anchor.point.Y, AnchorValid: jump.anchor.valid,
+		}}
+	}
+	if err := config.SetJumpList(entries); err != nil {
+		a.logf("cannot record the jump list: %v", err)
+	}
+}
+
+// storedJumps is the jump list rememberJumps recorded, its last limit
+// places when limit is above 0.
+func storedJumps(limit int) []jumpPosition {
+	entries := config.JumpList()
+	jumps := make([]jumpPosition, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Path != "" {
+			jumps = append(jumps, jumpPosition{path: entry.Path, page: entry.Page, anchor: viewportAnchorFromDocumentMark(entry.DocumentMark), stored: true})
+		}
+	}
+	if limit > 0 && len(jumps) > limit {
+		jumps = jumps[len(jumps)-limit:]
+	}
+	return jumps
 }
 
 func (a *App) positionMatchesPageAnchor(page int) bool {

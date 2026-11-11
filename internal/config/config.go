@@ -70,6 +70,7 @@ type Config struct {
 	OutlineHeightPercent  int
 	CompletionMaxItems    int
 	RecentFilesMax        int
+	JumpListMax           int
 	RestoreTabs           bool
 	NativeTabs            bool
 	TabBarPosition        string // title, top, bottom, left or right
@@ -204,7 +205,7 @@ var (
 	MenuViews = map[string]string{
 		"annotation": "annotation-menu", "choice": "form-choice", "colors": "color-picker", "help": "help",
 		"keybind_keys": "core:keybind-keys", "keybinds": "core:keybinds", "matches": "matches", "options": "options",
-		"outline": "core:outline", "print": "print", "printers": "printers", "recent": "recent-files", "tabs": "tabs", "themes": "themes",
+		"outline": "core:outline", "print": "print", "printers": "printers", "jumps": "jumps", "recent": "recent-files", "tabs": "tabs", "themes": "themes",
 	}
 	MenuNames = slices.Sorted(maps.Keys(MenuViews))
 )

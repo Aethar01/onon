@@ -280,10 +280,16 @@ type navigationState struct {
 	pendingOpen string
 }
 
+// jumpPosition is a place the jump list goes back or forward to: in the
+// tab's document as it is laid out, by its scroll, or, in another document
+// or from an earlier run of onon, by what was at the viewport's anchor.
 type jumpPosition struct {
+	path    string // the document, or empty for one with no file
 	page    int
 	scrollX float64
 	scrollY float64
+	anchor  viewportAnchor
+	stored  bool // from an earlier run: no scroll to go by
 }
 
 // windowState is what belongs to the window rather than to the document

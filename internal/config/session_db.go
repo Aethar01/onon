@@ -197,6 +197,44 @@ func LastWindowTabs() (WindowTabs, bool) {
 	return w, true
 }
 
+const (
+	jumpListSetting = "jump_list"
+	jumpListLimit   = 1000 // whatever jump_list_max allows
+)
+
+// JumpEntry is a place in a document the jump list goes back to, kept
+// from one run of onon to the next.
+type JumpEntry struct {
+	Path string
+	DocumentMark
+}
+
+// SetJumpList records the places to go back to, the latest last, for
+// the windows opened next.
+func SetJumpList(entries []JumpEntry) error {
+	if len(entries) > jumpListLimit {
+		entries = entries[len(entries)-jumpListLimit:]
+	}
+	data, err := json.Marshal(entries)
+	if err != nil {
+		return err
+	}
+	return setSetting(jumpListSetting, string(data))
+}
+
+// JumpList returns the places SetJumpList recorded.
+func JumpList() []JumpEntry {
+	value, err := getSetting(jumpListSetting)
+	if err != nil || value == "" {
+		return nil
+	}
+	var entries []JumpEntry
+	if json.Unmarshal([]byte(value), &entries) != nil {
+		return nil
+	}
+	return entries
+}
+
 func RecentFiles(limit int) []string {
 	if limit < 1 {
 		return nil

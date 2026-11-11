@@ -44,8 +44,9 @@ var macOSKeys = map[string][]string{
 	"reset_zoom":        {"<D-0>"},
 	"first_page":        {"<D-Up>"},
 	"last_page":         {"<D-Down>"},
-	"jump_backward":     {"<D-[>"},
-	"jump_forward":      {"<D-]>"},
+	"jump_backward":     {"<D-[>", "<A-Left>"},
+	"jump_forward":      {"<D-]>", "<A-Right>"},
+	"reload_config":     {"<D-S-r>"},
 	"toggle_fullscreen": {"<C-D-f>"},
 }
 

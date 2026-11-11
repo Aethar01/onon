@@ -54,6 +54,7 @@ func (a *App) openInNewProcess(path string) error {
 	if err != nil {
 		return fmt.Errorf("open in new window: %w", err)
 	}
+	a.rememberJumps() // which the new process starts with
 	args := append(append([]string{}, a.launchArgs...), "--blank")
 	if path != "" {
 		args = append(a.launchArgs[:len(a.launchArgs):len(a.launchArgs)], "--unique", "--", path)
