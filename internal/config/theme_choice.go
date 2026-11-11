@@ -248,3 +248,19 @@ func (r *Runtime) applyChosenTheme() {
 	r.cfg.Theme = theme
 	r.themeChoice = name
 }
+
+// reloadChosenThemeForShaders loads the theme picked with :theme again
+// once config.lua has turned shaders on, with config.lua's changes, so
+// that a theme reading onon.options.shaders sees them on. It was loaded
+// before config.lua ran, when they were still off.
+func (r *Runtime) reloadChosenThemeForShaders() {
+	if !r.cfg.Shaders || r.themeChoice == "" || r.configSetsTheme {
+		return
+	}
+	theme, err := r.loadTheme(r.themeChoice)
+	if err != nil {
+		r.warn(fmt.Errorf("theme %q chosen with :theme: %w", r.themeChoice, err))
+		return
+	}
+	r.useTheme(theme)
+}

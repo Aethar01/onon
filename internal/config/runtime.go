@@ -220,6 +220,7 @@ func (r *Runtime) Reload() error {
 		if err != nil {
 			return err
 		}
+		r.reloadChosenThemeForShaders()
 		r.dirty = false
 		committed = true
 		return nil

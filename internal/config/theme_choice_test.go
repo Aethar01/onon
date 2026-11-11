@@ -206,3 +206,27 @@ func TestThemesAreFoundInDirectoriesOfTheirOwn(t *testing.T) {
 		t.Errorf("flat: accent %v, err %v, want the theme nearest the themes directory", rt.Config().Theme.Accent, err)
 	}
 }
+
+// A theme can read onon.options.shaders to draw differently with shaders
+// on, as config.lua leaves it, when chosen and when onon starts with it.
+func TestThemeSeesWhetherShadersAreOn(t *testing.T) {
+	setTestDataDir(t)
+	themes := map[string]string{
+		"lit": `return { accent = onon.options.shaders and "#00ff00" or "#ff0000" }`,
+	}
+	for _, shaders := range []bool{true, false} {
+		dir := t.TempDir()
+		config := `onon.options.shaders = ` + map[bool]string{true: "true", false: "false"}[shaders] + "\nonon.theme.background = \"#123456\"\n"
+		want := map[bool]string{true: "#00ff00", false: "#ff0000"}[shaders]
+		rt := openThemeChoiceRuntime(t, dir, config, themes)
+		if err := rt.ChooseTheme("lit"); err != nil {
+			t.Fatal(err)
+		}
+		for _, rt := range []*Runtime{rt, openThemeChoiceRuntime(t, dir, config, themes)} {
+			got := rt.Config().Theme
+			if got.Accent != hex(want) || got.Background != hex("#123456") {
+				t.Errorf("shaders %v: accent %v background %v, want accent %s with config.lua's background", shaders, got.Accent, got.Background, want)
+			}
+		}
+	}
+}
