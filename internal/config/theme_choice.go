@@ -2,8 +2,8 @@ package config
 
 import (
 	"fmt"
+	"io/fs"
 	"log"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -60,6 +60,8 @@ func (r *Runtime) ChosenTheme() string { return r.themeChoice }
 // themeDirs are the directories searched for theme files: the one beside
 // config.lua, or beside where config.lua would be when there is none, and
 // then ThemePaths. A name found in more than one means the first.
+// Directories under them are searched too, so a theme can be kept in a
+// directory of its own with the shaders and images it draws with.
 func (r *Runtime) themeDirs() []string {
 	var dirs []string
 	if r.cfg.ConfigPath != "" {
@@ -68,6 +70,34 @@ func (r *Runtime) themeDirs() []string {
 		dirs = append(dirs, filepath.Join(filepath.Dir(paths[0]), "themes"))
 	}
 	return unique(append(dirs, ThemePaths()...))
+}
+
+// themeFiles are the theme files in dir and the directories under it, those
+// nearest dir first. Directories whose names start with a dot are left out.
+func themeFiles(dir string) []string {
+	// dir is followed if it is a link, as the themes directory of a cloned
+	// collection often is; the files are still named as under dir.
+	root, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return nil
+	}
+	var files []string
+	_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		switch {
+		case err != nil:
+			return nil // what cannot be read holds no themes
+		case entry.IsDir() && path != root && strings.HasPrefix(entry.Name(), "."):
+			return filepath.SkipDir
+		case !entry.IsDir() && filepath.Ext(path) == ".lua":
+			if rel, err := filepath.Rel(root, path); err == nil {
+				files = append(files, filepath.Join(dir, rel))
+			}
+		}
+		return nil
+	})
+	depth := func(path string) int { return strings.Count(path, string(filepath.Separator)) }
+	slices.SortStableFunc(files, func(a, b string) int { return depth(a) - depth(b) })
+	return files
 }
 
 // ThemeChoices lists the built-in themes and then those in the theme
@@ -81,8 +111,7 @@ func (r *Runtime) ThemeChoices() []ThemeChoice {
 	var files []ThemeChoice
 	seen := map[string]bool{}
 	for _, dir := range r.themeDirs() {
-		paths, _ := filepath.Glob(filepath.Join(dir, "*.lua"))
-		for _, path := range paths {
+		for _, path := range themeFiles(dir) {
 			name := strings.TrimSuffix(filepath.Base(path), ".lua")
 			if _, builtin := Preset(name); builtin || seen[name] {
 				continue
@@ -109,12 +138,9 @@ func (r *Runtime) loadTheme(name string) (Theme, error) {
 	dirs := r.themeDirs()
 	path := ""
 	for _, dir := range dirs {
-		candidate := filepath.Join(dir, name+".lua")
-		if _, err := os.Stat(candidate); err == nil {
-			path = candidate
+		if i := slices.IndexFunc(themeFiles(dir), func(file string) bool { return filepath.Base(file) == name+".lua" }); i >= 0 {
+			path = themeFiles(dir)[i]
 			break
-		} else if !os.IsNotExist(err) {
-			return Theme{}, err
 		}
 	}
 	if path == "" {

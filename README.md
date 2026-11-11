@@ -309,7 +309,7 @@ onon.theme = {
 }
 ```
 
-The quickest way to change the theme is `:theme`, which lists the built-in themes and the theme files, those in `themes/` beside `config.lua` and in the theme directories above, showing each as you move to it; Enter keeps the one selected and onon remembers it. A theme file returns its table:
+The quickest way to change the theme is `:theme`, which lists the built-in themes and the theme files, those in `themes/` beside `config.lua` and in the theme directories above, and in the directories under them, showing each as you move to it; Enter keeps the one selected and onon remembers it. A theme file returns its table:
 
 ```lua
 -- themes/forest.lua, next to config.lua
