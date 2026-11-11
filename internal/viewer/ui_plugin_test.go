@@ -722,7 +722,7 @@ view:show()`)
 	if view.extent != 500 {
 		t.Fatalf("extent = %v, want 500", view.extent)
 	}
-	app.viewWheel(view, &sdl.MouseWheelEvent{Y: -1, MouseX: body.X + 5, MouseY: body.Y + 5})
+	app.viewWheel(view, wheelInput{dy: -1, x: body.X + 5, y: body.Y + 5})
 	if view.scrollPx <= 0 {
 		t.Fatal("the wheel did not scroll the drawn body")
 	}

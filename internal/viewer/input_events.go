@@ -149,31 +149,6 @@ func (a *App) handleSDLTextInput(e *sdl.TextInputEvent) {
 	}
 }
 
-func (a *App) handleSDLMouseWheel(e *sdl.MouseWheelEvent) {
-	if view := a.activeModalUIView(); view != nil {
-		// Without smooth scrolling a list moves a whole row an event, as
-		// the page moves a step, however far the wheel says.
-		if !a.viewWheel(view, e) {
-			a.scrollUIViewByWheel(view, e)
-		}
-		return
-	}
-	if a.handlePanelMouseWheel(e) {
-		return
-	}
-	wx, wy := normalizedWheelDeltas(e)
-	if sdl.GetModState()&sdl.KeymodCtrl != 0 {
-		if wy > 0 {
-			a.runMouseBinding("<C-wheel_up>")
-		}
-		if wy < 0 {
-			a.runMouseBinding("<C-wheel_down>")
-		}
-		return
-	}
-	a.runDiscreteMouseWheel(wx, wy)
-}
-
 func (a *App) handleSDLMouseButton(e *sdl.MouseButtonEvent) {
 	if view := a.activeModalUIView(); view != nil {
 		if a.handleListScrollButton(e) {
