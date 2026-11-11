@@ -1115,6 +1115,24 @@ onon.ui.create({ modal = false, width = 50, height = 20, attach = { x = 100, y =
 	}
 }
 
+// A view attached beside a menu's row stays where it was once the menu
+// closes, as it fades out after it, rather than jump to the centre.
+func TestLuaUIAttachKeepsPlaceAfterMenuCloses(t *testing.T) {
+	app := luaUITestApp(t, "")
+	app.winW, app.winH = 800, 600
+	evalLua(t, app, `
+list = onon.ui.create({ id = "list", width = 200, height = 300, anchor = "left", rows = { "a", "b", "c" }, selected = 2 })
+list:show()
+card = onon.ui.create({ id = "card", modal = false, width = 120, height = 40, attach = { view = list }, draw = function() end })
+card:show()`)
+	card := app.views.panels[0]
+	before, _ := card.frameGeometry(app)
+	evalLua(t, app, `list:close()`)
+	if after, _ := card.frameGeometry(app); after != before {
+		t.Fatalf("attached view moved to %+v as its menu closed, want it kept at %+v", after, before)
+	}
+}
+
 // A row with edit is typed into in place of its secondary text: Enter on
 // it starts, on_input hears each edit and on_submit the text kept, by the
 // row's id, and Escape drops it unheard. view:edit_row starts one too.

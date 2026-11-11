@@ -85,7 +85,10 @@ type uiView struct {
 	// motion, if set, is the view's own motion over the theme's.
 	motion   *config.ViewMotion
 	geometry viewGeometryCache // see viewGeometry
-	visible  bool
+	// attachedAt is where a view attached beside a menu's row last sat,
+	// kept for while the menu is gone, as the view fades out after it.
+	attachedAt *sdl.FPoint
+	visible    bool
 
 	rows []uiRow
 	// fitRows, if set, are the rows a fitted list's width is measured
