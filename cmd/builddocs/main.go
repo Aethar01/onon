@@ -370,6 +370,24 @@ func renderElementReference(b *strings.Builder) {
 	b.WriteString("```lua\nonon.theme.elements.row_selected.shape = \"M0,0 H100%-8 L100%,50% L100%-8,100% H0 Z\"\n```\n\n")
 	b.WriteString("A function is called as `shape(path, w, h)` with the box's size in logical pixels, whenever an element is drawn at a size not drawn before. Its `path` has the methods `move_to(x, y)`, `line_to(x, y)`, `quad_to(cx, cy, x, y)`, `cubic_to(c1x, c1y, c2x, c2y, x, y)`, `close()`, `rect(x, y, w, h [, radius])` and `ellipse(cx, cy, rx [, ry])`, each returning `path`. If a shape fails, its element is drawn as a plain rect and the error is reported once.\n\n")
 	b.WriteString("```lua\nonon.theme.elements.status_left.shape = function(path, w, h)\n  path:move_to(h / 2, 0):line_to(w, 0):line_to(w - h / 2, h):line_to(0, h):close()\nend\n```\n")
+	b.WriteString("\n#### Shaders\n\n")
+	b.WriteString("An element's `shader` is the file of a GLSL fragment shader, beside the theme's file unless its path is absolute. It is drawn in the element's box, cut to its shape, under its fill and border, so a translucent fill tints it. It is written as a [Shadertoy](https://www.shadertoy.com) shader is, a `mainImage` giving the colour of each pixel:\n\n")
+	b.WriteString("```glsl\n// frost.glsl: what is behind the box, softened.\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord) {\n  vec3 sum = vec3(0.0);\n  for (int i = 0; i < 16; i++) {\n    float a = float(i) * 2.39996, r = sqrt(float(i) / 16.0) * 6.0 * iScale;\n    sum += texture(iChannel0, (fragCoord + r * vec2(cos(a), sin(a))) / iResolution.xy).rgb;\n  }\n  fragColor = vec4(sum / 16.0, 1.0);\n}\n```\n\n")
+	b.WriteString("```lua\nonon.theme.elements.panel = { shader = \"frost.glsl\", fill = \"panel/40\" }\n```\n\n")
+	b.WriteString("`fragCoord` is in pixels from the bottom left of the box. The shader is given:\n\n")
+	b.WriteString("| Name | Type | Holds |\n|---|---|---|\n")
+	for _, row := range [][3]string{
+		{"iChannel0", "sampler2D", "What is drawn behind the box, the box's size: `texture(iChannel0, fragCoord / iResolution.xy)` is the pixel behind this one."},
+		{"iResolution", "vec3", "The box's width and height in pixels."},
+		{"iTime", "float", "Seconds since onon started. A shader that reads it is drawn on every frame."},
+		{"iScale", "float", "Pixels to the logical pixel, for sizes that keep to the display's density."},
+		{"iRadius", "vec4", "The box's corner radii in pixels, clockwise from the top left."},
+		{"iAlt", "float", "1 when alternate colours are on, otherwise 0."},
+		{"iShape(coord)", "float", "How far coord is from the edge of the element's shape in pixels, negative inside it, for a rect or pill."},
+	} {
+		fmt.Fprintf(b, "| %s | %s | %s |\n", markdownCode(row[0]), row[1], row[2])
+	}
+	b.WriteString("\nThe alpha the shader gives is how much of it shows, and the element's `opacity` applies to it. Shaders run on SDL's GPU renderer, which `renderer = \"auto\"` uses where it can start; other renderers draw the element without its shader, so give it a `fill` that stands on its own. If a shader fails to compile, the error is reported once, with the line it is on, and the element is drawn without it until the configuration changes.\n")
 	b.WriteString("\n#### Drawing\n\n")
 	b.WriteString("An element's `draw` function draws its box in place of the default drawing, as `draw(canvas, box, state)`, each time the element is drawn; its text is drawn over it as usual. `box` holds the box's `x`, `y`, `w` and `h` in logical pixels from the window's top left, and `state` the `element` being drawn, whether `alt` colours are on, and the `time` in seconds since onon started, for drawing that moves, so a function set on `row` can tell `row_selected` apart. Both tables are reused from call to call, so copy what you keep. Like other properties, a draw function carries to the elements that start from its element; assigning `false` or `nil` removes it.\n\n")
 	b.WriteString("The canvas's coordinates are logical pixels from the box's top left, and may reach outside it. Its methods are:\n\n")

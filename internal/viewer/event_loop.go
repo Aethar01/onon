@@ -533,6 +533,8 @@ func (a *App) drawFrame() error {
 		return nil
 	}
 	a.syncWindowSize(nil)
+	a.beginShaderFrame()
+	defer a.endShaderFrame() // if drawing fails
 	bg := a.backgroundColor()
 	a.showWindowColors(bg)
 	if !sdl.SetRenderDrawColor(a.renderer, bg.R, bg.G, bg.B, bg.A) {
@@ -589,6 +591,7 @@ func (a *App) drawFrame() error {
 	if a.motion.animating || a.message != message {
 		a.pendingRedraw = true
 	}
+	a.endShaderFrame()
 	sdl.RenderPresent(a.renderer)
 	return nil
 }

@@ -529,6 +529,10 @@ func (s *sdlState) Close() {
 	s.clearTextTextureCache()
 	s.canvas.clearImages()
 	s.masks.clear()
+	if s.renderer != nil {
+		s.shaders.reset(s.renderer)
+		s.shaders.releaseTextures()
+	}
 	s.closeUIFonts()
 	s.destroyCursors()
 	if s.autoscrollMarker != nil {
