@@ -39,8 +39,12 @@ type motionState struct {
 	regionX, regionY int32
 	layers           []*sdl.Texture
 	layerDepth       int
-	layersUsed       uint64      // the last frame a scaled layer was drawn
-	osReduced        atomic.Bool // the OS asks for less motion; see reducedMotion
+	// scales are the scaled layers being drawn into, outermost first:
+	// the point each is scaled about, in the window's pixels, and by how
+	// much.
+	scales     []layerScale
+	layersUsed uint64      // the last frame a scaled layer was drawn
+	osReduced  atomic.Bool // the OS asks for less motion; see reducedMotion
 	// osReading is whether the OS's setting is being read, and osReadAt
 	// when it was last read; see refreshReducedMotion.
 	osReading atomic.Bool
@@ -528,6 +532,9 @@ func (a *App) endOffset(t *layerToken) {
 	}
 }
 
+// layerScale is a layer shown scaled by k about x, y.
+type layerScale struct{ x, y, k float32 }
+
 // layerMargin is how far past a scaled thing's rect its texture reaches,
 // in logical pixels, for the shadows drawn round it.
 const layerMargin = 64
@@ -566,6 +573,7 @@ func (a *App) beginScale(t *layerToken, s float64, rect sdl.FRect) {
 		regionX: m.regionX, regionY: m.regionY}
 	m.layerDepth++
 	m.layersUsed = m.frame
+	m.scales = append(m.scales, layerScale{x: rect.X + rect.W/2 + float32(ox), y: rect.Y + rect.H/2 + float32(oy), k: float32(s)})
 	// A texture keeps its own viewport and clip, so the ones in place are
 	// set on it, moved so its corner is the region's, and the window's are
 	// back once it is done. Viewports set while drawing into it are moved
@@ -585,6 +593,7 @@ func (a *App) endScale(t *layerToken) {
 	r := a.renderer
 	m := &a.motion
 	m.layerDepth--
+	m.scales = m.scales[:len(m.scales)-1]
 	m.regionX, m.regionY = t.regionX, t.regionY
 	sdl.SetRenderTarget(r, t.target)
 	cx, cy, k := t.rect.X+t.rect.W/2, t.rect.Y+t.rect.H/2, t.k

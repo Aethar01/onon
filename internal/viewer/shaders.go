@@ -170,9 +170,16 @@ func (a *App) drawShader(renderer *sdl.Renderer, st *config.Style, box sdl.Rect,
 	}
 	// The box as it lies in the window, which the frame's texture covers.
 	src := sdl.FRect{X: float32(box.X), Y: float32(box.Y), W: float32(box.W), H: float32(box.H)}
-	if m := &a.motion; m.hasViewport {
+	m := &a.motion
+	if m.hasViewport {
 		src.X += float32(m.viewport.X)
 		src.Y += float32(m.viewport.Y)
+	}
+	// A box drawn into a layer shown scaled is over what the scaled box
+	// will cover, not what it would at rest.
+	for i := len(m.scales) - 1; i >= 0; i-- {
+		l := m.scales[i]
+		src = sdl.FRect{X: l.x + (src.X-l.x)*l.k, Y: l.y + (src.Y-l.y)*l.k, W: src.W * l.k, H: src.H * l.k}
 	}
 	// What is behind the box, bottom up, as a shader's coordinates run.
 	target := sdl.GetRenderTarget(renderer)
