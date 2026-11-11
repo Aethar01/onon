@@ -404,8 +404,10 @@ type Host interface {
 	// FocusUI gives a view the keys, or with focus false takes them back.
 	FocusUI(id string, focus bool)
 	UIFocused(id string) bool
-	// UIViewSize is a view's size in logical pixels.
+	// UIViewSize is a view's size in logical pixels, and SetUISize gives
+	// it another where it is, each of width and height kept if nil.
 	UIViewSize(id string) (w, h float64)
+	SetUISize(id string, width, height *UISize)
 	Page() int
 	PageCount() int
 	GotoPage(page int) error

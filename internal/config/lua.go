@@ -538,6 +538,24 @@ func newLuaView(L *lua.LState, rt *Runtime, overlay UIOverlay) *lua.LTable {
 		L.Push(lua.LNumber(h))
 		return 2
 	}))
+	L.SetField(view, "set_size", L.NewFunction(func(L *lua.LState) int {
+		var sizes [2]*UISize
+		for i, field := range []*UISize{&overlay.Width, &overlay.Height} {
+			value := L.Get(i + 2)
+			if value == lua.LNil {
+				continue // kept as it is
+			}
+			size, err := luaUISize(value)
+			if err != nil {
+				L.RaiseError("ui.view.set_size: %s %v", []string{"width", "height"}[i], err)
+			}
+			*field, sizes[i] = size, &size
+		}
+		if shown() {
+			rt.host.SetUISize(overlay.ID, sizes[0], sizes[1])
+		}
+		return 0
+	}))
 	L.SetField(view, "redraw", L.NewFunction(func(L *lua.LState) int {
 		if shown() {
 			rt.host.RedrawUI(overlay.ID)

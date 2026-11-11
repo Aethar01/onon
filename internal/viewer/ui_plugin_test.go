@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"onon/internal/config"
 
@@ -1130,6 +1131,67 @@ card:show()`)
 	evalLua(t, app, `list:close()`)
 	if after, _ := card.frameGeometry(app); after != before {
 		t.Fatalf("attached view moved to %+v as its menu closed, want it kept at %+v", after, before)
+	}
+}
+
+// view:set_size gives a view shown another size where it is: the view
+// stays the one it was, its corner kept, and a size kept as nil says. A
+// view shown again takes the size it was last given.
+func TestLuaUISetSizeResizesAViewInPlace(t *testing.T) {
+	app := luaUITestApp(t, "")
+	app.winW, app.winH = 800, 600
+	evalLua(t, app, `
+list = onon.ui.create({ id = "list", width = 200, height = 300, anchor = "left", rows = { "a", "b", "c" }, selected = 2 })
+list:show()
+card = onon.ui.create({ id = "card", modal = false, width = 120, height = 40, attach = { view = list }, draw = function() end })
+card:show()`)
+	card := app.views.panels[0]
+	before, _ := card.frameGeometry(app)
+	evalLua(t, app, `card:set_size(nil, 90)
+local w, h = card:size()
+assert(w == 120 and h == 90, w .. " by " .. h)`)
+	if app.views.panels[0] != card || !card.visible {
+		t.Fatal("set_size closed the view or showed another")
+	}
+	after, _ := card.frameGeometry(app)
+	if after.X != before.X || after.Y != before.Y || after.W != before.W || after.H <= before.H {
+		t.Fatalf("resized view at %+v, was %+v; want it taller where it was", after, before)
+	}
+	evalLua(t, app, `card:close(); card:show()
+local w, h = card:size()
+assert(w == 120 and h == 90, w .. " by " .. h)`)
+}
+
+// A view that has been drawn glides to the size set_size gives it, in the
+// time its panel takes to open, and one not yet drawn has it at once.
+func TestLuaUISetSizeGlides(t *testing.T) {
+	app := luaUITestApp(t, "")
+	app.winW, app.winH = 800, 600
+	app.config.Theme.Motion.Scale = 1
+	app.config.Theme.Motion.Moves[config.MotionPanel][config.MomentEnter].Duration = 120
+	evalLua(t, app, `
+card = onon.ui.create({ id = "card", modal = false, width = 120, height = 40, anchor = "top_left", draw = function(_, box) drawn = box.h end })
+card:show()`)
+	card := app.views.panels[0]
+	height := func() float32 { r, _ := card.frameGeometry(app); return r.H }
+	start := time.Now()
+	stepMotion(app, start, 0)
+	app.motion.shownPanels = []*uiView{card} // as drawing it leaves it
+	before := height()
+	evalLua(t, app, `card:set_size(nil, 140)`)
+	if h := height(); h != before {
+		t.Fatalf("height just resized = %v, want it still %v", h, before)
+	}
+	stepMotion(app, start, 60*time.Millisecond)
+	if h := height(); h <= before || h >= before+100 {
+		t.Fatalf("height mid-glide = %v, want between %v and %v", h, before, before+100)
+	}
+	// Its body is laid out as it will be at rest, not again each frame.
+	drawLuaView(t, app, card)
+	evalLua(t, app, `assert(drawn == 140, "body drawn " .. tostring(drawn) .. " tall mid-glide")`)
+	stepMotion(app, start, time.Second)
+	if h := height(); h != before+100 || card.sizeFrom != nil {
+		t.Fatalf("height after the glide = %v (gliding: %v), want %v at rest", h, card.sizeFrom != nil, before+100)
 	}
 }
 

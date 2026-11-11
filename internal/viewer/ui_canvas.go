@@ -562,17 +562,8 @@ func (c *elementCanvas) pageArea(page int, box sdl.FRect, area config.PageArea) 
 		return
 	}
 	var outline []point32
-	if c.view != nil && normalizeRotation(a.rotation) == 0 {
-		frame, _ := c.view.frameGeometry(a)
-		st := a.style(c.view.element)
-		if shape := a.boxShape(&st, pixelRect(frame)); shape.radius != [4]float32{} {
-			var radius config.Corners
-			for i, r := range shape.radius {
-				radius[i] = float64(r)
-			}
-			pr := pixelRect(frame)
-			outline = flattenPath(config.RoundedRectPath(float64(pr.X), float64(pr.Y), float64(pr.W), float64(pr.H), radius), pathPlacer(0, 0, 0, 0, 1))[0]
-		}
+	if normalizeRotation(a.rotation) == 0 {
+		outline = c.panelOutline()
 	}
 	alpha := a.styleColor(config.Color{RGB: [3]uint8{0xff, 0xff, 0xff}, Alpha: 1}, c.style.Opacity.V).A
 	a.withClip(c.renderer, box, func() error {
@@ -651,6 +642,10 @@ func (a *App) drawViewBody(renderer *sdl.Renderer, view *uiView, body sdl.FRect,
 	st := a.style(view.element)
 	st.Opacity.V = 1
 	var rowsErr error
+	// A view gliding to another size draws its body as it will be there,
+	// cut to what the frame shows of it now.
+	clip := body
+	body = a.uiViewLaidOutBody(view)
 	box := pixelRect(body)
 	box.Y -= int32(math.Round(view.scrollPx))
 	canvas := &elementCanvas{
@@ -669,7 +664,7 @@ func (a *App) drawViewBody(renderer *sdl.Renderer, view *uiView, body sdl.FRect,
 		Time:   time.Since(startTime).Seconds(),
 		Scroll: view.scrollPx / scale,
 	}
-	err := a.withClip(renderer, body, func() error {
+	err := a.withClip(renderer, clip, func() error {
 		again, err := view.drawBody(a, canvas, state)
 		canvas.Unclip()
 		if again {
@@ -686,14 +681,45 @@ func (a *App) drawViewBody(renderer *sdl.Renderer, view *uiView, body sdl.FRect,
 	return rowsErr
 }
 
+// panelOutline is the outline of the canvas's view's panel, in the window,
+// where its corners are round, for what is drawn to its edges to be cut
+// to; nil for square corners, which the panel's own clip keeps.
+func (c *elementCanvas) panelOutline() []point32 {
+	if c.view == nil {
+		return nil
+	}
+	a := c.app
+	frame, _ := c.view.frameGeometry(a)
+	st := a.style(c.view.element)
+	pr := pixelRect(frame)
+	shape := a.boxShape(&st, pr)
+	if shape.radius == [4]float32{} {
+		return nil
+	}
+	var radius config.Corners
+	for i, r := range shape.radius {
+		radius[i] = float64(r)
+	}
+	return flattenPath(config.RoundedRectPath(float64(pr.X), float64(pr.Y), float64(pr.W), float64(pr.H), radius), pathPlacer(0, 0, 0, 0, 1))[0]
+}
+
 // drawClippedTexture draws texture over dst, only where it falls inside
-// the convex polygon outline.
+// the convex polygon outline; with no texture it fills that with clr.
 func drawClippedTexture(renderer *sdl.Renderer, texture *sdl.Texture, dst sdl.FRect, outline []point32) {
+	drawClipped(renderer, texture, dst, outline, sdl.FColor{R: 1, G: 1, B: 1, A: 1})
+}
+
+// fillClipped fills dst with clr, only where it falls inside the convex
+// polygon outline.
+func fillClipped(renderer *sdl.Renderer, dst sdl.FRect, outline []point32, clr color.RGBA) {
+	drawClipped(renderer, nil, dst, outline, sdl.FColor{R: float32(clr.R) / 255, G: float32(clr.G) / 255, B: float32(clr.B) / 255, A: float32(clr.A) / 255})
+}
+
+func drawClipped(renderer *sdl.Renderer, texture *sdl.Texture, dst sdl.FRect, outline []point32, white sdl.FColor) {
 	polygon := clipConvex([]point32{{dst.X, dst.Y}, {dst.X + dst.W, dst.Y}, {dst.X + dst.W, dst.Y + dst.H}, {dst.X, dst.Y + dst.H}}, outline)
 	if len(polygon) < 3 {
 		return
 	}
-	white := sdl.FColor{R: 1, G: 1, B: 1, A: 1}
 	vertices := make([]sdl.Vertex, len(polygon))
 	for i, p := range polygon {
 		vertices[i] = sdl.Vertex{Position: sdl.FPoint{X: p.x, Y: p.y}, Color: white, TexCoord: sdl.FPoint{X: (p.x - dst.X) / dst.W, Y: (p.y - dst.Y) / dst.H}}

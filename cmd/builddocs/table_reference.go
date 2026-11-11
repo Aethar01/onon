@@ -241,10 +241,14 @@ var luaTableGroups = []luaTableGroup{
 				{"page_info(page)", "function", "Returns [Page info](#page-info) for a 1-based page."},
 				{"page_text(page, callback)", "function", "Reads a page's text asynchronously, as `plugin.document:page_text` does. Returns a [Handle](#handle)."},
 				{"page_links(page, callback)", "function", "Reads a page's links asynchronously, as `plugin.document:page_links` does. Returns a [Handle](#handle)."},
+				{"prepare_page(page, width [, callback])", "function", "Renders a 1-based page ahead of drawing it, as sharp as `canvas:document_page` draws it `width` logical pixels wide in this window, so that it is there the first time it is drawn rather than the page's colour. The callback, if given, is called with a [Page prepared result](#page-prepared-result) once it is rendered, straight away if it already is. With a callback, returns a [Handle](#handle)."},
 				{"close()", "function", "Closes it, with the pages drawn of it."},
 			}},
 			{"Background document result", "What `onon.load_document`'s callback is given. `success` is whether it opened.", []luaField{
 				{"page_count", "integer", "Its number of pages; 0 if it failed."},
+			}},
+			{"Page prepared result", "What a background document's `prepare_page` callback is given. `success` is whether the page is rendered.", []luaField{
+				{"page", "integer", "The 1-based page."},
 			}},
 			{"Page text result", "A `plugin.document:page_text` result.", []luaField{
 				{"page", "integer", "The 1-based page."},
@@ -349,6 +353,7 @@ var luaTableLocations = map[string]string{
 	"Job result":                 "`plugin:job()` callback",
 	"Background document":        "`onon.load_document()`",
 	"Background document result": "`onon.load_document()` callback",
+	"Page prepared result":       "background document `prepare_page()` callback",
 	"Page text result":           "`plugin.document:page_text()` callback",
 	"Page links result":          "`plugin.document:page_links()` callback",
 	"Document event":             "document event callbacks",
