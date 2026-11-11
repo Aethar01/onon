@@ -150,8 +150,10 @@ func TestThemeFilesCanBeChosen(t *testing.T) {
 func TestThemeFileShaderIsBesideIt(t *testing.T) {
 	setTestDataDir(t)
 	dir := t.TempDir()
+	// An absolute path as Lua can write it on any system.
+	elsewhere := filepath.ToSlash(filepath.Join(t.TempDir(), "hint.glsl"))
 	rt := openThemeChoiceRuntime(t, dir, "", map[string]string{
-		"frosty": `return { elements = { panel = { shader = "frost.glsl" }, hint = { shader = "/abs/hint.glsl" }, row = { shader = false } } }`,
+		"frosty": `return { elements = { panel = { shader = "frost.glsl" }, hint = { shader = "` + elsewhere + `" }, row = { shader = false } } }`,
 	})
 	if err := rt.PreviewTheme("frosty"); err != nil {
 		t.Fatal(err)
@@ -160,7 +162,7 @@ func TestThemeFileShaderIsBesideIt(t *testing.T) {
 	if got, want := theme.Style(ElementPanel).Shader.V, filepath.Join(dir, "themes", "frost.glsl"); got != want {
 		t.Errorf("panel shader = %q, want %q", got, want)
 	}
-	if got := theme.Style(ElementHint).Shader.V; got != "/abs/hint.glsl" {
+	if got := theme.Style(ElementHint).Shader.V; got != elsewhere {
 		t.Errorf("hint shader = %q, want its absolute path", got)
 	}
 	if got := theme.Style(ElementRow).Shader.V; got != "" {
