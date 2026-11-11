@@ -3,10 +3,6 @@
 package shader
 
 /*
-#cgo LDFLAGS: -lspirv-cross-c -lspirv-cross-cpp -lspirv-cross-msl -lspirv-cross-hlsl -lspirv-cross-glsl -lspirv-cross-reflect -lspirv-cross-util -lspirv-cross-core
-#cgo darwin LDFLAGS: -lc++
-#cgo windows LDFLAGS: -lstdc++
-
 #include <stdlib.h>
 #include <string.h>
 #include <spirv_cross/spirv_cross_c.h>

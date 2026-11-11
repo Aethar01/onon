@@ -5,7 +5,13 @@
 package shader
 
 /*
+// Every library is named here, in the order a static link wants them:
+// glslang everywhere, SPIRV-Cross where cross.go is built, and after both
+// the C++ library they are written with.
 #cgo LDFLAGS: -lglslang -lglslang-default-resource-limits
+#cgo darwin windows LDFLAGS: -lspirv-cross-c -lspirv-cross-cpp -lspirv-cross-msl -lspirv-cross-hlsl -lspirv-cross-glsl -lspirv-cross-reflect -lspirv-cross-util -lspirv-cross-core
+#cgo darwin LDFLAGS: -lc++
+#cgo !darwin LDFLAGS: -lstdc++ -lm
 
 #include <stdlib.h>
 #include <string.h>
