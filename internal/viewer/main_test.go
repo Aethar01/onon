@@ -20,6 +20,9 @@ func TestMain(m *testing.M) {
 	if code, ok := remote.RunAskpass(); ok {
 		os.Exit(code)
 	}
+	if dir := os.Getenv(shaderProbeEnv); dir != "" {
+		os.Exit(runShaderProbe(dir))
+	}
 	os.Exit(runIsolated(m))
 }
 

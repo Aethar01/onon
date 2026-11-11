@@ -72,6 +72,10 @@ func (a *App) chooseTheme(name string) {
 	if a.runtime.ConfigSetsTheme() {
 		a.message += "; config.lua sets onon.theme, so this lasts until onon restarts"
 	}
+	if note := a.shadersOffNote(); note != "" {
+		a.logf("theme %s: %s", name, note)
+		a.message += "; " + note
+	}
 }
 
 // applyThemePreview shows a theme previewed or put back. Plugins hear of

@@ -309,7 +309,7 @@ onon.theme = {
 }
 ```
 
-The quickest way to change the theme is `:theme`, which lists the built-in themes and the theme files, those in `themes/` beside `config.lua` and in the theme directories above, showing each as you move to it; Enter keeps the one selected and onon remembers it. A theme file returns its table:
+The quickest way to change the theme is `:theme`, which lists the built-in themes and the theme files, those in `themes/` beside `config.lua` and in the theme directories above, and in the directories under them, showing each as you move to it; Enter keeps the one selected and onon remembers it. A theme file returns its table:
 
 ```lua
 -- themes/forest.lua, next to config.lua
@@ -365,9 +365,12 @@ Requirements:
 
 - Go 1.25+
 - MuPDF 1.25.6+
-- SDL3
+- SDL3 3.4+
+- glslang, which compiles themes' shaders
+- SPIRV-Cross, on macOS and Windows, which translates them for Metal and Direct3D; Linux does not need it
+- On Windows, `dxcompiler.dll` from Microsoft's [DirectX Shader Compiler](https://github.com/microsoft/DirectXShaderCompiler/releases) beside `onon.exe`, to run shaders on Direct3D 12; without it elements are drawn without their shaders
 - pkg-config/pkgconf
-- A C compiler supported by CGO
+- A C and C++ compiler supported by CGO
 
 ```bash
 go build
@@ -382,10 +385,20 @@ go build -ldflags "-X onon/internal/config.Version=1.2.3 -X onon/internal/config
 
 The message then says "update it with <name>". A version from `git describe --long --tags`, such as `0.9.4-3-g49e499b`, or in the form AUR `-git` packages give it, such as `0.9.4.r3.g49e499b`, is checked for newer commits on main rather than a newer release. Builds with any other version are not checked.
 
+On macOS, install the dependencies with Homebrew and point CGO at them:
+
+```bash
+brew install go sdl3 mupdf glslang spirv-cross
+export CGO_CFLAGS="-I$(brew --prefix)/include"
+export CGO_LDFLAGS="-L$(brew --prefix)/lib"
+export DYLD_LIBRARY_PATH="$(brew --prefix)/lib:$DYLD_LIBRARY_PATH"
+go build
+```
+
 On Windows, install the dependencies from MSYS2 UCRT64:
 
 ```bash
-pacman -S --needed mingw-w64-ucrt-x86_64-go mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-sdl3 mingw-w64-ucrt-x86_64-mupdf
+pacman -S --needed mingw-w64-ucrt-x86_64-go mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-sdl3 mingw-w64-ucrt-x86_64-mupdf mingw-w64-ucrt-x86_64-glslang mingw-w64-ucrt-x86_64-spirv-cross
 go build -o onon.exe
 ```
 

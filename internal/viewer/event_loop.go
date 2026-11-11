@@ -61,7 +61,7 @@ func (a *App) openWindow() error {
 	if window == nil {
 		return fmt.Errorf("SDL window creation failed: %s", sdl.GetError())
 	}
-	renderer, rendererNote := createRenderer(window, a.config.Renderer)
+	renderer, rendererNote := createRenderer(window, a.config.Renderer, a.config.Shaders)
 	if renderer == nil {
 		sdl.DestroyWindow(window)
 		return fmt.Errorf("SDL renderer creation failed: %s", sdl.GetError())
@@ -156,11 +156,21 @@ func (a *App) tick() error {
 	return nil
 }
 
-// createRenderer makes the renderer the renderer option names, or SDL's own
-// choice for "auto", or when SDL_RENDER_DRIVER in the environment chooses
+// createRenderer makes the renderer the renderer option names. For "auto"
+// that is SDL's own choice, unless shaders are on: then it is SDL's GPU
+// renderer, which runs themes' shaders, where it can start. SDL's choice
+// is also what is made when SDL_RENDER_DRIVER in the environment chooses
 // one, or when the one named cannot start, which the note then says.
-func createRenderer(window *sdl.Window, name string) (*sdl.Renderer, string) {
-	if name == "" || name == "auto" || os.Getenv("SDL_RENDER_DRIVER") != "" {
+func createRenderer(window *sdl.Window, name string, shaders bool) (*sdl.Renderer, string) {
+	if os.Getenv("SDL_RENDER_DRIVER") != "" {
+		return sdl.CreateRenderer(window, ""), ""
+	}
+	if name == "" || name == "auto" {
+		if shaders {
+			if renderer := sdl.CreateRenderer(window, "gpu"); renderer != nil {
+				return renderer, ""
+			}
+		}
 		return sdl.CreateRenderer(window, ""), ""
 	}
 	if renderer := sdl.CreateRenderer(window, name); renderer != nil {
@@ -525,6 +535,8 @@ func (a *App) drawFrame() error {
 		return nil
 	}
 	a.syncWindowSize(nil)
+	a.beginShaderFrame()
+	defer a.endShaderFrame() // if drawing fails
 	bg := a.backgroundColor()
 	a.showWindowColors(bg)
 	if !sdl.SetRenderDrawColor(a.renderer, bg.R, bg.G, bg.B, bg.A) {
@@ -581,6 +593,7 @@ func (a *App) drawFrame() error {
 	if a.motion.animating || a.message != message {
 		a.pendingRedraw = true
 	}
+	a.endShaderFrame()
 	sdl.RenderPresent(a.renderer)
 	return nil
 }

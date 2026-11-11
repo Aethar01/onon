@@ -158,6 +158,7 @@ type sdlState struct {
 	fontWarning string           // the last font warning logged, so a reload does not repeat it
 	clips       []sdl.Rect       // the clip rects withClip has in place, innermost last
 	textCache   textTextureCache
+	shaders     shaderService                      // the theme's shaders
 	masks       maskCache                          // the theme's shapes, rasterised
 	styles      *[config.ElementCount]config.Style // the theme's styles, resolved; nil until drawn
 	pathKeys    pathKeys                           // draw functions' paths, packed

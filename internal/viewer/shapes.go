@@ -139,6 +139,9 @@ func (a *App) drawDefaultBox(renderer *sdl.Renderer, st *config.Style, rect sdl.
 		mask := maskSpec{shape: shape, w: box.W, h: box.H, spread: a.px(layer.Spread), blur: a.px(layer.Blur)}
 		a.drawMask(renderer, mask, box.X+int32(math.Round(float64(a.px(layer.X)))), box.Y+int32(math.Round(float64(a.px(layer.Y)))), clr)
 	}
+	if parts&boxBody != 0 {
+		a.drawShader(renderer, st, box, shape)
+	}
 	if clr := a.styleColor(st.Fill.V, opacity); clr.A > 0 && parts&boxBody != 0 {
 		a.drawMask(renderer, maskSpec{shape: shape, w: box.W, h: box.H}, box.X, box.Y, clr)
 	}

@@ -56,7 +56,7 @@ const noElement Element = -1
 // The properties an element can take: every element with a box takes
 // boxProps, and those with text textProps.
 var (
-	boxProps  = []string{"shape", "radius", "fill", "border", "shadow", "opacity", "draw"}
+	boxProps  = []string{"shape", "radius", "fill", "border", "shadow", "opacity", "shader", "draw"}
 	textProps = []string{"text", "secondary", "bold", "padding"}
 )
 
@@ -89,7 +89,7 @@ var elementSpecs = [ElementCount]struct {
 	ElementCheck:             {"check", noElement, boxProps, "The mark in a checked check box, drawn in the box; a check box's box is an input."},
 	ElementHint:              {"hint", noElement, slices.Concat(boxProps, textProps), "A link hint label. Its secondary colour is for the letters already typed."},
 	ElementOverviewSelection: {"overview_selection", noElement, slices.Concat(boxProps, []string{"padding"}), "The outline around the overview's selected page; padding is its distance from the page."},
-	ElementLinkPreview:       {"link_preview", noElement, []string{"radius", "fill", "border", "shadow", "opacity", "draw"}, "The popup previewing a link's target, a rect with corners rounded by its radius. Its fill shows while the page renders."},
+	ElementLinkPreview:       {"link_preview", noElement, []string{"radius", "fill", "border", "shadow", "opacity", "shader", "draw"}, "The popup previewing a link's target, a rect with corners rounded by its radius. Its fill shows while the page renders."},
 	ElementTitleBar:          {"title_bar", noElement, slices.Concat(boxProps, []string{"text"}), "Behind the window buttons onon draws where the system draws no title bar, as on Windows. Its text colour draws the buttons' symbols."},
 	ElementTitleButton:       {"title_button", noElement, slices.Concat(boxProps, []string{"text"}), "A window button under the pointer, drawn a little fainter while pressed."},
 	ElementTitleClose:        {"title_close", ElementTitleButton, slices.Concat(boxProps, []string{"text"}), "The close button under the pointer."},
@@ -142,6 +142,9 @@ type Style struct {
 	MaxWidth    Opt[float64]
 	Gap         Opt[float64]
 	Floating    Opt[bool]
+	// Shader is the file of a GLSL shader drawn in the box, under its
+	// fill; one not absolute is beside the theme's file, or config.lua.
+	Shader Opt[string]
 	// Draw draws the element's box in place of the default drawing.
 	Draw Opt[*lua.LFunction]
 
@@ -236,6 +239,7 @@ func baseStyle() Style {
 		MaxWidth:    some(0.0),
 		Gap:         some(0.0),
 		Floating:    some(false),
+		Shader:      some(""),
 		Draw:        some[*lua.LFunction](nil),
 	}
 }
@@ -524,6 +528,9 @@ var styleProps = []styleProp{
 	numberProp("gap", "Space between the element's parts in logical pixels.", func(s *Style) *Opt[float64] { return &s.Gap }),
 	optProp("floating", "boolean", "Float over the page rather than take space from it.",
 		func(s *Style) *Opt[bool] { return &s.Floating }, boolFromLua, parseBoolOption, func(_ *lua.LState, v bool) lua.LValue { return lua.LBool(v) }, strconv.FormatBool),
+	optProp("shader", "string", `File of a GLSL shader drawn in the box, under its fill, with what is behind the box to draw from; beside the theme's file unless absolute, and "" for none. See [Shaders](#shaders).`,
+		func(s *Style) *Opt[string] { return &s.Shader }, shaderFromLua, parseStringOption,
+		func(_ *lua.LState, v string) lua.LValue { return lua.LString(v) }, strconv.Quote),
 	optProp("draw", "function", "A function(canvas, box, state) that draws the box in place of the default drawing. See [Drawing](#drawing).",
 		func(s *Style) *Opt[*lua.LFunction] { return &s.Draw }, drawFromLua,
 		func(string) (*lua.LFunction, error) {
@@ -541,6 +548,19 @@ var styleProps = []styleProp{
 			}
 			return "function"
 		}),
+}
+
+// shaderFromLua reads a shader's file; false is none.
+func shaderFromLua(value lua.LValue) (string, error) {
+	switch value := value.(type) {
+	case lua.LString:
+		return strings.TrimSpace(string(value)), nil
+	case lua.LBool:
+		if !value {
+			return "", nil
+		}
+	}
+	return "", fmt.Errorf("expected the file of a GLSL shader")
 }
 
 func drawFromLua(value lua.LValue) (*lua.LFunction, error) {

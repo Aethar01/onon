@@ -146,3 +146,63 @@ func TestThemeFilesCanBeChosen(t *testing.T) {
 		t.Fatalf("warnings %q", warnings)
 	}
 }
+
+func TestThemeFileShaderIsBesideIt(t *testing.T) {
+	setTestDataDir(t)
+	dir := t.TempDir()
+	// An absolute path as Lua can write it on any system.
+	elsewhere := filepath.ToSlash(filepath.Join(t.TempDir(), "hint.glsl"))
+	rt := openThemeChoiceRuntime(t, dir, "", map[string]string{
+		"frosty": `return { elements = { panel = { shader = "frost.glsl" }, hint = { shader = "` + elsewhere + `" }, row = { shader = false } } }`,
+	})
+	if err := rt.PreviewTheme("frosty"); err != nil {
+		t.Fatal(err)
+	}
+	theme := rt.Config().Theme
+	if got, want := theme.Style(ElementPanel).Shader.V, filepath.Join(dir, "themes", "frost.glsl"); got != want {
+		t.Errorf("panel shader = %q, want %q", got, want)
+	}
+	if got := theme.Style(ElementHint).Shader.V; got != elsewhere {
+		t.Errorf("hint shader = %q, want its absolute path", got)
+	}
+	if got := theme.Style(ElementRow).Shader.V; got != "" {
+		t.Errorf("row shader = %q, want none", got)
+	}
+}
+
+func TestThemesAreFoundInDirectoriesOfTheirOwn(t *testing.T) {
+	setTestDataDir(t)
+	dir := t.TempDir()
+	rt := openThemeChoiceRuntime(t, dir, "", map[string]string{"flat": `return { accent = "#111111" }`})
+	write := func(path, source string) {
+		t.Helper()
+		path = filepath.Join(dir, "themes", path)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("liquid/liquid.lua", `return { accent = "#222222", elements = { panel = { shader = "liquid.glsl" } } }`)
+	write("pack/deep/flat.lua", `return { accent = "#333333" }`) // the nearer flat.lua is the one meant
+	write(".git/hidden.lua", `return {}`)
+
+	var names []string
+	for _, choice := range rt.ThemeChoices() {
+		names = append(names, choice.Name)
+	}
+	if got, want := strings.Join(names, " "), "birch classic moss flat liquid"; got != want {
+		t.Fatalf("choices %q, want %q", got, want)
+	}
+	if err := rt.PreviewTheme("liquid"); err != nil {
+		t.Fatal(err)
+	}
+	theme := rt.Config().Theme
+	if got, want := theme.Style(ElementPanel).Shader.V, filepath.Join(dir, "themes", "liquid", "liquid.glsl"); theme.Accent != hex("#222222") || got != want {
+		t.Errorf("liquid: accent %v, shader %q, want it beside the theme at %q", theme.Accent, got, want)
+	}
+	if err := rt.PreviewTheme("flat"); err != nil || rt.Config().Theme.Accent != hex("#111111") {
+		t.Errorf("flat: accent %v, err %v, want the theme nearest the themes directory", rt.Config().Theme.Accent, err)
+	}
+}

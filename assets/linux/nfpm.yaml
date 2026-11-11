@@ -28,14 +28,17 @@ contents:
   - src: dist/linux/share/licenses/onon/LICENSE
     dst: /usr/share/licenses/onon/LICENSE
 
-# MuPDF is linked in statically and SDL3 is bundled, so GTK 3, for the file
-# dialogs, and glibc are all the system has to provide.
+# MuPDF and glslang are linked in statically and SDL3 is bundled, so GTK 3,
+# for the file dialogs, glibc and the C++ library glslang is written with
+# are all the system has to provide.
 overrides:
   deb:
     depends:
       - libc6 (>= ${ONON_GLIBC})
+      - libstdc++6
       - libgtk-3-0t64 | libgtk-3-0
   rpm:
     depends:
       - glibc >= ${ONON_GLIBC}
+      - libstdc++.so.6()(64bit)
       - libgtk-3.so.0()(64bit)

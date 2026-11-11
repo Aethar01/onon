@@ -48,12 +48,13 @@ onon.options.recent_files_max = 20 -- Maximum recent files retained and displaye
 onon.options.render_mode = "continuous" -- Initial render mode: continuous or single.
 onon.options.render_oversample = 1 -- Render scale multiplier; values above 1 supersample.
 onon.options.render_threads = 0 -- Page rendering threads; 0 picks one per core up to 4, leaving a core free. Applies to newly opened documents.
-onon.options.renderer = "auto" -- Renderer SDL draws with, read when onon starts: "auto" for SDL's own choice, "gpu" for its GPU renderer (Vulkan, Metal or Direct3D 12), or one of SDL's drivers, such as "vulkan", "opengl", "metal", "direct3d11" or "software". One that cannot start falls back to "auto"; SDL_RENDER_DRIVER in the environment overrides it.
+onon.options.renderer = "auto" -- Renderer SDL draws with, read when onon starts: "auto" for SDL's own choice, or with shaders on its GPU renderer where that can start, "gpu" for the GPU renderer (Vulkan, Metal or Direct3D 12), or one of SDL's drivers, such as "vulkan", "opengl", "metal", "direct3d11" or "software". One that cannot start falls back to "auto"; SDL_RENDER_DRIVER in the environment overrides it.
 onon.options.restore_tabs = true -- Open the tabs the window had when onon last closed with several, when it starts with no document named, each loaded when first shown.
 onon.options.scroll_off = 1 -- Minimum number of rows kept visible above and below the selected item in UI menus, like Vim's scrolloff.
 onon.options.scroll_step = 64 -- Keyboard and mouse scroll distance in pixels.
 onon.options.sequence_timeout_ms = 700 -- Maximum delay between keys in a binding sequence.
 onon.options.session_database = true -- Persist per-document view state, marks, and recent files.
+onon.options.shaders = false -- Experimental: run themes' GLSL shaders. They run only on SDL's GPU renderer, which renderer "auto" then uses where it can start, so it is read when onon starts; with it off, elements are drawn without their shaders.
 onon.options.smooth_scroll = { mouse = true, trackpad = true, keyboard = true } -- Animate scrolling for selected inputs; assignments update only specified mouse, trackpad, and keyboard fields.
 onon.options.smooth_scroll_dampening = 0.8 -- Catch-up factor for smooth scrolling per animation frame; higher values are more responsive and less damped; clamped to 0.01 through 1.
 onon.options.smooth_zoom = { mouse = true, trackpad = true, keyboard = true } -- Animate zooming for selected inputs; assignments update only specified mouse, trackpad, and keyboard fields.

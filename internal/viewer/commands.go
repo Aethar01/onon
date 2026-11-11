@@ -264,6 +264,9 @@ func (a *App) applyWindowConfig(cfg config.Config, assigned map[string]bool) {
 	a.applyConfigSettings()
 	// Shapes drawn by Lua may draw differently after any change.
 	a.masks.clear()
+	if a.renderer != nil {
+		a.shaders.reset(a.renderer) // their files may have changed
+	}
 	a.themeErrors = nil
 	if prev.Theme.Font != cfg.Theme.Font {
 		a.loadUIFont()

@@ -725,6 +725,7 @@ func registerOption(name string, desc optionDesc) {
 }
 
 var configOptions = map[string]optionDesc{
+	"shaders":                boolOption(`Experimental: run themes' GLSL shaders. They run only on SDL's GPU renderer, which renderer "auto" then uses where it can start, so it is read when onon starts; with it off, elements are drawn without their shaders.`, func(c *Config) bool { return c.Shaders }, func(c *Config, v bool) { c.Shaders = v }),
 	"mouse_text_select":      boolOption("Enable text selection with the left mouse button.", func(c *Config) bool { return c.MouseTextSelect }, func(c *Config, v bool) { c.MouseTextSelect = v }),
 	"smooth_scroll":          inputSourcesOption("smooth_scroll", "Animate scrolling for selected inputs; assignments update only specified mouse, trackpad, and keyboard fields.", SmoothInputAll, func(c *Config) SmoothInputSources { return c.SmoothScrollSources }, func(c *Config, v SmoothInputSources) { c.SmoothScrollSources = v }),
 	"smooth_zoom":            inputSourcesOption("smooth_zoom", "Animate zooming for selected inputs; assignments update only specified mouse, trackpad, and keyboard fields.", SmoothInputAll, func(c *Config) SmoothInputSources { return c.SmoothZoomSources }, func(c *Config, v SmoothInputSources) { c.SmoothZoomSources = v }),
@@ -824,7 +825,7 @@ var configOptions = map[string]optionDesc{
 			c.PinchSensitivity = v
 		}
 	}),
-	"renderer":           stringOption(`Renderer SDL draws with, read when onon starts: "auto" for SDL's own choice, "gpu" for its GPU renderer (Vulkan, Metal or Direct3D 12), or one of SDL's drivers, such as "vulkan", "opengl", "metal", "direct3d11" or "software". One that cannot start falls back to "auto"; SDL_RENDER_DRIVER in the environment overrides it.`, func(c *Config) string { return c.Renderer }, func(c *Config, v string) { c.Renderer = NormalizeRenderer(v) }),
+	"renderer":           stringOption(`Renderer SDL draws with, read when onon starts: "auto" for SDL's own choice, or with shaders on its GPU renderer where that can start, "gpu" for the GPU renderer (Vulkan, Metal or Direct3D 12), or one of SDL's drivers, such as "vulkan", "opengl", "metal", "direct3d11" or "software". One that cannot start falls back to "auto"; SDL_RENDER_DRIVER in the environment overrides it.`, func(c *Config) string { return c.Renderer }, func(c *Config, v string) { c.Renderer = NormalizeRenderer(v) }),
 	"render_mode":        stringOption("Initial render mode: continuous or single.", func(c *Config) string { return c.RenderMode }, func(c *Config, v string) { c.RenderMode = NormalizeRenderMode(v) }),
 	"hint_chars":         stringOption("Characters used for link hint labels, in order of preference.", func(c *Config) string { return c.HintChars }, func(c *Config, v string) { c.HintChars = v }),
 	"fit_mode":           stringOption("Initial fit mode: page, width, height, or manual.", func(c *Config) string { return c.FitMode }, func(c *Config, v string) { c.FitMode = NormalizeFitMode(v) }),
