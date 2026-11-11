@@ -110,6 +110,9 @@ jobs:
     defaults:
       run:
         shell: msys2 {0}
+    env:
+      DXC_VERSION: v1.9.2609
+      DXC_ARCHIVE: dxc_2026_09_29.zip
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -129,13 +132,22 @@ jobs:
             mingw-w64-ucrt-x86_64-glslang
             mingw-w64-ucrt-x86_64-spirv-cross
 
-      # glslang compiles themes' shaders and SPIRV-Cross translates them for
-      # Direct3D, whose own compiler Windows has.
+      # glslang compiles themes' shaders and SPIRV-Cross translates them to
+      # HLSL for Direct3D.
       - name: Verify native dependencies
         run: |
           pkg-config --cflags --libs mupdf sdl3
           test -f /ucrt64/include/glslang/Include/glslang_c_interface.h
           test -f /ucrt64/include/spirv_cross/spirv_cross_c.h
+
+      # Direct3D 12 takes a shader as DXIL, which only Microsoft's DirectX
+      # Shader Compiler makes; neither Windows nor MSYS2 has it.
+      - name: Fetch the DirectX Shader Compiler
+        run: |
+          curl -fsSL -o dxc.zip "https://github.com/microsoft/DirectXShaderCompiler/releases/download/${DXC_VERSION}/${DXC_ARCHIVE}"
+          mkdir -p dxc
+          /c/Windows/System32/tar.exe -xf dxc.zip -C dxc bin/x64/dxcompiler.dll LICENSE-LLVM.txt LICENSE-MS.txt
+          test -f dxc/bin/x64/dxcompiler.dll
 
       - name: Compile Windows resources
         run: |
@@ -204,6 +216,10 @@ jobs:
             | sort -u \
             | xargs -r cp -t "$name/"
           cp /ucrt64/bin/SDL3.dll "$name/"
+          # Loaded when a theme's shader is first compiled, with its licences.
+          cp dxc/bin/x64/dxcompiler.dll "$name/"
+          mkdir -p "$name/licenses/dxc"
+          cp dxc/LICENSE-LLVM.txt dxc/LICENSE-MS.txt "$name/licenses/dxc/"
           rm -rf dist/onon-package
           cp -R "$name" dist/onon-package
           powershell -NoProfile -Command "\$env:PATH='${PWD}/${name};C:/msys64/ucrt64/bin;C:/msys64/usr/bin;' + \$env:PATH; \$p = Start-Process -FilePath '${PWD}/${name}/onon.exe' -ArgumentList '-v' -Wait -PassThru; exit \$p.ExitCode"

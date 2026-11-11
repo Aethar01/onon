@@ -368,6 +368,7 @@ Requirements:
 - SDL3 3.4+
 - glslang, which compiles themes' shaders
 - SPIRV-Cross, on macOS and Windows, which translates them for Metal and Direct3D; Linux does not need it
+- On Windows, `dxcompiler.dll` from Microsoft's [DirectX Shader Compiler](https://github.com/microsoft/DirectXShaderCompiler/releases) beside `onon.exe`, to run shaders on Direct3D 12; without it elements are drawn without their shaders
 - pkg-config/pkgconf
 - A C and C++ compiler supported by CGO
 
