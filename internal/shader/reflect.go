@@ -6,6 +6,7 @@ package shader
 type Usage struct {
 	Time     bool // it reads iTime
 	Backdrop bool // it samples iChannel0
+	Beyond   bool // it calls iBackdrop, reading what lies round its box too
 }
 
 // SPIR-V's opcodes and decoration read here.

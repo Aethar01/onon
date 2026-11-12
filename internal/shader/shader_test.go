@@ -47,6 +47,25 @@ func TestUniformsPackAsTheBlock(t *testing.T) {
 	if got := [4]byte(b[36:40]); got != [4]byte{0, 0, 0x80, 0x3f} {
 		t.Errorf("alt packed as %v", got)
 	}
+	// The backdrop's place starts a vec4 of its own, as std140 aligns it.
+	b = Uniforms{Backdrop: [4]float32{0, 0, 1, 0}}.Bytes()
+	if got := [4]byte(b[56:60]); got != [4]byte{0, 0, 0x80, 0x3f} {
+		t.Errorf("backdrop width packed as %v", got)
+	}
+}
+
+func TestCallsBackdrop(t *testing.T) {
+	for source, want := range map[string]bool{
+		"c = iBackdrop(p);":                           true,
+		"c = iBackdrop (p);":                          true,
+		"// iBackdrop(p)\nc = texture(iChannel0, p);": false,
+		"/* iBackdrop(p) */ c = vec4(0.0);":           false,
+		"float iBackdropish = 1.0;":                   false,
+	} {
+		if got := callsBackdrop(source); got != want {
+			t.Errorf("callsBackdrop(%q) = %v, want %v", source, got, want)
+		}
+	}
 }
 
 func TestReflectSeesWhatAShaderReads(t *testing.T) {
@@ -60,6 +79,7 @@ func TestReflectSeesWhatAShaderReads(t *testing.T) {
 		{"time", "void mainImage(out vec4 c, in vec2 p) { c = vec4(sin(iTime)); }", Usage{Time: true}},
 		{"backdrop through a function", "vec4 at(sampler2D s, vec2 p) { return texture(s, p); }\nvoid mainImage(out vec4 c, in vec2 p) { c = at(iChannel0, p / iResolution.xy); }", Usage{Backdrop: true}},
 		{"texelFetch", "void mainImage(out vec4 c, in vec2 p) { c = texelFetch(iChannel0, ivec2(p), 0); }", Usage{Backdrop: true}},
+		{"iBackdrop", "void mainImage(out vec4 c, in vec2 p) { c = iBackdrop(p - 4.0); }", Usage{Backdrop: true}},
 	} {
 		spirv, err := SPIRV(Wrap(tc.source))
 		if err != nil {

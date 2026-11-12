@@ -7,7 +7,8 @@ import (
 
 // preamble is what a theme's shader is given, as Shadertoy gives its own:
 // the backdrop as iChannel0, the box's size as iResolution and the time as
-// iTime. The names starting onon_ are the wrapper's own.
+// iTime, and iBackdrop to read what is behind any point, past the box too.
+// The names starting onon_ are the wrapper's own.
 const preamble = `#version 450
 layout(location = 0) in vec4 onon_color;
 layout(location = 1) in vec2 onon_uv;
@@ -19,7 +20,18 @@ layout(set = 3, binding = 0, std140) uniform onon_uniforms {
 	vec4 iRadius;
 	float iScale;
 	float iAlt;
+	// Where the box lies in iChannel0, in pixels from its bottom left,
+	// and iChannel0's size: the box's own, unless the shader calls
+	// iBackdrop, which is given what lies round the box too.
+	vec4 onon_backdrop;
 };
+
+// iBackdrop is what is behind coord, in pixels from the bottom left of
+// the box, which may lie beyond the box by up to BackdropReach logical
+// pixels, as far as the window goes; further out it is what is at the edge.
+vec4 iBackdrop(vec2 coord) {
+	return texture(iChannel0, (coord + onon_backdrop.xy) / onon_backdrop.zw);
+}
 
 // iShape is how far coord is from the edge of the element's shape, in
 // pixels: negative inside it.
@@ -58,10 +70,17 @@ type Uniforms struct {
 	Radius        [4]float32 // corner radii in pixels, clockwise from the top left
 	Scale         float32    // pixels to the logical pixel
 	Alt           bool       // whether alternate-color mode is on
+	// Backdrop is where the box lies in iChannel0, in pixels from its
+	// bottom left, and iChannel0's width and height.
+	Backdrop [4]float32
 }
 
 // UniformSize is the size of the block Bytes packs.
-const UniformSize = 48
+const UniformSize = 64
+
+// BackdropReach is how far past its box, in logical pixels, a shader
+// that calls iBackdrop can read what is behind it.
+const BackdropReach = 32
 
 // Bytes packs u as the preamble's uniform block lays it out.
 func (u Uniforms) Bytes() [UniformSize]byte {
@@ -74,6 +93,7 @@ func (u Uniforms) Bytes() [UniformSize]byte {
 		u.Width, u.Height, 1, u.Time,
 		u.Radius[0], u.Radius[1], u.Radius[2], u.Radius[3],
 		u.Scale, alt, 0, 0,
+		u.Backdrop[0], u.Backdrop[1], u.Backdrop[2], u.Backdrop[3],
 	} {
 		binary.LittleEndian.PutUint32(b[4*i:], math.Float32bits(v))
 	}

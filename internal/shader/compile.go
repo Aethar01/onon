@@ -79,6 +79,9 @@ func Compile(source string, format Format) (Program, error) {
 		return Program{}, err
 	}
 	p := Program{Code: append([]byte(nil), code...), Entry: entry, Usage: Reflect(spirv)}
+	// A call of iBackdrop, which the compiler has inlined, is known by
+	// its name in the shader as written.
+	p.Usage.Beyond = p.Usage.Backdrop && callsBackdrop(source)
 	storeCached(key, p)
 	return p, nil
 }
@@ -103,6 +106,7 @@ const cacheMagic = "ONSH"
 const (
 	usageTime = 1 << iota
 	usageBackdrop
+	usageBeyond
 )
 
 func loadCached(key string) (Program, bool) {
@@ -126,7 +130,7 @@ func loadCached(key string) (Program, bool) {
 	return Program{
 		Code:  data[n:],
 		Entry: string(data[:n]),
-		Usage: Usage{Time: flags&usageTime != 0, Backdrop: flags&usageBackdrop != 0},
+		Usage: Usage{Time: flags&usageTime != 0, Backdrop: flags&usageBackdrop != 0, Beyond: flags&usageBeyond != 0},
 	}, true
 }
 
@@ -145,6 +149,9 @@ func storeCached(key string, p Program) {
 	}
 	if p.Usage.Backdrop {
 		flags |= usageBackdrop
+	}
+	if p.Usage.Beyond {
+		flags |= usageBeyond
 	}
 	var b bytes.Buffer
 	b.WriteString(cacheMagic)
@@ -181,4 +188,34 @@ func pruneCache(dir string) {
 			os.Remove(filepath.Join(dir, e.Name()))
 		}
 	}
+}
+
+// callsBackdrop reports whether source, a theme's shader, calls iBackdrop
+// outside its comments.
+func callsBackdrop(source string) bool {
+	for len(source) > 0 {
+		switch {
+		case strings.HasPrefix(source, "//"):
+			end := strings.IndexByte(source, '\n')
+			if end < 0 {
+				return false
+			}
+			source = source[end:]
+		case strings.HasPrefix(source, "/*"):
+			end := strings.Index(source[2:], "*/")
+			if end < 0 {
+				return false
+			}
+			source = source[end+4:]
+		case strings.HasPrefix(source, "iBackdrop"):
+			rest := strings.TrimLeft(source[len("iBackdrop"):], " \t\r\n")
+			if strings.HasPrefix(rest, "(") {
+				return true
+			}
+			source = source[len("iBackdrop"):]
+		default:
+			source = source[1:]
+		}
+	}
+	return false
 }

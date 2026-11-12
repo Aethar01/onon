@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -347,10 +348,15 @@ func (a *App) drawShader(renderer *sdl.Renderer, st *config.Style, box sdl.Rect,
 	target := sdl.GetRenderTarget(renderer)
 	// What the shader is drawn with: what is behind the box, for one that
 	// samples it, or a blank texture.
+	// One that calls iBackdrop is given what lies round its box too.
 	var under *sdl.Texture
+	area, left, bottom := box, int32(0), int32(0)
 	if samples {
 		s.sampled = true
-		if under = s.backdrop(renderer, box.W, box.H); under == nil || !a.copyBackdrop(renderer, under, target, box) {
+		if program.usage.Beyond {
+			area, left, bottom = a.backdropArea(box)
+		}
+		if under = s.backdrop(renderer, area.W, area.H); under == nil || !a.copyBackdrop(renderer, under, target, area) {
 			return
 		}
 	} else if under = s.blankTexture(renderer); under == nil {
@@ -377,6 +383,8 @@ func (a *App) drawShader(renderer *sdl.Renderer, st *config.Style, box sdl.Rect,
 		Time:  s.time,
 		Scale: a.px(1),
 		Alt:   a.altColors,
+		// Bottom up, as the shader's coordinates run.
+		Backdrop: [4]float32{float32(left), float32(bottom), float32(area.W), float32(area.H)},
 	}
 	if shape.Kind == "rect" {
 		uniforms.Radius = shape.radius
@@ -391,6 +399,23 @@ func (a *App) drawShader(renderer *sdl.Renderer, st *config.Style, box sdl.Rect,
 	if cut != nil {
 		a.cutToShape(renderer, cut, target, box, shape)
 	}
+}
+
+// backdropArea is box grown by shader.BackdropReach on each side, as far
+// as the window goes, and how far it grew to the left and below.
+func (a *App) backdropArea(box sdl.Rect) (area sdl.Rect, left, bottom int32) {
+	reach := int32(math.Round(float64(a.px(shader.BackdropReach))))
+	// Where the box lies in the window, which the frame covers.
+	x, y := box.X, box.Y
+	if m := &a.motion; m.hasViewport {
+		x += m.viewport.X
+		y += m.viewport.Y
+	}
+	left = max(0, min(reach, x))
+	top := max(0, min(reach, y))
+	right := max(0, min(reach, int32(a.winW)-(x+box.W)))
+	bottom = max(0, min(reach, int32(a.winH)-(y+box.H)))
+	return sdl.Rect{X: box.X - left, Y: box.Y - top, W: box.W + left + right, H: box.H + top + bottom}, left, bottom
 }
 
 // copyBackdrop copies what the frame has behind box into backdrop, bottom
