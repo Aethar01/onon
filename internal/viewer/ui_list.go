@@ -977,7 +977,7 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 			// A row only faded and moved is drawn where it moves to, which
 			// is cheaper than moving the viewport for each row.
 			l := rowLayer(index)
-			if l.scale == 1 && l.clip == 0 {
+			if l.scale == 1 && l.clip == 0 && l.squashX == 0 && l.squashY == 0 {
 				if l.opacity <= 0 {
 					continue
 				}

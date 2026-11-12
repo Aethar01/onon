@@ -106,11 +106,17 @@ func (a *App) drawStatusBar(renderer *sdl.Renderer) error {
 	a.drawBox(renderer, &status, l.bar)
 	// The sides grow and shrink with their text, the left from the bar's
 	// left edge and the right from its right.
+	// With a stretch, a side thins as it grows fast and swells as a spring
+	// pulls it back, about its middle, as a bubble does.
 	tr := a.anim(config.MotionPrompt, config.MomentChange)
-	leftW := float32(a.glide(tweenKey{kind: "status left"}, float64(l.leftArea.W), tr))
-	rightW := float32(a.glide(tweenKey{kind: "status right"}, float64(l.rightArea.W), tr))
-	leftBox := sdl.FRect{X: l.bar.X, Y: l.bar.Y, W: leftW, H: l.bar.H}
-	rightBox := sdl.FRect{X: l.bar.X + l.bar.W - rightW, Y: l.bar.Y, W: rightW, H: l.bar.H}
+	leftW, leftStretch := a.glideLength(tweenKey{kind: "status left"}, float64(l.leftArea.W), tr)
+	rightW, rightStretch := a.glideLength(tweenKey{kind: "status right"}, float64(l.rightArea.W), tr)
+	side := func(x, w, stretch float64) sdl.FRect {
+		y0, y1 := squeeze(float64(l.bar.Y), float64(l.bar.Y+l.bar.H), stretch)
+		return sdl.FRect{X: float32(x), Y: float32(y0), W: float32(w), H: float32(y1 - y0)}
+	}
+	leftBox := side(float64(l.bar.X), leftW, leftStretch)
+	rightBox := side(float64(l.bar.X+l.bar.W)-rightW, rightW, rightStretch)
 	a.drawBox(renderer, &leftStyle, leftBox)
 	a.drawBox(renderer, &rightStyle, rightBox)
 	// The left text scrolls with a long prompt, so it is clipped to its

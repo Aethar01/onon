@@ -442,7 +442,7 @@ func (a *App) copyBackdrop(renderer *sdl.Renderer, backdrop, target *sdl.Texture
 	for i := len(m.scales) - 1; i >= 0; i-- {
 		l := m.scales[i]
 		parts = append(parts, layerPart{l.tex, sdl.FRect{X: src.X - float32(l.x0), Y: src.Y - float32(l.y0), W: src.W, H: src.H}})
-		src = sdl.FRect{X: l.x + (src.X-l.x)*l.k, Y: l.y + (src.Y-l.y)*l.k, W: src.W * l.k, H: src.H * l.k}
+		src = sdl.FRect{X: l.x + (src.X-l.x)*l.kx, Y: l.y + (src.Y-l.y)*l.ky, W: src.W * l.kx, H: src.H * l.ky}
 	}
 	if !sdl.SetRenderTarget(renderer, backdrop) {
 		return false

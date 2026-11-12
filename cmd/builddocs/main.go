@@ -318,7 +318,7 @@ func renderMotionReference(b *strings.Builder) {
 		{"`from:side`", "The side `slide` and `wipe` go to: `top`, `bottom`, `left` or `right`."},
 		{"`140ms`, `0.14s`", "The duration; a second one is the delay."},
 		{"`delay:40ms`, `stagger:15ms`", "Wait before starting; for rows, each waits that much longer than the one before."},
-		{"`stretch:40ms`", "For a glide: the trailing edge sets off that much after the leading one, so the thing stretches as it goes, narrowing across as a drop of liquid does, and with a springy easing wobbles as it settles."},
+		{"`stretch:40ms`", "For a glide: the trailing edge sets off that much after the leading one, so the thing stretches as it goes, narrowing across as a drop of liquid does, and with a springy easing wobbles as it settles. The status bar's sides and what slides along the edges stretch and swell by it too, and something growing or shrinking, as with zoom, does so across first and down that much later, as a bubble does."},
 		{"easings", "`linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out`, `cubic-bezier(x1, y1, x2, y2)`, `steps(n)`, or `spring(stiffness, damping)`, a spring that settles over the duration and overshoots when damping is low."},
 	} {
 		fmt.Fprintf(b, "| %s | %s |\n", row[0], row[1])

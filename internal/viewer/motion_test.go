@@ -372,3 +372,21 @@ func TestTabCover(t *testing.T) {
 		t.Errorf("vertical cover = %v, want 0.5", got)
 	}
 }
+
+func TestStretchMakesAScaleABubble(t *testing.T) {
+	app := &App{tab: &tab{}}
+	app.config.Theme.Motion.Scale = 1
+	linear := config.Easing{Name: "linear", Curve: [4]float64{0, 0, 1, 1}}
+	anim := config.Animation{Duration: 100, Stretch: 40, Easing: linear, Tracks: []config.Track{{Prop: "scale", From: 0.5}}}
+	ctx := layerCtx{rect: sdl.FRect{W: 100, H: 100}}
+	l, done := app.layerAt(anim, 50, true, ctx)
+	if done || l.squashY >= 0 {
+		t.Fatalf("half way in = %+v done %v: want its height behind its width", l, done)
+	}
+	if l, done := app.layerAt(anim, 120, true, ctx); done || l.scale != 1 || l.squashY >= 0 {
+		t.Fatalf("its width in = %+v done %v: want its height still coming", l, done)
+	}
+	if l, done := app.layerAt(anim, 140, true, ctx); !done || l != restLayer {
+		t.Fatalf("after its stretch = %+v done %v", l, done)
+	}
+}

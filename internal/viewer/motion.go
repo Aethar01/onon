@@ -286,6 +286,27 @@ func (a *App) glideSpan(key tweenKey, lo, hi, fromLo, fromHi float64, anim confi
 	return gLo, gHi, stretch
 }
 
+// glideLength is glide for a length, with how far from its rest shape the
+// thing it measures is as it changes, as a factor of its length: with a
+// stretch, how much longer it is than it would be that much later, so a
+// thing growing fast thins, and one a spring pulls back swells, before it
+// settles. The factor stays within a third of rest either way.
+func (a *App) glideLength(key tweenKey, target float64, anim config.Animation) (float64, float64) {
+	v := a.glide(key, target, anim)
+	if anim.Stretch <= 0 || !anim.Glide || anim.Duration <= 0 {
+		return v, 1
+	}
+	lag := anim
+	lag.Delay += anim.Stretch
+	key.kind += " lag"
+	behind := a.glide(key, target, lag)
+	size := max(math.Abs(v), math.Abs(behind), math.Abs(target))
+	if size <= 0 {
+		return v, 1
+	}
+	return v, 1 + max(-1.0/3, min(1.0/3, (v-behind)/size))
+}
+
 // squeeze is the span lo to hi narrowed about its middle as a liquid is
 // when stretched the other way by stretch, keeping about its area; a
 // span squashed, stretch under 1, widens.
@@ -444,6 +465,9 @@ type layer struct {
 	dx, dy         float64
 	clip           float64 // how much of it is cut away, from 0 to 1
 	clipSide       string
+	// squashX and squashY scale it further across and down, as a bubble
+	// squashes, as so much more than 1: 0 for none.
+	squashX, squashY float64
 }
 
 var restLayer = layer{opacity: 1, scale: 1}
@@ -466,7 +490,7 @@ func (a *App) layerAt(anim config.Animation, elapsed float64, entering bool, ctx
 	}
 	// Once over, something come in is at rest, and the tracks need not be
 	// worked out again, unless one ends elsewhere.
-	if entering && elapsed >= anim.Length() && anim.EndsAtRest() {
+	if entering && elapsed >= anim.Length()+anim.Stretch && anim.EndsAtRest() {
 		return restLayer, true
 	}
 	l := restLayer
@@ -481,6 +505,27 @@ func (a *App) layerAt(anim config.Animation, elapsed float64, entering bool, ctx
 			done = false
 		}
 		a.applyTrack(&l, t, a.ease(easing, max(0, min(1, p))), entering, ctx)
+	}
+	// With a stretch, what grows or shrinks does so across first and down
+	// that much later, as a bubble does: wide and flat as it pops open,
+	// then rounding out.
+	if anim.Stretch > 0 && l.scale > 0 {
+		behind := restLayer
+		for _, t := range anim.Tracks {
+			if t.Prop != "scale" {
+				continue
+			}
+			duration, delay, easing := anim.TrackTiming(t)
+			p := 1.0
+			if duration > 0 {
+				p = (elapsed - delay - anim.Stretch) / duration
+			}
+			if p < 1 {
+				done = false
+			}
+			a.applyTrack(&behind, t, a.ease(easing, max(0, min(1, p))), entering, ctx)
+		}
+		l.squashY = behind.scale/l.scale - 1
 	}
 	if !done {
 		a.motion.animating = true
@@ -578,7 +623,7 @@ type layerToken struct {
 	x0, y0, w, h int32
 	ox, oy       int32
 	rect         sdl.FRect
-	k            float32
+	kx, ky       float32
 	// regionX, regionY: the corner of the texture drawn into before.
 	regionX, regionY int32
 }
@@ -590,7 +635,8 @@ func (a *App) beginLayer(l layer, rect sdl.FRect) (t layerToken) {
 	if l == restLayer {
 		return t
 	}
-	if l.opacity <= 0 || l.scale <= 0 || l.clip >= 1 {
+	kx, ky := l.scale*(1+l.squashX), l.scale*(1+l.squashY)
+	if l.opacity <= 0 || kx <= 0 || ky <= 0 || l.clip >= 1 {
 		t.skip = true
 		return t
 	}
@@ -599,8 +645,8 @@ func (a *App) beginLayer(l layer, rect sdl.FRect) (t layerToken) {
 	if x, y := int32(math.Round(l.dx)), int32(math.Round(l.dy)); x != 0 || y != 0 {
 		a.beginOffset(&t, x, y)
 	}
-	if math.Abs(l.scale-1) > 1e-3 {
-		a.beginScale(&t, l.scale, rect)
+	if math.Abs(kx-1) > 1e-3 || math.Abs(ky-1) > 1e-3 {
+		a.beginScaleXY(&t, kx, ky, rect)
 	}
 	if l.clip > 0 {
 		// What shows is the part on the side it comes from.
@@ -694,12 +740,12 @@ func (a *App) endOffset(t *layerToken) {
 	}
 }
 
-// layerScale is a layer shown scaled by k about x, y, drawn into tex,
-// whose corner is x0, y0 in the window.
+// layerScale is a layer shown scaled by kx across and ky down about x, y,
+// drawn into tex, whose corner is x0, y0 in the window.
 type layerScale struct {
-	x, y, k float32
-	tex     *sdl.Texture
-	x0, y0  int32
+	x, y, kx, ky float32
+	tex          *sdl.Texture
+	x0, y0       int32
 }
 
 // layerMargin is how far past a scaled thing's rect its texture reaches,
@@ -709,6 +755,11 @@ const layerMargin = 64
 // beginScale draws what follows into a texture over rect and a margin
 // round it, which endScale draws scaled by s about rect's centre.
 func (a *App) beginScale(t *layerToken, s float64, rect sdl.FRect) {
+	a.beginScaleXY(t, s, s, rect)
+}
+
+// beginScaleXY is beginScale scaling by kx across and ky down.
+func (a *App) beginScaleXY(t *layerToken, kx, ky float64, rect sdl.FRect) {
 	m := &a.motion
 	if a.renderer == nil {
 		return
@@ -736,11 +787,11 @@ func (a *App) beginScale(t *layerToken, s float64, rect sdl.FRect) {
 		return
 	}
 	*t = layerToken{skip: t.skip, active: t.active, moved: t.moved, hadViewport: t.hadViewport, viewport: t.viewport, clips: t.clips,
-		scaled: true, tex: tex, target: target, x0: x0, y0: y0, w: x1 - x0, h: y1 - y0, ox: ox, oy: oy, rect: rect, k: float32(s),
+		scaled: true, tex: tex, target: target, x0: x0, y0: y0, w: x1 - x0, h: y1 - y0, ox: ox, oy: oy, rect: rect, kx: float32(kx), ky: float32(ky),
 		regionX: m.regionX, regionY: m.regionY}
 	m.layerDepth++
 	m.layersUsed = m.frame
-	m.scales = append(m.scales, layerScale{x: rect.X + rect.W/2 + float32(ox), y: rect.Y + rect.H/2 + float32(oy), k: float32(s), tex: tex, x0: x0, y0: y0})
+	m.scales = append(m.scales, layerScale{x: rect.X + rect.W/2 + float32(ox), y: rect.Y + rect.H/2 + float32(oy), kx: float32(kx), ky: float32(ky), tex: tex, x0: x0, y0: y0})
 	// A texture keeps its own viewport and clip, so the ones in place are
 	// set on it, moved so its corner is the region's, and the window's are
 	// back once it is done. Viewports set while drawing into it are moved
@@ -763,10 +814,10 @@ func (a *App) endScale(t *layerToken) {
 	m.scales = m.scales[:len(m.scales)-1]
 	m.regionX, m.regionY = t.regionX, t.regionY
 	sdl.SetRenderTarget(r, t.target)
-	cx, cy, k := t.rect.X+t.rect.W/2, t.rect.Y+t.rect.H/2, t.k
+	cx, cy, kx, ky := t.rect.X+t.rect.W/2, t.rect.Y+t.rect.H/2, t.kx, t.ky
 	left, top := float32(t.x0-t.ox), float32(t.y0-t.oy) // the region's corner within the viewport
 	src := sdl.FRect{W: float32(t.w), H: float32(t.h)}
-	dst := sdl.FRect{X: cx + (left-cx)*k, Y: cy + (top-cy)*k, W: float32(t.w) * k, H: float32(t.h) * k}
+	dst := sdl.FRect{X: cx + (left-cx)*kx, Y: cy + (top-cy)*ky, W: float32(t.w) * kx, H: float32(t.h) * ky}
 	sdl.RenderTexture(r, t.tex, &src, &dst)
 }
 
