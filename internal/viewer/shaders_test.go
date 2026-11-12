@@ -137,6 +137,34 @@ func runShaderProbe(dir string) int {
 			failed = 1
 		}
 	}
+	// Drawn in a scaled layer, as a menu moving in, the box sees what the
+	// layer holds under it, such as its own shadow, as it does at rest,
+	// so it does not change once the layer is gone.
+	app.config.Theme.Elements[config.ElementPanel].Shadow = config.Opt[config.Shadow]{V: config.Shadow{N: 1, Layers: [4]config.ShadowLayer{{Color: config.Color{Alpha: 1}}}}, Set: true}
+	app.styles = nil
+	st = app.style(config.ElementPanel)
+	for _, scaled := range []bool{false, true} {
+		fillRect(renderer, sdl.FRect{W: 200, H: 200}, color.RGBA{R: 255, A: 255})
+		var layer layerToken
+		if scaled {
+			app.beginScale(&layer, 0.5, box)
+		}
+		app.drawDefaultBox(renderer, &st, box, boxAll)
+		if scaled {
+			app.endScale(&layer)
+		}
+		sdl.SetRenderTarget(renderer, app.shaders.frame)
+		got, err := readPixel(renderer, 100, 100)
+		if err != nil {
+			fmt.Println(err)
+			return 1
+		}
+		if want := [3]uint8{0, 0, 255}; got != want {
+			fmt.Printf("over its black shadow, scaled %v: %v, want %v\n", scaled, got, want)
+			failed = 1
+		}
+	}
+	app.config.Theme.Elements[config.ElementPanel].Shadow = config.Opt[config.Shadow]{Set: true}
 	// A path the shader cannot cut itself to: a triangle over the box's
 	// top left half, which the shader must leave the bottom right of.
 	app.config.Theme.Elements[config.ElementPanel].Shape = config.Opt[config.Shape]{V: config.Shape{Kind: "path", Path: "M0,0 L100%,0 L0,100% Z"}, Set: true}
