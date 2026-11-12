@@ -176,6 +176,12 @@ type uiView struct {
 	// pointerSelected is set while the selection is where the pointer
 	// passing over the rows put it, not the keys or the query.
 	pointerSelected bool
+	// pressed is whether the selected row is held down, by pressKey or,
+	// with none, by the pointer on pressRow, when motion's selection has
+	// a press: the row is chosen as it is let go.
+	pressed  bool
+	pressKey sdl.Keycode
+	pressRow int
 	// onInput runs as a field's text changes, and onSubmit on Enter in a
 	// field, or the prompt, whose id is empty.
 	onInput, onSubmit func(a *App, id, text string)
@@ -922,7 +928,7 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 		// rows come in.
 		for index, item := range items {
 			if item.index == view.selected && !item.heading {
-				anim := a.viewAnim(view, config.MotionSelection, config.MomentChange)
+				anim := a.viewAnim(view, config.MotionSelection, selectionMoment(view.pointerSelected))
 				key := tweenKey{kind: "selection", view: view}
 				_, _, stretch := a.glideSpan(key, float64(index), float64(index+1), math.NaN(), math.NaN(), anim)
 				loKey, hiKey := key, key
@@ -939,7 +945,9 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 				}
 				ctx := layerCtx{rect: box, side: "left", auto: float64(box.W)}
 				in, prev, out, leaving := a.changeLayers(tweenKey{kind: "selection change", view: view}, item.index, anim, ctx)
-				if !leaving && in == restLayer && !rowsMove {
+				press := a.pressLayer(tweenKey{kind: "selection press", view: view}, view.pressed,
+					a.viewAnim(view, config.MotionSelection, config.MomentPress), ctx)
+				if !leaving && in == restLayer && press == restLayer && !rowsMove {
 					a.drawBox(renderer, &st, box)
 					break
 				}
@@ -952,7 +960,9 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 					}
 				}
 				_ = a.drawLayer(rowLayer(index), box, func() error {
-					return a.drawLayer(in, box, func() error { a.drawBox(renderer, &st, box); return nil })
+					return a.drawLayer(in, box, func() error {
+						return a.drawLayer(press, box, func() error { a.drawBox(renderer, &st, box); return nil })
+					})
 				})
 				break
 			}

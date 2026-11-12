@@ -234,7 +234,7 @@ onon.theme.motion.reduced = { base = "none", message = "fade 100ms" }
 		t.Fatal(err)
 	}
 	motion = rt.Config().Theme.Motion
-	if moves, _ := motion.Active(true); !reflect.DeepEqual(moves, motion.Moves) {
+	if moves, _ := motion.Active(true); !reflect.DeepEqual(moves, func() Moves { m, _ := motion.Active(false); return m }()) {
 		t.Error("reduced = full should leave motion as it is, and drop what was set over it")
 	}
 }
@@ -255,5 +255,50 @@ func TestViewMotion(t *testing.T) {
 	vm, err = ViewMotionFromLua(L, lua.LString("none"))
 	if err != nil || !vm[MotionPanel][MomentExit].None {
 		t.Fatalf("view motion none = %+v, %v", vm, err)
+	}
+}
+
+func TestKeysAndPressMoments(t *testing.T) {
+	// keys follows change until it is given; a whole-target animation sets
+	// change alone, and press only by name.
+	rt := mustLoadThemeTestConfig(t, `
+onon.theme.motion.selection = "glide 220ms ease-out"
+assert(onon.theme.motion.selection == "glide 220ms ease-out", onon.theme.motion.selection)
+`)
+	m := rt.Config().Theme.Motion
+	if keys := m.Animation(MotionSelection, MomentKeys, false); keys.Duration != 220 || !keys.Glide {
+		t.Fatalf("keys before it is set = %+v", keys)
+	}
+	if m.Moves[MotionSelection][MomentPress].Moves() {
+		t.Fatal("a whole-target animation set press")
+	}
+
+	rt = mustLoadThemeTestConfig(t, `
+onon.theme.motion.selection = {
+  change = "glide 220ms ease-out",
+  keys = "stretch:40ms spring(300, 15) 400ms",
+  press = "scale:0.95 300ms ease-out",
+}
+local s = onon.theme.motion.selection
+assert(s.keys == "glide 400ms spring(300, 15) stretch:40ms", s.keys)
+assert(s.press == "zoom 300ms ease-out", s.press) -- scale:0.95 is zoom
+`)
+	m = rt.Config().Theme.Motion
+	keys := m.Animation(MotionSelection, MomentKeys, false)
+	if !m.KeysSet[MotionSelection] || keys.Duration != 400 || keys.Stretch != 40 || !keys.Glide {
+		t.Fatalf("keys = %+v", keys)
+	}
+	if change := m.Animation(MotionSelection, MomentChange, false); change.Duration != 220 || change.Stretch != 0 {
+		t.Fatalf("change = %+v", change)
+	}
+	if press := m.Animation(MotionSelection, MomentPress, false); !press.Moves() || press.Tracks[0].Prop != "scale" {
+		t.Fatalf("press = %+v", press)
+	}
+	// Reduced motion keeps only fades, so there is no press to show.
+	if m.Animation(MotionSelection, MomentPress, true).Moves() {
+		t.Fatal("reduced motion kept the press")
+	}
+	if _, err := loadThemeTestConfig(t, `onon.theme.motion.cursor = { press = "scale:0.9 100ms" }`); err == nil {
+		t.Fatal("cursor took a press")
 	}
 }

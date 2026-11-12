@@ -19,6 +19,9 @@ type overviewState struct {
 	selected int       // the first page of the selected spread
 	columns  int       // 0 picks a count from the window width
 	saved    viewState // the view to return to
+	// pointerSelected is whether the pointer moved the selection last,
+	// rather than the keys, for which motion's keys moment is.
+	pointerSelected bool
 }
 
 func (a *App) toggleOverview() {
@@ -214,6 +217,7 @@ func (a *App) moveOverviewSelection(delta int) {
 	}
 	i, _ := a.spreadOf(a.overview.selected)
 	a.overview.selected = spreads[clampInt(i+delta, 0, len(spreads)-1)][0]
+	a.overview.pointerSelected = false
 	a.page = a.overview.selected
 	a.scrollOverviewSelectionIntoView()
 }
@@ -278,6 +282,7 @@ func (a *App) hoverOverview(x, y float64) bool {
 		return false
 	}
 	a.overview.selected = selected
+	a.overview.pointerSelected = true
 	a.page = selected
 	return true
 }
@@ -312,7 +317,7 @@ func (a *App) drawOverviewSelection(renderer *sdl.Renderer) {
 	}
 	// The outline glides to the selection as a menu's selected row does.
 	// It moves among the pages, so it stays with them as the grid scrolls.
-	anim := a.anim(config.MotionOverviewSelection, config.MomentChange)
+	anim := a.anim(config.MotionOverviewSelection, selectionMoment(a.overview.pointerSelected))
 	glided := a.glideRect(tweenKey{kind: "overview selection"}, sdl.FRect{
 		X: float32(minX + a.scrollX), Y: float32(minY + a.scrollY), W: float32(maxX - minX), H: float32(maxY - minY),
 	}, nil, anim)

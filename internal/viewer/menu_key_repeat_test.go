@@ -372,3 +372,56 @@ func TestKeybindKeysFitTheirHint(t *testing.T) {
 		t.Fatalf("keys %d wide, under the %d their text and hint take", got, want)
 	}
 }
+
+// pressMotion gives app's selection a press to show, as a theme may.
+func pressMotion(app *App) {
+	app.config.Theme.Motion.Scale = 1
+	app.config.Theme.Motion.Moves[config.MotionSelection][config.MomentPress] = config.Animation{
+		Duration: 200, Easing: config.Easing{Name: "linear", Curve: [4]float64{0, 0, 1, 1}},
+		Tracks: []config.Track{{Prop: "scale", From: 0.95}},
+	}
+}
+
+func TestEnterChoosesOnReleaseWithAPress(t *testing.T) {
+	app, view := heldMenu(map[string]string{"<CR>": "confirm"})
+	chosen := 0
+	view.onSelect = func(*App, uiRow) { chosen++ }
+	app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: sdl.KeycodeReturn})
+	if chosen != 1 {
+		t.Fatalf("without a press, Enter chose %d times on its press, want 1", chosen)
+	}
+
+	pressMotion(app)
+	app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: sdl.KeycodeReturn})
+	app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: sdl.KeycodeReturn, Repeat: true})
+	if chosen != 1 || !view.pressed {
+		t.Fatalf("with a press, Enter held chose %d times, pressed %v", chosen, view.pressed)
+	}
+	app.handleSDLKeyUp(&sdl.KeyboardEvent{Type: sdl.EventKeyUp, Key: sdl.KeycodeJ})
+	if chosen != 1 {
+		t.Fatal("another key let go chose the row")
+	}
+	app.handleSDLKeyUp(&sdl.KeyboardEvent{Type: sdl.EventKeyUp, Key: sdl.KeycodeReturn})
+	if chosen != 2 || view.pressed {
+		t.Fatalf("Enter let go chose %d times, pressed %v", chosen, view.pressed)
+	}
+}
+
+func TestSelectionMovedByKeysUsesKeysMoment(t *testing.T) {
+	app, view := heldMenu(map[string]string{"j": "scroll_down"})
+	m := &app.config.Theme.Motion
+	m.Moves[config.MotionSelection][config.MomentChange] = config.Animation{Duration: 100, Glide: true}
+	if got := app.viewAnim(view, config.MotionSelection, selectionMoment(view.pointerSelected)); got.Duration != 100 {
+		t.Fatalf("keys before it is set = %+v, want change's", got)
+	}
+	m.Moves[config.MotionSelection][config.MomentKeys] = config.Animation{Duration: 300, Glide: true, Stretch: 40}
+	m.KeysSet[config.MotionSelection] = true
+	app.viewKey(view, &sdl.KeyboardEvent{Type: sdl.EventKeyDown, Key: sdl.KeycodeJ})
+	if got := app.viewAnim(view, config.MotionSelection, selectionMoment(view.pointerSelected)); got.Stretch != 40 {
+		t.Fatalf("a key's move = %+v, want keys'", got)
+	}
+	view.pointerSelected = true
+	if got := app.viewAnim(view, config.MotionSelection, selectionMoment(view.pointerSelected)); got.Stretch != 0 {
+		t.Fatalf("the pointer's move = %+v, want change's", got)
+	}
+}

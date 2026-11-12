@@ -108,6 +108,12 @@ func (a *App) handleInputModeBinding(key keys.Key) bool {
 func (a *App) handleSDLKeyUp(e *sdl.KeyboardEvent) {
 	a.lastKeyUpCode = e.Key
 	a.lastKeyUpAt = time.Now()
+	// A row held by a key is chosen as the key is let go.
+	if view := a.activeUIView(); view != nil && view.pressed && view.pressKey == e.Key {
+		view.pressed, view.pressKey = false, 0
+		a.pendingRedraw = true
+		a.activateUIView(view)
+	}
 	// A held action ends when its physical key is released, even if the
 	// modifiers changed while it was held.
 	if a.panning && a.panKeycode != 0 && e.Key == a.panKeycode {

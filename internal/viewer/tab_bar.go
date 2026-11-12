@@ -39,6 +39,9 @@ type tabBarState struct {
 	// when the bar was last drawn, which the indicator glides from.
 	hovered  *tab
 	shownTab *tab
+	// pressed is the tab the pointer holds down, when motion's
+	// tab_selection has a press, shown as it is let go over it.
+	pressed *tab
 }
 
 type tabReveal struct {
@@ -546,17 +549,26 @@ func (a *App) drawTabBar(renderer *sdl.Renderer) {
 			}
 			return c
 		}
+		// A tab held down is drawn pressed, with the indicator on it.
+		pressAnim := a.anim(config.MotionTabSelection, config.MomentPress)
+		pressed := make([]layer, len(tabs))
+		for i, t := range tabs {
+			ctx := layerCtx{rect: rects[i], side: "left", auto: float64(rects[i].W)}
+			pressed[i] = a.pressLayer(tweenKey{kind: "tab press", text: fmt.Sprintf("%p", t)}, t == a.tabBar.pressed, pressAnim, ctx)
+		}
 		for _, i := range order {
-			a.drawTabBox(renderer, tabs[i], rects[i], cover(i))
+			_ = a.drawLayer(pressed[i], rects[i], func() error { a.drawTabBox(renderer, tabs[i], rects[i], cover(i)); return nil })
 		}
 		if leaving {
 			_ = a.drawLayer(out, was, func() error { a.drawBox(renderer, &st, was); return nil })
 		}
 		if selected >= 0 {
-			_ = a.drawLayer(in, indicator, func() error { a.drawBox(renderer, &st, indicator); return nil })
+			_ = a.drawLayer(pressed[selected], indicator, func() error {
+				return a.drawLayer(in, indicator, func() error { a.drawBox(renderer, &st, indicator); return nil })
+			})
 		}
 		for _, i := range order {
-			a.drawTabText(renderer, tabs[i], rects[i], cover(i))
+			_ = a.drawLayer(pressed[i], rects[i], func() error { a.drawTabText(renderer, tabs[i], rects[i], cover(i)); return nil })
 		}
 		return nil
 	})
@@ -716,6 +728,16 @@ func (a *App) noteTabHover(x, y float32, inWindow bool) bool {
 func (a *App) handleTabBarButton(e *sdl.MouseButtonEvent) bool {
 	s := &a.tabBar
 	if e.Type == sdl.EventMouseButtonUp {
+		if e.Button == uint8(sdl.ButtonLeft) && s.pressed != nil {
+			t := s.pressed
+			s.pressed, s.drag = nil, tabDrag{}
+			if i := a.tabAt(float64(e.X), float64(e.Y)); i >= 0 && a.tabList()[i] == t {
+				a.selectTab(i)
+			}
+			a.pendingRedraw = true
+			a.updateCursor()
+			return true
+		}
 		if e.Button == uint8(sdl.ButtonLeft) && (s.resizing || s.drag.t != nil) {
 			s.resizing, s.drag = false, tabDrag{}
 			a.pendingRedraw = true
@@ -738,12 +760,17 @@ func (a *App) handleTabBarButton(e *sdl.MouseButtonEvent) bool {
 			a.newEmptyTab()
 		}
 	case e.Button == uint8(sdl.ButtonLeft):
-		a.selectTab(i)
+		// With a press to show, the tab is held until it is let go.
+		if a.pressShows(nil, config.MotionTabSelection) {
+			s.pressed = a.tabList()[i]
+		} else {
+			a.selectTab(i)
+		}
 		if a.config.TabDrag {
 			l := a.tabBarLayout()
 			at := l.at(e.X, e.Y)
 			start, _ := l.along(l.tabs[i])
-			s.drag = tabDrag{t: a.tab, from: at, grab: at - start, at: at}
+			s.drag = tabDrag{t: a.tabList()[i], from: at, grab: at - start, at: at}
 		}
 	case e.Button == uint8(sdl.ButtonMiddle):
 		a.closeTab(i, false, "closing it")
@@ -764,7 +791,7 @@ func (a *App) handleTabBarMotion(x, y float32) bool {
 	if d.t == nil {
 		return false
 	}
-	if d.t != a.tab || !a.tabBarShown() {
+	if d.t != a.tab && d.t != s.pressed || !a.tabBarShown() {
 		*d = tabDrag{}
 		return false
 	}
@@ -772,6 +799,12 @@ func (a *App) handleTabBarMotion(x, y float32) bool {
 	d.at = l.at(x, y)
 	if !d.moving && abs32(d.at-d.from) < a.px(4) {
 		return true
+	}
+	if s.pressed != nil {
+		// A tab held is shown as it starts to be dragged.
+		s.pressed = nil
+		a.selectTab(slices.Index(a.tabList(), d.t))
+		l = a.tabBarLayout()
 	}
 	d.moving = true
 	i := a.tabIndex()

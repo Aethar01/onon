@@ -149,13 +149,55 @@ func (a *App) anim(target config.MotionTarget, moment config.Moment) config.Anim
 	return a.config.Theme.Motion.Animation(target, moment, a.reducedMotion())
 }
 
-// viewAnim is anim with view's own motion over it.
+// viewAnim is anim with view's own motion over it. A view's change moves
+// its keys too while neither it nor the theme says how keys move.
 func (a *App) viewAnim(view *uiView, target config.MotionTarget, moment config.Moment) config.Animation {
 	anim := a.anim(target, moment)
 	if view != nil && view.motion != nil {
-		anim = view.motion[target][moment].Apply(anim)
+		own := view.motion[target][moment]
+		if moment == config.MomentKeys && own == nil && !a.config.Theme.Motion.KeysSet[target] {
+			own = view.motion[target][config.MomentChange]
+		}
+		anim = own.Apply(anim)
 	}
 	return anim
+}
+
+// pressLayer is how something held down is drawn: anim's tracks going out
+// as it is pressed and coming back as it is let go, as far as key's
+// tween, which retargets smoothly on a quick tap, has it.
+func (a *App) pressLayer(key tweenKey, pressed bool, anim config.Animation, ctx layerCtx) layer {
+	if len(anim.Tracks) == 0 {
+		return restLayer
+	}
+	target := 0.0
+	if pressed {
+		target = 1
+	}
+	p := a.animate(key, target, anim)
+	if p == 0 {
+		return restLayer
+	}
+	l := restLayer
+	for _, t := range anim.Tracks {
+		a.applyTrack(&l, t, p, false, ctx)
+	}
+	return l
+}
+
+// pressShows reports whether target has a press to show, so that what is
+// pressed is chosen as it is let go rather than as it is pressed.
+func (a *App) pressShows(view *uiView, target config.MotionTarget) bool {
+	return a.motionScale() > 0 && a.viewAnim(view, target, config.MomentPress).Moves()
+}
+
+// selectionMoment is the moment a selection's move is: change when the
+// pointer made it, keys when anything else did.
+func selectionMoment(byPointer bool) config.Moment {
+	if byPointer {
+		return config.MomentChange
+	}
+	return config.MomentKeys
 }
 
 // ease is e at fraction p of its time, calling a Lua easing.
