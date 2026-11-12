@@ -47,6 +47,10 @@ func (a *App) drawPanel(renderer *sdl.Renderer, element config.Element, rect sdl
 		return err
 	}
 	if border {
+		if m := &a.motion; m.deferBorders {
+			m.borders = append(m.borders, deferredBorder{st: st, rect: rect})
+			return nil
+		}
 		a.drawBoxParts(renderer, &st, rect, boxBorder)
 	}
 	return nil

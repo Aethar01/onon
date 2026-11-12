@@ -51,6 +51,17 @@ type motionState struct {
 	osReadAt  time.Time
 	// documentSwitch is the document of the tab shown before, going.
 	documentSwitch *documentSwitch
+	// deferBorders is set while a panel is drawn into a scaled layer, whose
+	// borders, a pixel wide, would come out of it soft and faint; they are
+	// kept in borders and drawn sharp over the layer, as scaled, instead.
+	deferBorders bool
+	borders      []deferredBorder
+}
+
+// deferredBorder is a panel's border to draw over its scaled layer.
+type deferredBorder struct {
+	st   config.Style
+	rect sdl.FRect
 }
 
 // tweenKey names something that moves: what it is, and the view or text
@@ -645,7 +656,10 @@ func (a *App) beginLayer(l layer, rect sdl.FRect) (t layerToken) {
 	if x, y := int32(math.Round(l.dx)), int32(math.Round(l.dy)); x != 0 || y != 0 {
 		a.beginOffset(&t, x, y)
 	}
-	if math.Abs(kx-1) > 1e-3 || math.Abs(ky-1) > 1e-3 {
+	// A scale that changes its size by under half a pixel is none: drawn
+	// scaled it would be resampled, a little soft, and then sharpen as it
+	// settled.
+	if math.Abs(kx-1)*float64(rect.W) >= 0.5 || math.Abs(ky-1)*float64(rect.H) >= 0.5 {
 		a.beginScaleXY(&t, kx, ky, rect)
 	}
 	if l.clip > 0 {
@@ -749,8 +763,10 @@ type layerScale struct {
 }
 
 // layerMargin is how far past a scaled thing's rect its texture reaches,
-// in logical pixels, for the shadows drawn round it.
-const layerMargin = 64
+// in logical pixels, for the shadows drawn round it: as far as a deep
+// shadow's blur and offset go, so none is cut off while it moves and then
+// shown whole as it settles.
+const layerMargin = 128
 
 // beginScale draws what follows into a texture over rect and a margin
 // round it, which endScale draws scaled by s about rect's centre.
@@ -992,7 +1008,9 @@ func (a *App) drawUIViews(renderer *sdl.Renderer) error {
 	clear(a.canvas.tiles)
 	drawIn := func(v *uiView) error {
 		l, rect, _ := a.viewLayer(v)
-		draw := func() error { return a.drawLayer(l, rect, func() error { return a.drawUIView(renderer, v) }) }
+		draw := func() error {
+			return a.drawScaledPanel(renderer, l, rect, func() error { return a.drawUIView(renderer, v) })
+		}
 		if v.place.dock != "" {
 			_, dock := a.dockLayout(v)
 			inner := draw
@@ -1014,7 +1032,7 @@ func (a *App) drawUIViews(renderer *sdl.Renderer) error {
 			m.closing = slices.DeleteFunc(m.closing, func(v *uiView) bool { return v == closing })
 			continue
 		}
-		if err := a.drawLayer(l, rect, func() error { return a.drawUIViewFrame(renderer, closing) }); err != nil {
+		if err := a.drawScaledPanel(renderer, l, rect, func() error { return a.drawUIViewFrame(renderer, closing) }); err != nil {
 			return err
 		}
 	}
@@ -1022,6 +1040,37 @@ func (a *App) drawUIViews(renderer *sdl.Renderer) error {
 		return nil
 	}
 	return drawIn(view)
+}
+
+// drawScaledPanel is drawLayer for a view's panel: while l scales it, the
+// panels' borders are drawn over the layer, sharp round where it has
+// scaled them to, rather than scaled with it, soft and faint until it
+// settles and they are drawn whole.
+func (a *App) drawScaledPanel(renderer *sdl.Renderer, l layer, rect sdl.FRect, draw func() error) error {
+	m := &a.motion
+	kx, ky := l.scale*(1+l.squashX), l.scale*(1+l.squashY)
+	scaled := math.Abs(kx-1)*float64(rect.W) >= 0.5 || math.Abs(ky-1)*float64(rect.H) >= 0.5
+	if !scaled || l.clip > 0 || l.opacity <= 0 || kx <= 0 || ky <= 0 || m.deferBorders {
+		return a.drawLayer(l, rect, draw)
+	}
+	m.deferBorders, m.borders = true, m.borders[:0]
+	err := a.drawLayer(l, rect, draw)
+	m.deferBorders = false
+	cx, cy := rect.X+rect.W/2, rect.Y+rect.H/2
+	k := min(kx, ky)
+	for _, b := range m.borders {
+		r := sdl.FRect{
+			X: cx + (b.rect.X-cx)*float32(kx) + float32(l.dx), Y: cy + (b.rect.Y-cy)*float32(ky) + float32(l.dy),
+			W: b.rect.W * float32(kx), H: b.rect.H * float32(ky),
+		}
+		st := b.st
+		for i := range st.Radius.V {
+			st.Radius.V[i] *= k
+		}
+		_ = a.faded(l.opacity, func() error { a.drawBoxParts(renderer, &st, r, boxBorder); return nil })
+	}
+	m.borders = m.borders[:0]
+	return err
 }
 
 // startClosing draws view leaving from now, once it is closed.
