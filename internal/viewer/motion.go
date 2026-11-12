@@ -59,11 +59,28 @@ type tweenKey struct {
 	text string
 }
 
-// tween is a value moving from one place to another.
+// tween is a value moving to its target. Each time the target moves, a
+// segment eases the distance from the old target to the new away to
+// nothing, while those begun before play on: the value is the target
+// plus what each segment has left. So retargeted mid-way it moves on
+// from where it is, at the pace it had, never jumping, and under a key
+// held faster than a transition runs it trails by at most the steps of
+// one transition.
 type tween struct {
-	from, to, value float64
-	start           time.Time
-	seen            uint64 // the last frame the value was asked for
+	to, value float64
+	segments  []tweenSegment
+	// began is the frame the target last moved, and startValue where the
+	// value was then.
+	began      time.Time
+	startValue float64
+	seen       uint64 // the last frame the value was asked for
+}
+
+// tweenSegment is what is left of one move of a tween's target: it eases
+// from delta, the old target less the new, to nothing.
+type tweenSegment struct {
+	delta float64
+	start time.Time
 }
 
 // play is an animation playing from when it was first asked for.
@@ -185,43 +202,64 @@ func (a *App) animateFrom(key tweenKey, from, target float64, anim config.Animat
 		if math.IsNaN(from) {
 			from = target
 		}
-		tw = &tween{from: from, to: target, value: from, start: m.now}
+		tw = &tween{to: target, value: from, began: m.now, startValue: from}
+		if from != target {
+			tw.segments = []tweenSegment{{delta: from - target, start: m.now}}
+		}
 		if m.tweens == nil {
 			m.tweens = map[tweenKey]*tween{}
 		}
 		m.tweens[key] = tw
 	case tw.to != target:
-		// A new target starts from the last one, not from where the value
-		// is on its way: under a held key, which retargets faster than a
-		// transition runs, the value then trails by a step at most rather
-		// than ever further behind.
-		tw.from, tw.to, tw.start = tw.to, target, m.now
+		// A new target moves on from where the value is, the segments
+		// begun before playing on.
+		tw.segments = append(tw.segments, tweenSegment{delta: tw.to - target, start: m.now})
+		tw.to, tw.began, tw.startValue = target, m.now, tw.value
 	}
 	tw.seen = m.frame
 	duration := a.scaledMs(anim.Duration)
-	progress := 1.0
-	if duration > 0 {
-		progress = float64(m.now.Sub(tw.start)-a.scaledMs(anim.Delay)) / float64(duration)
+	tw.value = tw.to
+	live := tw.segments[:0]
+	for _, seg := range tw.segments {
+		progress := 1.0
+		if duration > 0 {
+			progress = float64(m.now.Sub(seg.start)-a.scaledMs(anim.Delay)) / float64(duration)
+		}
+		if progress >= 1 || seg.delta == 0 {
+			continue
+		}
+		tw.value += seg.delta * (1 - a.ease(anim.Easing, max(0, progress)))
+		live = append(live, seg)
 	}
-	if progress >= 1 || tw.from == tw.to {
-		tw.value = tw.to
-	} else {
-		tw.value = tw.from + (tw.to-tw.from)*a.ease(anim.Easing, max(0, progress))
+	clear(tw.segments[len(live):])
+	tw.segments = live
+	if len(live) > 0 {
 		m.animating = true
 	}
 	return tw.value
 }
 
-// shiftTween moves the start of key's transition by d, if it began this
+// tweenBegan reports whether key's target moved this frame, and where its
+// value was then.
+func (a *App) tweenBegan(key tweenKey) (float64, bool) {
+	tw := a.motion.tweens[key]
+	if tw == nil || !tw.began.Equal(a.motion.now) {
+		return 0, false
+	}
+	return tw.startValue, true
+}
+
+// shiftTween moves where key's latest move starts by d, if it began this
 // frame, and returns where its value is now.
 func (a *App) shiftTween(key tweenKey, d float64) float64 {
 	tw := a.motion.tweens[key]
 	if tw == nil {
 		return math.NaN()
 	}
-	if d != 0 && tw.start.Equal(a.motion.now) && tw.value == tw.from && tw.from != tw.to {
-		tw.from += d
-		tw.value = tw.from
+	if n := len(tw.segments); d != 0 && n > 0 && tw.began.Equal(a.motion.now) && tw.segments[n-1].start.Equal(a.motion.now) {
+		tw.segments[n-1].delta += d
+		tw.value += d
+		tw.startValue += d
 	}
 	return tw.value
 }

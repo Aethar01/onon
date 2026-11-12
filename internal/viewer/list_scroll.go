@@ -45,23 +45,18 @@ func (a *App) listOffset(view *uiView, rows, total int) (offset, shift float64) 
 		if !smooth {
 			tr.Duration = 0
 		}
-		if tw := a.motion.tweens[key]; tw != nil && view.selected != view.glideFor {
-			// The selection moving on mid-glide takes the box to the
-			// row it was going to (see animateFrom), and so the list to
-			// where it was going too.
-			tw.from, tw.start = tw.to, a.motion.now
-		}
-		view.glideFor = view.selected
+		// The list and the selection's box move on from where they are
+		// as the selection moves on mid-glide (see animateFrom), in step.
 		view.offset = a.animateFrom(key, view.offset, target, tr)
-		if tw := a.motion.tweens[key]; tw.start.Equal(a.motion.now) {
+		if from, began := a.tweenBegan(key); began {
 			// A jump of more than a screen, such as to the end or
 			// round from the last row to the first, glides only its
 			// last screen.
 			start := target
 			if smooth {
-				start = clampFloat(tw.from, target-float64(rows), target+float64(rows))
+				start = clampFloat(from, target-float64(rows), target+float64(rows))
 			}
-			shift = start - tw.from
+			shift = start - from
 			view.offset = a.shiftTween(key, shift)
 		}
 		if view.offset == target {

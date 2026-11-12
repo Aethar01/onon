@@ -39,12 +39,18 @@ func TestAnimateMovesToItsTarget(t *testing.T) {
 	if got := app.animate(tweenKey{kind: "x"}, 20, linear); math.Abs(got-15) > 1e-6 {
 		t.Fatalf("halfway = %v, want 15", got)
 	}
-	// A new target mid-way starts from the last target, so a held key
-	// cannot leave the value further and further behind.
+	// A new target mid-way moves on from where the value is, never
+	// jumping, the move before playing out under the new one.
 	stepMotion(app, start, 50*time.Millisecond)
-	if got := app.animate(tweenKey{kind: "x"}, 0, linear); got != 20 {
-		t.Fatalf("retarget = %v, want the last target, 20", got)
+	if got := app.animate(tweenKey{kind: "x"}, 0, linear); math.Abs(got-15) > 1e-6 {
+		t.Fatalf("retarget = %v, want where it was, 15", got)
 	}
+	stepMotion(app, start, 75*time.Millisecond)
+	if got := app.animate(tweenKey{kind: "x"}, 0, linear); math.Abs(got-12.5) > 1e-6 {
+		t.Fatalf("after retarget = %v, want 12.5, the first move a quarter left and the second three", got)
+	}
+	// It is done one transition after the last target, so a held key
+	// cannot leave the value further and further behind.
 	stepMotion(app, start, 150*time.Millisecond)
 	if got := app.animate(tweenKey{kind: "x"}, 0, linear); got != 0 || app.motion.animating {
 		t.Fatalf("done = %v, animating %v", got, app.motion.animating)

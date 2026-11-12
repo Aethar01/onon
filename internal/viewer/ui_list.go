@@ -111,7 +111,6 @@ type uiView struct {
 	offset       float64
 	offsetScroll int
 	settling     bool
-	glideFor     int            // the selection the offset last glided for
 	offsetAt     time.Time      // when offset was last brought up to date
 	filtered     uiRowFilter    // visibleRows' last result
 	keyWidth     uiKeyWidth     // keyColumnWidth's last result
