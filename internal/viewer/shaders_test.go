@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unsafe"
 
 	"onon/internal/config"
@@ -32,10 +33,19 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 }
 `
 
+// A shader that samples nothing: blue, and nothing of what is behind it.
+const solidShader = `
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+	fragColor = vec4(0.0, 0.0, 1.0, 1.0);
+}
+`
+
 func TestShaderDrawsWhatIsBehindItsBox(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "probe.glsl"), []byte(probeShader), 0o644); err != nil {
-		t.Fatal(err)
+	for name, source := range map[string]string{"probe.glsl": probeShader, "solid.glsl": solidShader} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(source), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	cmd := exec.Command(os.Args[0])
 	cmd.Env = append(os.Environ(), shaderProbeEnv+"="+dir)
@@ -78,15 +88,28 @@ func runShaderProbe(dir string) int {
 	panel.BorderWidth = config.Opt[float64]{Set: true}
 	panel.Radius = config.Opt[config.Corners]{V: config.Corners{30, 30, 30, 30}, Set: true}
 
-	app.beginShaderFrame()
-	if !app.shaders.framing {
-		fmt.Println("the frame is not drawn into a texture:", sdl.GetError())
-		return 1
+	box := sdl.FRect{X: 50, Y: 50, W: 100, H: 100}
+	st := app.style(config.ElementPanel)
+	// The first frame starts the shader compiling; the next finds that it
+	// samples what is behind it, so the one after is drawn into a texture.
+	for frame := 0; !app.shaders.framing; frame++ {
+		if frame == 3 {
+			fmt.Println("the frame is not drawn into a texture:", app.message, sdl.GetError())
+			return 1
+		}
+		app.endShaderFrame()
+		if err := waitForShaders(app); err != nil {
+			fmt.Println(err)
+			return 1
+		}
+		app.beginShaderFrame()
+		if !app.shaders.framing {
+			app.drawDefaultBox(renderer, &st, box, boxAll)
+		}
 	}
 	fillRect(renderer, sdl.FRect{W: 200, H: 100}, color.RGBA{R: 255, A: 255})
 	fillRect(renderer, sdl.FRect{Y: 100, W: 200, H: 100}, color.RGBA{G: 255, A: 255})
-	st := app.style(config.ElementPanel)
-	app.drawDefaultBox(renderer, &st, sdl.FRect{X: 50, Y: 50, W: 100, H: 100}, boxAll)
+	app.drawDefaultBox(renderer, &st, box, boxAll)
 	if app.message != "" {
 		fmt.Println(app.message)
 		return 1
@@ -142,10 +165,66 @@ func runShaderProbe(dir string) int {
 		}
 	}
 	app.endShaderFrame()
+	// A shader that samples nothing is drawn straight to the window, with
+	// no frame drawn into a texture for it.
+	app.config.Theme.Elements[config.ElementPanel].Shader = config.Opt[string]{V: filepath.Join(dir, "solid.glsl"), Set: true}
+	app.config.Theme.Elements[config.ElementPanel].Shape = config.Opt[config.Shape]{V: config.Shape{Kind: "rect"}, Set: true}
+	app.styles = nil
+	st = app.style(config.ElementPanel)
+	for frame := 0; frame < 3; frame++ {
+		app.beginShaderFrame()
+		if err := waitForShaders(app); err != nil {
+			fmt.Println(err)
+			return 1
+		}
+		fillRect(renderer, sdl.FRect{W: 200, H: 200}, color.RGBA{R: 255, A: 255})
+		app.drawDefaultBox(renderer, &st, box, boxAll)
+		if frame < 2 {
+			app.endShaderFrame()
+		}
+	}
+	if app.shaders.framing || app.shaders.frame != nil && app.shaders.needed {
+		fmt.Println("a frame is drawn into a texture for a shader that samples nothing")
+		failed = 1
+	}
+	for _, check := range []struct {
+		what string
+		x, y int32
+		want [3]uint8
+	}{
+		{"in the solid shader's box", 100, 100, [3]uint8{0, 0, 255}},
+		{"beside it", 20, 100, [3]uint8{255, 0, 0}},
+	} {
+		got, err := readPixel(renderer, check.x, check.y)
+		if err != nil {
+			fmt.Println(err)
+			return 1
+		}
+		if got != check.want {
+			fmt.Printf("solid shader, %s: %v, want %v\n", check.what, got, check.want)
+			failed = 1
+		}
+	}
+	app.endShaderFrame()
 	if failed != 0 {
 		fmt.Println("SDL:", sdl.GetError())
 	}
 	return failed
+}
+
+// waitForShaders waits for the shaders app is compiling.
+func waitForShaders(app *App) error {
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		app.pollShaderCompiles()
+		if len(app.shaders.compiling) == 0 {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("shaders still compiling: %v", app.shaders.compiling)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }
 
 // readPixel is the colour of the render target at x, y.
@@ -189,5 +268,66 @@ func TestNoNoteOfShadersWhenOnOrUnused(t *testing.T) {
 	app.styles = nil
 	if note := app.shadersOffNote(); note != "" {
 		t.Errorf("note %q with shaders on", note)
+	}
+}
+
+func TestHeldShadersGoOnFromWhereTheyStopped(t *testing.T) {
+	var s shaderService
+	at := startTime.Add(10 * time.Second)
+	if got := s.shaderTime(at, false); got != 10 {
+		t.Fatalf("iTime %v at 10s, want 10", got)
+	}
+	s.shaderTime(at, true)
+	if got := s.shaderTime(at.Add(5*time.Second), true); got != 10 {
+		t.Errorf("iTime %v while held, want 10", got)
+	}
+	if got := s.shaderTime(at.Add(5*time.Second), false); got != 10 {
+		t.Errorf("iTime %v as it is let go after 5s held, want 10", got)
+	}
+	if got := s.shaderTime(at.Add(7*time.Second), false); got != 12 {
+		t.Errorf("iTime %v 2s after 5s held, want 12", got)
+	}
+}
+
+func TestAnimatedShaderFramesKeepToShaderFPS(t *testing.T) {
+	app := &App{tab: &tab{}, config: config.Default()}
+	if !app.shaderDeadline().IsZero() {
+		t.Error("a frame is due with no animated shader")
+	}
+	drawn := time.Now()
+	app.shaders.animating, app.shaders.animatedAt = true, drawn
+	app.config.ShaderFPS = 20
+	if got := app.shaderDeadline().Sub(drawn); got != 50*time.Millisecond {
+		t.Errorf("next frame %v after the last at 20 fps, want 50ms", got)
+	}
+	app.stepShaderAnimation()
+	if app.pendingRedraw {
+		t.Error("a frame is drawn before it is due")
+	}
+	app.shaders.animatedAt = drawn.Add(-time.Second)
+	app.stepShaderAnimation()
+	if !app.pendingRedraw {
+		t.Error("no frame is drawn once it is due")
+	}
+	app.config.ShaderFPS = 0
+	if !app.shaderDeadline().IsZero() {
+		t.Error("a frame is due with shaders held still")
+	}
+}
+
+func TestAnimatedShaderFramesDoNotDrift(t *testing.T) {
+	last := time.Now()
+	s := shaderService{animating: true, animatedAt: last}
+	// Drawn 3ms after it was due: the next is timed from when it was due.
+	if got := s.nextAnimatedAt(last.Add(53*time.Millisecond), 20); !got.Equal(last.Add(50 * time.Millisecond)) {
+		t.Errorf("a late frame counts from %v after the last, want 50ms", got.Sub(last))
+	}
+	// Drawn early, for something else: from then.
+	if got := s.nextAnimatedAt(last.Add(10*time.Millisecond), 20); !got.Equal(last.Add(10 * time.Millisecond)) {
+		t.Errorf("an early frame counts from %v after the last, want 10ms", got.Sub(last))
+	}
+	// So late that catching up would draw frames back to back: from then.
+	if got := s.nextAnimatedAt(last.Add(time.Second), 20); !got.Equal(last.Add(time.Second)) {
+		t.Errorf("a long-late frame counts from %v after the last, want 1s", got.Sub(last))
 	}
 }

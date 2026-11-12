@@ -81,6 +81,7 @@ func Default() Config {
 		AutoReload:            true,
 		AutoReloadDelayMS:     200,
 		LinkPreviewDelayMS:    400,
+		ShaderFPS:             30,
 		PromptHistoryMax:      100,
 		TrimPadding:           8,
 	}

@@ -380,7 +380,7 @@ func renderElementReference(b *strings.Builder) {
 	for _, row := range [][3]string{
 		{"iChannel0", "sampler2D", "What is drawn behind the box, the box's size: `texture(iChannel0, fragCoord / iResolution.xy)` is the pixel behind this one."},
 		{"iResolution", "vec3", "The box's width and height in pixels."},
-		{"iTime", "float", "Seconds since onon started. A shader that reads it is drawn on every frame."},
+		{"iTime", "float", "Seconds since onon started, less any time shaders were held still. A shader that reads it animates, at up to `shader_fps` frames a second."},
 		{"iScale", "float", "Pixels to the logical pixel, for sizes that keep to the display's density."},
 		{"iRadius", "vec4", "The box's corner radii in pixels, clockwise from the top left."},
 		{"iAlt", "float", "1 when alternate colours are on, otherwise 0."},
@@ -390,7 +390,9 @@ func renderElementReference(b *strings.Builder) {
 	}
 	b.WriteString("\nThe alpha the shader gives is how much of it shows, and the element's `opacity` applies to it. Shaders are experimental, and run only with `onon.options.shaders = true`, read when onon starts; until then, choosing a theme with shaders with `:theme` says they are off. They run on SDL's GPU renderer, which `renderer = \"auto\"` uses where it can start once shaders are on; other renderers draw the element without its shader, so give it a `fill` that stands on its own. A theme can read `onon.options.shaders` to style itself for either, as a translucent fill over its shader with them on and a solid one without:\n\n")
 	b.WriteString("```lua\nlocal shaders = onon.options.shaders\nreturn { elements = { panel = { shader = \"frost.glsl\", fill = shaders and \"panel/40\" or \"panel\" } } }\n```\n\n")
-	b.WriteString("If a shader fails to compile, the error is reported once, with the line it is on, and the element is drawn without it until the configuration changes.\n")
+	b.WriteString("If a shader fails to compile, the error is reported once, with the line it is on, and the element is drawn without it until the configuration changes.\n\n")
+	b.WriteString("A theme's shaders compile in the background as soon as the theme is loaded, so an element may be drawn without its shader for a moment the first time. Compiled shaders are cached in onon's cache directory and kept until unused for 30 days, so the next start does not compile them again.\n\n")
+	b.WriteString("What a shader costs depends on what it reads. One that samples `iChannel0` needs what is behind its box copied for it, and while one is in view the whole window is drawn into a texture first. One that does not is drawn like any other box. One that reads `iTime` animates, and each frame of it draws the whole window again: `shader_fps`, 30 by default, sets the most frames a second, and `shader_fps_unfocused`, 0 by default, the most while the window does not have focus, 0 holding shaders still. A hidden, minimised or covered window animates none.\n")
 	b.WriteString("\n#### Drawing\n\n")
 	b.WriteString("An element's `draw` function draws its box in place of the default drawing, as `draw(canvas, box, state)`, each time the element is drawn; its text is drawn over it as usual. `box` holds the box's `x`, `y`, `w` and `h` in logical pixels from the window's top left, and `state` the `element` being drawn, whether `alt` colours are on, and the `time` in seconds since onon started, for drawing that moves, so a function set on `row` can tell `row_selected` apart. Both tables are reused from call to call, so copy what you keep. Like other properties, a draw function carries to the elements that start from its element; assigning `false` or `nil` removes it.\n\n")
 	b.WriteString("The canvas's coordinates are logical pixels from the box's top left, and may reach outside it. Its methods are:\n\n")

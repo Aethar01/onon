@@ -150,6 +150,8 @@ func (a *App) tick() error {
 	a.prefetchVisiblePages()
 	a.adjustRenderBaseScaleForExtremeZoom(a.scale)
 	a.emitViewStateEvents()
+	a.pollShaderCompiles()
+	a.stepShaderAnimation()
 	if a.pendingRedraw {
 		return a.drawFrame()
 	}
@@ -223,7 +225,7 @@ func (a *App) eventWaitTimeoutMS() int {
 		return int(left / time.Millisecond)
 	}
 	// Wake for the earliest pending deadline.
-	deadlines := []time.Time{a.captureDeadline(), a.previewDeadline(), a.renderScaleReadyAt}
+	deadlines := []time.Time{a.captureDeadline(), a.previewDeadline(), a.renderScaleReadyAt, a.shaderDeadline()}
 	if wait := a.titleBarWaitTimeout(); wait > 0 {
 		deadlines = append(deadlines, time.Now().Add(wait))
 	}
@@ -534,6 +536,22 @@ func (a *App) drawFrame() error {
 	if a.renderer == nil {
 		return nil
 	}
+	err := a.drawFrameContents()
+	// A shader that samples what is behind it came into view on a frame
+	// not drawn into a texture, which it needs: the frame is drawn again,
+	// before it is shown, so it is never seen without the shader.
+	if err == nil && a.shaders.missed {
+		err = a.drawFrameContents()
+	}
+	if err != nil {
+		return err
+	}
+	sdl.RenderPresent(a.renderer)
+	return nil
+}
+
+// drawFrameContents draws a frame, which drawFrame then shows.
+func (a *App) drawFrameContents() error {
 	a.syncWindowSize(nil)
 	a.beginShaderFrame()
 	defer a.endShaderFrame() // if drawing fails
@@ -594,6 +612,5 @@ func (a *App) drawFrame() error {
 		a.pendingRedraw = true
 	}
 	a.endShaderFrame()
-	sdl.RenderPresent(a.renderer)
 	return nil
 }
