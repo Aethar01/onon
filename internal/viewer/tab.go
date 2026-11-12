@@ -274,6 +274,7 @@ func (a *App) leaveTab() {
 	if a.tab == nil {
 		return
 	}
+	a.captureDocument() // as it was shown, to draw it going
 	a.closeViewMode()
 	a.closeAllUI()
 	a.cancelSmoothZoom()
@@ -303,6 +304,7 @@ func (a *App) enterTab(previous int) {
 	}
 	a.setWindowTitle()
 	a.pendingRedraw = true
+	a.startDocumentSwitch(previous, a.tabIndex())
 	a.loadPendingTab()
 	if a.runtime != nil {
 		payload := a.documentEventPayload()

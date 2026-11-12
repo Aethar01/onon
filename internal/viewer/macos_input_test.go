@@ -40,6 +40,23 @@ func TestRepeatedKeyDoesNotExpandMultiKeySequence(t *testing.T) {
 	}
 }
 
+func TestCountableKeyContinuesAPendingSequence(t *testing.T) {
+	app := testLayoutApp(5)
+	app.setKeyBindings(map[string]string{"gr": "toggle_dual_page", "r": "rotate_cw", "gg": "first_page"})
+	dual := app.dualPage
+
+	app.handleSDLKeyDown(&sdl.KeyboardEvent{Key: sdl.KeycodeG})
+	app.handleSDLKeyDown(&sdl.KeyboardEvent{Key: sdl.KeycodeR})
+	if app.rotation != 0 || app.dualPage == dual || len(app.sequence) != 0 {
+		t.Fatalf("g r rotated to %v, dual page %v, sequence %v: want gr run", app.rotation, app.dualPage, app.sequence)
+	}
+	// Alone, r still runs at once.
+	app.handleSDLKeyDown(&sdl.KeyboardEvent{Key: sdl.KeycodeR})
+	if app.rotation != 90 {
+		t.Fatalf("r alone rotated to %v, want 90", app.rotation)
+	}
+}
+
 func TestSmoothScrollQueuesTargetWithoutImmediateJump(t *testing.T) {
 	app := testLayoutApp(5)
 	app.config.SmoothScrollDampening = 0.35

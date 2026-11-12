@@ -23,6 +23,9 @@ type Motion struct {
 	ForceReduced bool
 	Moves        Moves
 	Reduced      ReducedMotion
+	// KeysSet is whether a target's keys moment was given: until it is,
+	// a target moves as its change moment says whatever moved it.
+	KeysSet [MotionTargetCount]bool
 }
 
 // Moves are the animations of each target at each moment.
@@ -49,6 +52,9 @@ const (
 	MotionCursor
 	MotionEdges
 	MotionTitleBar
+	MotionTabSelection
+	MotionHover
+	MotionDocument
 	MotionTargetCount
 )
 
@@ -59,38 +65,54 @@ const (
 	MomentEnter Moment = iota
 	MomentExit
 	MomentChange
+	// MomentKeys is a change made other than by the pointer, as by the
+	// keys; as MomentChange unless set.
+	MomentKeys
+	// MomentPress is the selection held down, by Enter or the pointer, its
+	// tracks going out as it is pressed and coming back as it is let go.
+	MomentPress
 	MomentCount
 )
 
-var momentNames = [MomentCount]string{"enter", "exit", "change"}
+var momentNames = [MomentCount]string{"enter", "exit", "change", "keys", "press"}
 
 func (m Moment) String() string { return momentNames[m] }
 
 // motionTargetInfo describes a target: its name in the motion table, what
-// it is, and the moments it moves at.
+// it is, the moments an animation set for the whole target is for, and
+// those it also moves at that are set only by name.
 type motionTargetInfo struct {
 	name, description string
 	moments           []Moment
+	named             []Moment
 }
 
 var enterExit, change = []Moment{MomentEnter, MomentExit}, []Moment{MomentChange}
 
 var motionTargets = [MotionTargetCount]motionTargetInfo{
-	MotionPanel:             {"panel", "Menus, panels and completion opening and closing. A slide comes in from the side the view is anchored to. A view given another size glides to it in the time it takes to open.", enterExit},
-	MotionRows:              {"rows", "A list's rows as its view opens and closes, one after another with stagger.", enterExit},
-	MotionSelection:         {"selection", "The selected row's highlight moving to another row: glide moves it there, other tracks bring the new one in and take the old one out.", change},
-	MotionOverviewSelection: {"overview_selection", "The outline round the overview's selected page moving to another, as selection does.", change},
-	MotionPrompt:            {"prompt", "The sides of the status bar growing and shrinking with their text, as a pill does when a prompt opens; only its timing and glide count.", change},
-	MotionMessage:           {"message", "Status messages coming in, and going once cleared.", enterExit},
-	MotionCursor:            {"cursor", "The text cursor moving, as selection does.", change},
-	MotionEdges:             {"edges", "The status bar, tab bar and docked views coming in along the window's edges as they are shown and going as they are hidden, the page moving with them only where it must. The timing moves the page; the tracks follow it, a slide by default.", enterExit},
-	MotionTitleBar:          {"title_bar", "The window's buttons over the page appearing as the pointer reaches the top of the window.", enterExit},
+	MotionPanel:             {"panel", "Menus, panels and completion opening and closing. A slide comes in from the side the view is anchored to. A view given another size glides to it in the time it takes to open.", enterExit, nil},
+	MotionRows:              {"rows", "A list's rows as its view opens and closes, one after another with stagger.", enterExit, nil},
+	MotionSelection:         {"selection", "The selected row's highlight moving to another row: glide moves it there, other tracks bring the new one in and take the old one out. keys, set by name, is its move when the pointer did not make it, as change unless set; press, its tracks as Enter or the pointer holds it down, and the row is then chosen as they are let go.", change, []Moment{MomentKeys, MomentPress}},
+	MotionOverviewSelection: {"overview_selection", "The outline round the overview's selected page moving to another, as selection does, keys too.", change, []Moment{MomentKeys}},
+	MotionPrompt:            {"prompt", "The sides of the status bar growing and shrinking with their text, as a pill does when a prompt opens or a message comes; only its timing, glide and stretch count, a stretch thinning a side as it grows fast and swelling it as a spring brings it back.", change, nil},
+	MotionMessage:           {"message", "Status messages coming in, and going once cleared.", enterExit, nil},
+	MotionCursor:            {"cursor", "The text cursor moving, as selection does.", change, nil},
+	MotionEdges:             {"edges", "The status bar, tab bar and docked views coming in along the window's edges as they are shown and going as they are hidden, the page moving with them only where it must. The timing moves the page; the tracks follow it, a slide by default. A stretch stretches them a little the way they go, thinning them across, and swells them as a spring brings them back.", enterExit, nil},
+	MotionTitleBar:          {"title_bar", "The window's buttons over the page appearing as the pointer reaches the top of the window.", enterExit, nil},
+	MotionTabSelection:      {"tab_selection", "The shown tab's highlight moving to the tab shown next, as selection does: glide moves it there, each tab's own box clearing as it passes over, and other tracks bring the new one in and take the old one out. press, set by name, is a tab held down by the pointer, shown as it is let go.", change, []Moment{MomentPress}},
+	MotionHover:             {"hover", "A tab taking its hovered look as the pointer comes onto it, and losing it as the pointer goes; only its timing counts.", enterExit, nil},
+	MotionDocument:          {"document", "The document going as another tab's is shown, the new one coming in under it: its tracks move the one before out, towards the start of the bar when the tab shown next is after it, and the new one in from the other side; fades only the one before.", change, nil},
 }
 
 func (t MotionTarget) String() string { return motionTargets[t].name }
 
-// Moments are the moments t moves at.
+// Moments are the moments an animation set for the whole of t is for.
 func (t MotionTarget) Moments() []Moment { return motionTargets[t].moments }
+
+// AllMoments are all the moments t moves at, those set only by name too.
+func (t MotionTarget) AllMoments() []Moment {
+	return slices.Concat(motionTargets[t].moments, motionTargets[t].named)
+}
 
 // MotionTargetNamed returns the target of that name.
 func MotionTargetNamed(name string) (MotionTarget, bool) {
@@ -106,11 +128,15 @@ func MotionTargetNamed(name string) (MotionTarget, bool) {
 // what delay, eased how, and which tracks. Stagger delays each of several
 // things, such as rows, by that much more than the one before. Glide, for
 // a change, moves the thing itself to where it goes; without it the
-// tracks bring the new one in and take the old one out.
+// tracks bring the new one in and take the old one out. Stretch, for a
+// glide, sets the trailing edge off that much after the leading one, so
+// the thing stretches as it goes and, under a spring, wobbles as it
+// settles.
 type Animation struct {
 	Duration float64 // milliseconds; 0 for none
 	Delay    float64
 	Stagger  float64
+	Stretch  float64
 	Easing   Easing
 	Glide    bool
 	Tracks   []Track
@@ -299,12 +325,12 @@ func (a Animation) Track(prop string) (Track, bool) {
 // AnimationPatch is an animation as written: the parts given, to set over
 // another. A timing alone changes only the timing.
 type AnimationPatch struct {
-	None                     bool // no motion: it clears what it is set over
-	Duration, Delay, Stagger Opt[float64]
-	Easing                   *Easing
-	Glide                    Opt[bool]
-	Tracks                   []Track
-	SetTracks                bool
+	None                              bool // no motion: it clears what it is set over
+	Duration, Delay, Stagger, Stretch Opt[float64]
+	Easing                            *Easing
+	Glide                             Opt[bool]
+	Tracks                            []Track
+	SetTracks                         bool
 }
 
 // Apply sets p over a.
@@ -323,6 +349,9 @@ func (p *AnimationPatch) Apply(a Animation) Animation {
 	}
 	if p.Stagger.Set {
 		a.Stagger = p.Stagger.V
+	}
+	if p.Stretch.Set {
+		a.Stretch = p.Stretch.V
 	}
 	if p.Easing != nil {
 		a.Easing = *p.Easing
@@ -354,6 +383,9 @@ func (p *AnimationPatch) Then(q *AnimationPatch) *AnimationPatch {
 	if q.Stagger.Set {
 		r.Stagger = q.Stagger
 	}
+	if q.Stretch.Set {
+		r.Stretch = q.Stretch
+	}
 	if q.Easing != nil {
 		r.Easing = q.Easing
 	}
@@ -378,6 +410,9 @@ func wholePatch(a Animation) *AnimationPatch {
 	}
 	if a.Stagger > 0 {
 		p.Stagger = some(a.Stagger)
+	}
+	if a.Stretch > 0 {
+		p.Stretch = some(a.Stretch)
 	}
 	return p
 }
@@ -445,6 +480,9 @@ var defaultMotion = Motion{
 		MotionCursor:            changing(motionTransition(50, "ease-out", "glide")),
 		MotionEdges:             both(motionTransition(160, "ease-out", "slide")),
 		MotionTitleBar:          both(motionTransition(160, "linear", "fade")),
+		MotionTabSelection:      changing(motionTransition(120, "ease-out", "glide")),
+		MotionHover:             both(motionTransition(100, "ease-out", "fade")),
+		MotionDocument:          changing(motionTransition(120, "ease-out", "fade")),
 	},
 	Reduced: ReducedMotion{Base: "fade"},
 }
@@ -458,7 +496,11 @@ var stillMotion = func() Motion {
 
 // Animation is target's animation at moment, with motion reduced or not.
 func (m *Motion) Animation(target MotionTarget, moment Moment, reduced bool) Animation {
-	a := m.Moves[target][moment]
+	from := moment
+	if moment == MomentKeys && !m.KeysSet[target] {
+		from = MomentChange
+	}
+	a := m.Moves[target][from]
 	if !reduced && !m.ForceReduced {
 		return a
 	}
@@ -469,13 +511,23 @@ func (m *Motion) Animation(target MotionTarget, moment Moment, reduced bool) Ani
 	default:
 		a = fadeOnly(target, a)
 	}
-	return m.Reduced.Patches[target][moment].Apply(a)
+	a = m.Reduced.Patches[target][from].Apply(a)
+	if from != moment {
+		a = m.Reduced.Patches[target][moment].Apply(a)
+	}
+	return a
 }
 
 // Active is the motion to use, and its scale, with motion reduced or not.
 func (m *Motion) Active(reduced bool) (Moves, float64) {
 	if !reduced && !m.ForceReduced {
-		return m.Moves, m.Scale
+		moves := m.Moves
+		for t := range moves {
+			if !m.KeysSet[t] {
+				moves[t][MomentKeys] = moves[t][MomentChange]
+			}
+		}
+		return moves, m.Scale
 	}
 	var moves Moves
 	for t := range moves {
@@ -590,15 +642,18 @@ func parseAnimationText(raw string) (*AnimationPatch, error) {
 			return nil, fmt.Errorf("%q: unknown word %q; %s, with effects %s", raw, word, motionUsage, strings.Join(PresetNames(), ", "))
 		}
 		switch key {
-		case "delay", "stagger":
+		case "delay", "stagger", "stretch":
 			d, ok := parseDuration(value)
 			if !ok {
 				return nil, fmt.Errorf("%q: %s: expected a duration such as 40ms", raw, key)
 			}
-			if key == "delay" {
+			switch key {
+			case "delay":
 				p.Delay = some(d)
-			} else {
+			case "stagger":
 				p.Stagger = some(d)
+			default:
+				p.Stretch = some(d)
 			}
 		case "from":
 			if !slices.Contains(motionSides, value) {
@@ -630,7 +685,7 @@ func parseAnimationText(raw string) (*AnimationPatch, error) {
 		e := namedEasing("ease")
 		p.Easing = &e
 	}
-	if !p.Duration.Set && !p.SetTracks && p.Easing == nil && !p.Delay.Set && !p.Stagger.Set {
+	if !p.Duration.Set && !p.SetTracks && p.Easing == nil && !p.Delay.Set && !p.Stagger.Set && !p.Stretch.Set {
 		return nil, fmt.Errorf("%q: %s", raw, motionUsage)
 	}
 	if !p.Duration.Set && !p.SetTracks && p.Easing != nil {
@@ -794,7 +849,7 @@ func durationFromLua(name string, value lua.LValue) (float64, error) {
 
 // animationTableKeys are the keys an animation's table may have besides
 // its tracks.
-var animationTableKeys = []string{"duration", "delay", "stagger", "easing", "glide", "effect", "from"}
+var animationTableKeys = []string{"duration", "delay", "stagger", "stretch", "easing", "glide", "effect", "from"}
 
 // AnimationFromLua reads an animation: text, a number of milliseconds, or
 // a table of duration, delay, stagger, easing, glide, effect (text, as an
@@ -827,7 +882,7 @@ func animationFromTable(tbl *lua.LTable) (*AnimationPatch, error) {
 	} else if v := tbl.RawGetString("effect"); v != lua.LNil {
 		return nil, fmt.Errorf("effect: expected text such as \"fade rise\"")
 	}
-	for _, name := range []string{"duration", "delay", "stagger"} {
+	for _, name := range []string{"duration", "delay", "stagger", "stretch"} {
 		v := tbl.RawGetString(name)
 		if v == lua.LNil {
 			continue
@@ -843,6 +898,8 @@ func animationFromTable(tbl *lua.LTable) (*AnimationPatch, error) {
 			p.Delay = some(d)
 		case "stagger":
 			p.Stagger = some(d)
+		case "stretch":
+			p.Stretch = some(d)
 		}
 	}
 	if v := tbl.RawGetString("easing"); v != lua.LNil {
@@ -1016,7 +1073,7 @@ func targetPatchFromLua(t MotionTarget, value lua.LValue) (TargetPatch, error) {
 					err = fmt.Errorf("unknown moment %v; %s moves at %s", key, t, momentList(t))
 					return
 				}
-				if !slices.Contains(t.Moments(), moment) {
+				if !slices.Contains(t.AllMoments(), moment) {
 					err = fmt.Errorf("%s moves at %s, not %s", t, momentList(t), name)
 					return
 				}
@@ -1042,7 +1099,7 @@ func targetPatchFromLua(t MotionTarget, value lua.LValue) (TargetPatch, error) {
 
 func momentList(t MotionTarget) string {
 	var names []string
-	for _, m := range t.Moments() {
+	for _, m := range t.AllMoments() {
 		names = append(names, m.String())
 	}
 	return strings.Join(names, " and ")
@@ -1105,6 +1162,9 @@ func animationText(p *AnimationPatch) (string, bool) {
 	}
 	if p.Stagger.Set && p.Stagger.V > 0 {
 		words = append(words, "stagger:"+formatNumber(p.Stagger.V)+"ms")
+	}
+	if p.Stretch.Set && p.Stretch.V > 0 {
+		words = append(words, "stretch:"+formatNumber(p.Stretch.V)+"ms")
 	}
 	if len(words) == 0 {
 		return "", false
@@ -1180,6 +1240,9 @@ func animationLit(p *AnimationPatch) motionLit {
 	if p.Stagger.Set && p.Stagger.V > 0 {
 		f = append(f, motionField{"stagger", litNum(p.Stagger.V)})
 	}
+	if p.Stretch.Set && p.Stretch.V > 0 {
+		f = append(f, motionField{"stretch", litNum(p.Stretch.V)})
+	}
 	if p.Easing != nil {
 		f = append(f, motionField{"easing", easingLit(*p.Easing)})
 	}
@@ -1230,7 +1293,7 @@ func trackLit(t Track) motionLit {
 // it, or a table of them by moment. Moments not set are left out.
 func targetLit(t MotionTarget, tp TargetPatch) (motionLit, bool) {
 	var lits []motionField
-	for _, m := range t.Moments() {
+	for _, m := range t.AllMoments() {
 		if tp[m] != nil {
 			lits = append(lits, motionField{m.String(), animationLit(tp[m])})
 		}
@@ -1287,10 +1350,17 @@ func (l motionLit) lua(L *lua.LState) lua.LValue {
 	return tbl
 }
 
-func wholeTarget(m *Moves, t MotionTarget) TargetPatch {
+// wholeTarget is all of t's motion in m: the moments set only by name
+// where they are, keys once given and press once it moves.
+func wholeTarget(m *Motion, t MotionTarget) TargetPatch {
 	var tp TargetPatch
 	for _, moment := range t.Moments() {
-		tp[moment] = wholePatch(m[t][moment])
+		tp[moment] = wholePatch(m.Moves[t][moment])
+	}
+	for _, moment := range motionTargets[t].named {
+		if moment == MomentKeys && m.KeysSet[t] || moment == MomentPress && m.Moves[t][moment].Moves() {
+			tp[moment] = wholePatch(m.Moves[t][moment])
+		}
 	}
 	return tp
 }
@@ -1303,11 +1373,11 @@ func motionTargetOption(t MotionTarget) optionDesc {
 		kind:        "motion",
 		description: motionTargets[t].description,
 		get: func(L *lua.LState, cfg *Config) lua.LValue {
-			lit, _ := targetLit(t, wholeTarget(&cfg.Theme.Motion.Moves, t))
+			lit, _ := targetLit(t, wholeTarget(&cfg.Theme.Motion, t))
 			return lit.lua(L)
 		},
 		format: func(cfg *Config) string {
-			lit, _ := targetLit(t, wholeTarget(&cfg.Theme.Motion.Moves, t))
+			lit, _ := targetLit(t, wholeTarget(&cfg.Theme.Motion, t))
 			return lit.write()
 		},
 		applyText: func(cfg *Config, raw string) error {
@@ -1328,6 +1398,14 @@ func motionTargetOption(t MotionTarget) optionDesc {
 			tp, err := targetPatchFromLua(t, value)
 			if err != nil {
 				return err
+			}
+			if tp[MomentKeys] != nil && !cfg.Theme.Motion.KeysSet[t] {
+				// keys starts from change, which it followed until now.
+				cfg.Theme.Motion.KeysSet[t] = true
+				cfg.Theme.Motion.Moves[t][MomentKeys] = cfg.Theme.Motion.Moves[t][MomentChange]
+				if tp[MomentChange] != nil {
+					cfg.Theme.Motion.Moves[t][MomentKeys] = tp[MomentChange].Apply(cfg.Theme.Motion.Moves[t][MomentKeys])
+				}
 			}
 			for moment, p := range tp {
 				cfg.Theme.Motion.Moves[t][moment] = p.Apply(cfg.Theme.Motion.Moves[t][moment])

@@ -1,6 +1,8 @@
 package viewer
 
 import (
+	"fmt"
+	"image/color"
 	"math"
 	"slices"
 
@@ -33,6 +35,13 @@ type tabBarState struct {
 	widthFrom config.TabWidth
 	resizing  bool
 	drag      tabDrag
+	// hovered is the tab under the pointer, and shownTab the tab shown
+	// when the bar was last drawn, which the indicator glides from.
+	hovered  *tab
+	shownTab *tab
+	// pressed is the tab the pointer holds down, when motion's
+	// tab_selection has a press, shown as it is let go over it.
+	pressed *tab
 }
 
 type tabReveal struct {
@@ -484,16 +493,82 @@ func (a *App) drawTabBar(renderer *sdl.Renderer) {
 		clip = sdl.FRect{Y: l.area.Y, W: float32(a.winW), H: l.area.H}
 	}
 	_ = a.withClip(renderer, clip, func() error {
+		tabs := a.tabList()
+		rects := slices.Clone(l.tabs)
 		dragged := -1
-		for i, t := range a.tabList() {
+		for i, t := range tabs {
 			if a.tabBar.drag.moving && t == a.tabBar.drag.t {
 				dragged = i
+				rects[i] = a.draggedTabRect(l, i)
 				continue
 			}
-			a.drawTab(renderer, t, l.tabs[i])
+			rects[i] = a.glideTab(l, t, rects[i])
+		}
+		// The dragged tab is drawn over the others.
+		order := make([]int, 0, len(tabs))
+		for i := range tabs {
+			if i != dragged {
+				order = append(order, i)
+			}
 		}
 		if dragged >= 0 {
-			a.drawTab(renderer, a.tabList()[dragged], a.draggedTabRect(l, dragged))
+			order = append(order, dragged)
+		}
+		selected := a.tabIndex()
+		st := a.barStyle(config.ElementTabSelected)
+		// The indicator glides from tab to tab; without a glide the one
+		// for the tab shown comes in with the tracks as the one before
+		// goes. Each tab's own box clears as far as an indicator covers
+		// it, and shows through as far as one is faded.
+		var indicator, was sdl.FRect
+		in, out, leaving := restLayer, restLayer, false
+		if selected >= 0 {
+			indicator = a.glideTabIndicator(l, rects, selected)
+			anim := a.anim(config.MotionTabSelection, config.MomentChange)
+			side := "left"
+			if l.vertical {
+				side = "top"
+			}
+			ctx := layerCtx{rect: indicator, side: side, auto: float64(indicator.W)}
+			var prev int
+			in, prev, out, leaving = a.changeLayers(tweenKey{kind: "tab selection change"}, selected, anim, ctx)
+			if leaving && prev >= 0 && prev < len(rects) {
+				was = rects[prev]
+			} else {
+				leaving = false
+			}
+		}
+		a.tabBar.shownTab = a.tab
+		cover := func(i int) float64 {
+			if selected < 0 {
+				return 0
+			}
+			c := tabCover(l, indicator, rects[i]) * min(1, in.opacity)
+			if leaving {
+				c = max(c, tabCover(l, was, rects[i])*min(1, out.opacity))
+			}
+			return c
+		}
+		// A tab held down is drawn pressed, with the indicator on it.
+		pressAnim := a.anim(config.MotionTabSelection, config.MomentPress)
+		pressed := make([]layer, len(tabs))
+		for i, t := range tabs {
+			ctx := layerCtx{rect: rects[i], side: "left", auto: float64(rects[i].W)}
+			pressed[i] = a.pressLayer(tweenKey{kind: "tab press", text: fmt.Sprintf("%p", t)}, t == a.tabBar.pressed, pressAnim, ctx)
+		}
+		for _, i := range order {
+			_ = a.drawLayer(pressed[i], rects[i], func() error { a.drawTabBox(renderer, tabs[i], rects[i], cover(i)); return nil })
+		}
+		if leaving {
+			_ = a.drawLayer(out, was, func() error { a.drawBox(renderer, &st, was); return nil })
+		}
+		if selected >= 0 {
+			_ = a.drawLayer(pressed[selected], indicator, func() error {
+				return a.drawLayer(in, indicator, func() error { a.drawBox(renderer, &st, indicator); return nil })
+			})
+		}
+		for _, i := range order {
+			_ = a.drawLayer(pressed[i], rects[i], func() error { a.drawTabText(renderer, tabs[i], rects[i], cover(i)); return nil })
 		}
 		return nil
 	})
@@ -509,25 +584,140 @@ func (a *App) draggedTabRect(l tabBarLayout, i int) sdl.FRect {
 	return l.moved(r, min(max(start, areaStart), areaStart+max(room-length, 0)))
 }
 
-func (a *App) drawTab(renderer *sdl.Renderer, t *tab, r sdl.FRect) {
-	element := config.ElementTab
-	if t == a.tab {
-		element = config.ElementTabSelected
+// glideTab is where t is on its way to r, as tabs opened, closed or moved
+// make room, gliding as tab_selection's timing says, without its stretch.
+// It glides along the bar as the tabs lie unscrolled, so scrolling the bar
+// does not move it.
+func (a *App) glideTab(l tabBarLayout, t *tab, r sdl.FRect) sdl.FRect {
+	anim := a.anim(config.MotionTabSelection, config.MomentChange)
+	anim.Stretch = 0
+	start, _ := l.along(r)
+	g := a.glideRect(tweenKey{kind: "tab place", text: fmt.Sprintf("%p", t)}, l.moved(r, start+l.scroll), nil, anim)
+	start, _ = l.along(g)
+	return l.moved(g, start-l.scroll)
+}
+
+// glideTabIndicator is where the shown tab's highlight is on its way to
+// rects[selected], as tab_selection glides it. It glides along the bar as
+// the tabs lie unscrolled, so scrolling the bar does not move it, and
+// from the tab shown when the bar was last drawn, so it moves when the
+// bar comes in for a tab shown while it was hidden.
+func (a *App) glideTabIndicator(l tabBarLayout, rects []sdl.FRect, selected int) sdl.FRect {
+	anim := a.anim(config.MotionTabSelection, config.MomentChange)
+	unscroll := func(r sdl.FRect) sdl.FRect {
+		start, _ := l.along(r)
+		return l.moved(r, start+l.scroll)
 	}
-	st := a.barStyle(element)
-	a.drawBox(renderer, &st, r)
+	var from *sdl.FRect
+	if was := slices.Index(a.tabList(), a.tabBar.shownTab); was >= 0 && was != selected && was < len(rects) {
+		r := unscroll(rects[was])
+		from = &r
+	}
+	r := a.glideRect(tweenKey{kind: "tab indicator"}, unscroll(rects[selected]), from, anim)
+	start, _ := l.along(r)
+	return l.moved(r, start-l.scroll)
+}
+
+// tabCover is how much of r the indicator covers along the bar, from 0
+// to 1.
+func tabCover(l tabBarLayout, indicator, r sdl.FRect) float64 {
+	iStart, iLength := l.along(indicator)
+	start, length := l.along(r)
+	if length <= 0 {
+		return 0
+	}
+	overlap := min(iStart+iLength, start+length) - max(iStart, start)
+	return float64(max(0, min(1, overlap/length)))
+}
+
+// tabHover is how far t has taken its hovered look, from 0 to 1, as
+// hover times it.
+func (a *App) tabHover(t *tab) float64 {
+	hovered := t == a.tabBar.hovered && t != a.tab
+	target, moment := 0.0, config.MomentExit
+	if hovered {
+		target, moment = 1, config.MomentEnter
+	}
+	return a.animate(tweenKey{kind: "tab hover", text: fmt.Sprintf("%p", t)}, target, a.anim(config.MotionHover, moment))
+}
+
+// drawTabBox draws t's own box at r, hovered as far as it is, and cleared
+// as far as the indicator covers it.
+func (a *App) drawTabBox(renderer *sdl.Renderer, t *tab, r sdl.FRect, cover float64) {
+	hover := a.tabHover(t)
+	show := 1 - cover
+	if show <= 0 {
+		return
+	}
+	_ = a.faded(show, func() error {
+		if hover < 1 {
+			st := a.barStyle(config.ElementTab)
+			_ = a.faded(1-hover, func() error { a.drawBox(renderer, &st, r); return nil })
+		}
+		if hover > 0 {
+			st := a.barStyle(config.ElementTabHover)
+			_ = a.faded(hover, func() error { a.drawBox(renderer, &st, r); return nil })
+		}
+		return nil
+	})
+}
+
+// drawTabText draws t's name in r, its colour going from a tab's to a
+// hovered tab's as far as it is hovered, and to the shown tab's as far as
+// the indicator covers it.
+func (a *App) drawTabText(renderer *sdl.Renderer, t *tab, r sdl.FRect, cover float64) {
+	base := a.barStyle(config.ElementTab)
+	hovered := a.barStyle(config.ElementTabHover)
+	shown := a.barStyle(config.ElementTabSelected)
+	hover := a.tabHover(t)
+	st := &base
+	if cover >= 0.5 {
+		st = &shown
+	}
+	colour := func(secondary bool) color.RGBA {
+		c := mixRGBA(a.textColor(&base, secondary), a.textColor(&hovered, secondary), hover)
+		return mixRGBA(c, a.textColor(&shown, secondary), cover)
+	}
 	_, padRight, _, padLeft := a.insets(st.Padding.V)
 	x := int(r.X + padLeft)
 	room := int(r.W - padLeft - padRight)
 	baseline := int(r.Y) + a.statusBaselineOffset(int(r.H))
 	if t.unsaved {
-		_ = a.drawTextFace(renderer, unsavedMark, x, baseline, a.textColor(&st, true), st.Bold.V)
+		_ = a.drawTextFace(renderer, unsavedMark, x, baseline, colour(true), st.Bold.V)
 		mark := measureText(a.fontFace, unsavedMark)
 		x += mark
 		room -= mark
 	}
 	name := truncateText(a.fontFace, t.tabName(), room)
-	_ = a.drawTextFace(renderer, name, x, baseline, a.textColor(&st, false), st.Bold.V)
+	_ = a.drawTextFace(renderer, name, x, baseline, colour(false), st.Bold.V)
+}
+
+// mixRGBA is a moved fraction t of the way to b.
+func mixRGBA(a, b color.RGBA, t float64) color.RGBA {
+	if t <= 0 {
+		return a
+	}
+	if t >= 1 {
+		return b
+	}
+	mix := func(x, y uint8) uint8 { return uint8(math.Round(float64(x) + (float64(y)-float64(x))*t)) }
+	return color.RGBA{R: mix(a.R, b.R), G: mix(a.G, b.G), B: mix(a.B, b.B), A: mix(a.A, b.A)}
+}
+
+// noteTabHover follows the tab under the pointer at x, y, none while the
+// pointer is not over the window, reporting whether it changed.
+func (a *App) noteTabHover(x, y float32, inWindow bool) bool {
+	var hovered *tab
+	if inWindow && a.tabBarShown() {
+		if i := a.tabAt(float64(x), float64(y)); i >= 0 {
+			hovered = a.tabList()[i]
+		}
+	}
+	if hovered == a.tabBar.hovered {
+		return false
+	}
+	a.tabBar.hovered = hovered
+	return true
 }
 
 // handleTabBarButton takes a press in the tab bar: the left button shows
@@ -538,6 +728,16 @@ func (a *App) drawTab(renderer *sdl.Renderer, t *tab, r sdl.FRect) {
 func (a *App) handleTabBarButton(e *sdl.MouseButtonEvent) bool {
 	s := &a.tabBar
 	if e.Type == sdl.EventMouseButtonUp {
+		if e.Button == uint8(sdl.ButtonLeft) && s.pressed != nil {
+			t := s.pressed
+			s.pressed, s.drag = nil, tabDrag{}
+			if i := a.tabAt(float64(e.X), float64(e.Y)); i >= 0 && a.tabList()[i] == t {
+				a.selectTab(i)
+			}
+			a.pendingRedraw = true
+			a.updateCursor()
+			return true
+		}
 		if e.Button == uint8(sdl.ButtonLeft) && (s.resizing || s.drag.t != nil) {
 			s.resizing, s.drag = false, tabDrag{}
 			a.pendingRedraw = true
@@ -560,12 +760,17 @@ func (a *App) handleTabBarButton(e *sdl.MouseButtonEvent) bool {
 			a.newEmptyTab()
 		}
 	case e.Button == uint8(sdl.ButtonLeft):
-		a.selectTab(i)
+		// With a press to show, the tab is held until it is let go.
+		if a.pressShows(nil, config.MotionTabSelection) {
+			s.pressed = a.tabList()[i]
+		} else {
+			a.selectTab(i)
+		}
 		if a.config.TabDrag {
 			l := a.tabBarLayout()
 			at := l.at(e.X, e.Y)
 			start, _ := l.along(l.tabs[i])
-			s.drag = tabDrag{t: a.tab, from: at, grab: at - start, at: at}
+			s.drag = tabDrag{t: a.tabList()[i], from: at, grab: at - start, at: at}
 		}
 	case e.Button == uint8(sdl.ButtonMiddle):
 		a.closeTab(i, false, "closing it")
@@ -586,7 +791,7 @@ func (a *App) handleTabBarMotion(x, y float32) bool {
 	if d.t == nil {
 		return false
 	}
-	if d.t != a.tab || !a.tabBarShown() {
+	if d.t != a.tab && d.t != s.pressed || !a.tabBarShown() {
 		*d = tabDrag{}
 		return false
 	}
@@ -594,6 +799,12 @@ func (a *App) handleTabBarMotion(x, y float32) bool {
 	d.at = l.at(x, y)
 	if !d.moving && abs32(d.at-d.from) < a.px(4) {
 		return true
+	}
+	if s.pressed != nil {
+		// A tab held is shown as it starts to be dragged.
+		s.pressed = nil
+		a.selectTab(slices.Index(a.tabList(), d.t))
+		l = a.tabBarLayout()
 	}
 	d.moving = true
 	i := a.tabIndex()

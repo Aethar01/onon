@@ -2,6 +2,7 @@ package viewer
 
 import (
 	"cmp"
+	"math"
 	"slices"
 	"time"
 
@@ -145,7 +146,8 @@ func (a *App) stepEdgeMotion() {
 	// where it was the frame before.
 	a.relayoutWithViewportAnchor(func() {
 		m.e = a.edgeProgress(a.motion.now)
-		if m.e < 1 {
+		// A stretch keeps the move going until its trailing edge is in too.
+		if m.e < 1 || a.edgeLag() < 1 {
 			a.motion.animating = true
 		} else {
 			m.active, m.slides = false, nil
@@ -206,8 +208,35 @@ func (a *App) drawOnEdge(key edgeKey, r sdl.FRect, draw func() error) error {
 	if s.item.side == "left" || s.item.side == "right" {
 		auto = float64(r.W)
 	}
-	l := a.layerEased(a.anim(config.MotionEdges, moment), e, entering, layerCtx{rect: r, side: s.item.side, auto: auto})
+	anim := a.anim(config.MotionEdges, moment)
+	l := a.layerEased(anim, e, entering, layerCtx{rect: r, side: s.item.side, auto: auto})
+	// With a stretch it stretches the way it goes as it slides, as far as
+	// it is ahead of where it would be that much later, and thins across,
+	// swelling as a spring brings it back: gently, as the page moves too.
+	if anim.Stretch > 0 {
+		ahead := in - s.value(a.edgeLag())
+		if !entering {
+			ahead = -ahead
+		}
+		along := max(-0.12, min(0.12, ahead*0.5))
+		across := 1/math.Sqrt(1+along) - 1
+		if s.item.side == "left" || s.item.side == "right" {
+			l.squashX, l.squashY = along, across
+		} else {
+			l.squashX, l.squashY = across, along
+		}
+	}
 	return a.drawLayer(l, r, draw)
+}
+
+// edgeLag is how far the move along the edges had come its stretch
+// before now, for what lines the edges to stretch by as it goes.
+func (a *App) edgeLag() float64 {
+	stretch := a.edgeMotion.anim.Stretch
+	if stretch <= 0 {
+		return a.edgeMotion.e
+	}
+	return a.edgeProgress(a.motion.now.Add(-a.scaledMs(stretch)))
 }
 
 func hasEdgeKey(items []edgeItem, key edgeKey) bool {

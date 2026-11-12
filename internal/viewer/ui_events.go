@@ -123,6 +123,15 @@ func (a *App) runUIViewAction(view *uiView, action string) {
 			a.setUIViewQuery(view, "")
 		}
 	case "confirm":
+		// With a press to show, the row is held while the key is down
+		// and chosen as it is let go.
+		if a.actionKeycode != 0 && a.pressShows(view, config.MotionSelection) {
+			if !a.actionRepeated {
+				view.pressed, view.pressKey = true, a.actionKeycode
+				a.pendingRedraw = true
+			}
+			return
+		}
 		a.activateUIView(view)
 	case "close":
 		// A search is closed before its list; a prompt's text is the
@@ -221,6 +230,14 @@ func (a *App) viewMouseButton(view *uiView, e *sdl.MouseButtonEvent) {
 	}
 	if !down {
 		view.draggingScrollbar = false
+		// A row held by the pointer is chosen if it is let go over it.
+		if view.pressed && view.pressKey == 0 {
+			view.pressed = false
+			a.pendingRedraw = true
+			if item, ok := a.uiViewIndexAt(view, int(e.X), int(e.Y)); ok && item.index == view.pressRow {
+				a.activateUIView(view)
+			}
+		}
 		return
 	}
 	if a.viewStartScrollbarDrag(view, e.X, e.Y) {
@@ -229,6 +246,11 @@ func (a *App) viewMouseButton(view *uiView, e *sdl.MouseButtonEvent) {
 	if item, ok := a.uiViewIndexAt(view, int(e.X), int(e.Y)); ok {
 		if !item.disabled {
 			view.selected = item.index
+			if a.pressShows(view, config.MotionSelection) {
+				view.pressed, view.pressKey, view.pressRow = true, 0, item.index
+				a.pendingRedraw = true
+				return
+			}
 			a.activateUIView(view)
 		}
 		return

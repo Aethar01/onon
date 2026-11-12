@@ -111,7 +111,6 @@ type uiView struct {
 	offset       float64
 	offsetScroll int
 	settling     bool
-	glideFor     int            // the selection the offset last glided for
 	offsetAt     time.Time      // when offset was last brought up to date
 	filtered     uiRowFilter    // visibleRows' last result
 	keyWidth     uiKeyWidth     // keyColumnWidth's last result
@@ -177,6 +176,12 @@ type uiView struct {
 	// pointerSelected is set while the selection is where the pointer
 	// passing over the rows put it, not the keys or the query.
 	pointerSelected bool
+	// pressed is whether the selected row is held down, by pressKey or,
+	// with none, by the pointer on pressRow, when motion's selection has
+	// a press: the row is chosen as it is let go.
+	pressed  bool
+	pressKey sdl.Keycode
+	pressRow int
 	// onInput runs as a field's text changes, and onSubmit on Enter in a
 	// field, or the prompt, whose id is empty.
 	onInput, onSubmit func(a *App, id, text string)
@@ -923,15 +928,26 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 		// rows come in.
 		for index, item := range items {
 			if item.index == view.selected && !item.heading {
-				anim := a.viewAnim(view, config.MotionSelection, config.MomentChange)
+				anim := a.viewAnim(view, config.MotionSelection, selectionMoment(view.pointerSelected))
 				key := tweenKey{kind: "selection", view: view}
-				a.glide(key, float64(index), anim)
-				at := a.shiftTween(key, shift)
+				_, _, stretch := a.glideSpan(key, float64(index), float64(index+1), math.NaN(), math.NaN(), anim)
+				loKey, hiKey := key, key
+				loKey.kind += " lo"
+				hiKey.kind += " hi"
+				lo, hi := a.shiftTween(loKey, shift), a.shiftTween(hiKey, shift)
 				st := a.style(config.ElementRowSelected)
-				box := a.viewRowBox(view, rect, rowY(at), rowHeight)
+				box := a.viewRowBox(view, rect, rowY(lo), rowHeight)
+				if hi-lo != 1 {
+					// Stretched as it glides, and squeezed across.
+					box.H = float32(rowY(hi-1)+rowHeight) - box.Y
+					x0, x1 := squeeze(float64(box.X), float64(box.X+box.W), stretch)
+					box.X, box.W = float32(x0), float32(x1-x0)
+				}
 				ctx := layerCtx{rect: box, side: "left", auto: float64(box.W)}
 				in, prev, out, leaving := a.changeLayers(tweenKey{kind: "selection change", view: view}, item.index, anim, ctx)
-				if !leaving && in == restLayer && !rowsMove {
+				press := a.pressLayer(tweenKey{kind: "selection press", view: view}, view.pressed,
+					a.viewAnim(view, config.MotionSelection, config.MomentPress), ctx)
+				if !leaving && in == restLayer && press == restLayer && !rowsMove {
 					a.drawBox(renderer, &st, box)
 					break
 				}
@@ -944,7 +960,9 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 					}
 				}
 				_ = a.drawLayer(rowLayer(index), box, func() error {
-					return a.drawLayer(in, box, func() error { a.drawBox(renderer, &st, box); return nil })
+					return a.drawLayer(in, box, func() error {
+						return a.drawLayer(press, box, func() error { a.drawBox(renderer, &st, box); return nil })
+					})
 				})
 				break
 			}
@@ -959,7 +977,7 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 			// A row only faded and moved is drawn where it moves to, which
 			// is cheaper than moving the viewport for each row.
 			l := rowLayer(index)
-			if l.scale == 1 && l.clip == 0 {
+			if l.scale == 1 && l.clip == 0 && l.squashX == 0 && l.squashY == 0 {
 				if l.opacity <= 0 {
 					continue
 				}

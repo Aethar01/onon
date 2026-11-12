@@ -39,12 +39,18 @@ func TestAnimateMovesToItsTarget(t *testing.T) {
 	if got := app.animate(tweenKey{kind: "x"}, 20, linear); math.Abs(got-15) > 1e-6 {
 		t.Fatalf("halfway = %v, want 15", got)
 	}
-	// A new target mid-way starts from the last target, so a held key
-	// cannot leave the value further and further behind.
+	// A new target mid-way moves on from where the value is, never
+	// jumping, the move before playing out under the new one.
 	stepMotion(app, start, 50*time.Millisecond)
-	if got := app.animate(tweenKey{kind: "x"}, 0, linear); got != 20 {
-		t.Fatalf("retarget = %v, want the last target, 20", got)
+	if got := app.animate(tweenKey{kind: "x"}, 0, linear); math.Abs(got-15) > 1e-6 {
+		t.Fatalf("retarget = %v, want where it was, 15", got)
 	}
+	stepMotion(app, start, 75*time.Millisecond)
+	if got := app.animate(tweenKey{kind: "x"}, 0, linear); math.Abs(got-12.5) > 1e-6 {
+		t.Fatalf("after retarget = %v, want 12.5, the first move a quarter left and the second three", got)
+	}
+	// It is done one transition after the last target, so a held key
+	// cannot leave the value further and further behind.
 	stepMotion(app, start, 150*time.Millisecond)
 	if got := app.animate(tweenKey{kind: "x"}, 0, linear); got != 0 || app.motion.animating {
 		t.Fatalf("done = %v, animating %v", got, app.motion.animating)
@@ -297,5 +303,90 @@ func TestClipOnTarget(t *testing.T) {
 		if got := clipOnTarget(c.clip, c.vp); got != c.want {
 			t.Errorf("clipOnTarget(%v, %v) = %v, want %v", c.clip, c.vp, got, c.want)
 		}
+	}
+}
+
+func TestGlideSpanStretchesAndSettles(t *testing.T) {
+	app := &App{tab: &tab{}}
+	app.config.Theme.Motion.Scale = 1
+	anim := config.Animation{Duration: 100, Stretch: 40, Glide: true, Easing: config.Easing{Name: "linear", Curve: [4]float64{0, 0, 1, 1}}}
+	key := tweenKey{kind: "span"}
+	start := time.Now()
+	stepMotion(app, start, 0)
+	app.glideSpan(key, 0, 10, math.NaN(), math.NaN(), anim)
+
+	// Heading down to 100..110, the end it heads towards leads and the
+	// span stretches, narrowing what crosses it.
+	stepMotion(app, start, 0)
+	app.glideSpan(key, 100, 110, math.NaN(), math.NaN(), anim)
+	stepMotion(app, start, 50*time.Millisecond)
+	lo, hi, stretch := app.glideSpan(key, 100, 110, math.NaN(), math.NaN(), anim)
+	if lo >= hi-10 || stretch <= 1 || !app.motion.animating {
+		t.Fatalf("mid-way = %v..%v stretched %v, want hi leading and a stretch over 1", lo, hi, stretch)
+	}
+	if x0, x1 := squeeze(0, 10, stretch); x1-x0 >= 10 || (x0+x1)/2 != 5 {
+		t.Fatalf("squeezed across to %v..%v", x0, x1)
+	}
+	// Heading back up, the other end leads.
+	stepMotion(app, start, 200*time.Millisecond)
+	app.glideSpan(key, 100, 110, math.NaN(), math.NaN(), anim)
+	stepMotion(app, start, 200*time.Millisecond)
+	app.glideSpan(key, 0, 10, math.NaN(), math.NaN(), anim)
+	stepMotion(app, start, 250*time.Millisecond)
+	if lo, hi, _ := app.glideSpan(key, 0, 10, math.NaN(), math.NaN(), anim); hi-lo <= 10 || lo >= 100-50+1 {
+		t.Fatalf("going up = %v..%v, want lo leading", lo, hi)
+	}
+	stepMotion(app, start, time.Second)
+	if lo, hi, stretch := app.glideSpan(key, 0, 10, math.NaN(), math.NaN(), anim); lo != 0 || hi != 10 || stretch != 1 {
+		t.Fatalf("settled at %v..%v stretched %v", lo, hi, stretch)
+	}
+
+	// A rect not drawn last frame glides from where it is said to come
+	// from, as the tab indicator does when the bar comes in.
+	from := sdl.FRect{X: 0, Y: 0, W: 20, H: 10}
+	stepMotion(app, start, 2*time.Second)
+	stepMotion(app, start, 2*time.Second)
+	r := app.glideRect(tweenKey{kind: "rect"}, sdl.FRect{X: 0, Y: 100, W: 20, H: 10}, &from, anim)
+	if r.Y != 0 {
+		t.Fatalf("rect starts at %v, want where it came from", r)
+	}
+}
+
+func TestTabCover(t *testing.T) {
+	l := tabBarLayout{}
+	tab := sdl.FRect{X: 100, W: 50, H: 20}
+	for _, c := range []struct {
+		indicator sdl.FRect
+		want      float64
+	}{
+		{sdl.FRect{X: 100, W: 50, H: 20}, 1},
+		{sdl.FRect{X: 125, W: 50, H: 20}, 0.5},
+		{sdl.FRect{X: 0, W: 50, H: 20}, 0},
+	} {
+		if got := tabCover(l, c.indicator, tab); got != c.want {
+			t.Errorf("cover by %v = %v, want %v", c.indicator, got, c.want)
+		}
+	}
+	l.vertical = true
+	if got := tabCover(l, sdl.FRect{Y: 10, H: 20, W: 50}, sdl.FRect{Y: 20, H: 20, W: 50}); got != 0.5 {
+		t.Errorf("vertical cover = %v, want 0.5", got)
+	}
+}
+
+func TestStretchMakesAScaleABubble(t *testing.T) {
+	app := &App{tab: &tab{}}
+	app.config.Theme.Motion.Scale = 1
+	linear := config.Easing{Name: "linear", Curve: [4]float64{0, 0, 1, 1}}
+	anim := config.Animation{Duration: 100, Stretch: 40, Easing: linear, Tracks: []config.Track{{Prop: "scale", From: 0.5}}}
+	ctx := layerCtx{rect: sdl.FRect{W: 100, H: 100}}
+	l, done := app.layerAt(anim, 50, true, ctx)
+	if done || l.squashY >= 0 {
+		t.Fatalf("half way in = %+v done %v: want its height behind its width", l, done)
+	}
+	if l, done := app.layerAt(anim, 120, true, ctx); done || l.scale != 1 || l.squashY >= 0 {
+		t.Fatalf("its width in = %+v done %v: want its height still coming", l, done)
+	}
+	if l, done := app.layerAt(anim, 140, true, ctx); !done || l != restLayer {
+		t.Fatalf("after its stretch = %+v done %v", l, done)
 	}
 }

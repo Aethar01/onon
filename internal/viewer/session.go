@@ -341,7 +341,9 @@ func (a *App) handleMarkToken(token string) bool {
 		// unambiguous countable single-key actions here instead. This handles
 		// both the initial keydown and repeats without changing sequence parsing;
 		// pending numeric counts still flow through handleCountToken below.
-		if a.pendingCount == "" {
+		// A key after the start of a sequence goes on with it, as r after g
+		// is gr, not r.
+		if a.pendingCount == "" && len(a.sequence) == 0 {
 			if action, ok := a.sequenceLookup[token]; ok && a.isCountableAction(action) && !a.hasPrefix(token) {
 				a.runAction(action)
 				return true
