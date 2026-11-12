@@ -95,6 +95,12 @@ func TestCompiledProgramsAreCached(t *testing.T) {
 	if second.Entry != first.Entry || second.Usage != first.Usage || len(second.Code) != len(first.Code) || second.Code[len(second.Code)-1] == first.Code[len(first.Code)-1] {
 		t.Error("the second compile did not come from the cache")
 	}
+	if cacheKey("1/2", "x", FormatSPIRV) == cacheKey("1/3", "x", FormatSPIRV) {
+		t.Error("another build of onon finds this one's programs")
+	}
+	if cacheKey("", "x", FormatSPIRV) != "" {
+		t.Error("programs are cached when the build cannot be told")
+	}
 	if _, err := Compile("void mainImage(out vec4 c, in vec2 p) { c = vec4(nope); }", FormatSPIRV); err == nil {
 		t.Error("no error for a shader that does not compile")
 	}

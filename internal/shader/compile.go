@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -21,9 +22,22 @@ type Program struct {
 	Usage Usage
 }
 
-// cacheVersion changes whenever the code Compile makes for a given source
-// would, so programs cached by an older onon are compiled again.
-const cacheVersion = "onon-shader-1"
+// build identifies the onon binary running, by its size and when it was
+// written, as what a program was compiled by: a program cached by any
+// other build, older or newer, is compiled again, so a change to how
+// shaders compile needs nothing done to the cache. "" when it cannot be
+// told, and then nothing is cached.
+var build = sync.OnceValue(func() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	info, err := os.Stat(exe)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%d/%d", info.Size(), info.ModTime().UnixNano())
+})
 
 // cacheMaxAge is how long a program not used is kept in the cache.
 const cacheMaxAge = 30 * 24 * time.Hour
@@ -52,7 +66,7 @@ func Compile(source string, format Format) (Program, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	wrapped := Wrap(source)
-	key := cacheKey(wrapped, format)
+	key := cacheKey(build(), wrapped, format)
 	if p, ok := loadCached(key); ok {
 		return p, nil
 	}
@@ -69,9 +83,13 @@ func Compile(source string, format Format) (Program, error) {
 	return p, nil
 }
 
-func cacheKey(wrapped string, format Format) string {
+// cacheKey is the name a program is cached under, "" for none.
+func cacheKey(build, wrapped string, format Format) string {
+	if build == "" {
+		return ""
+	}
 	h := sha256.New()
-	h.Write([]byte(cacheVersion))
+	h.Write([]byte(build))
 	h.Write([]byte{0, byte(format), 0})
 	h.Write([]byte(runtime.GOOS + "/" + runtime.GOARCH + "\x00"))
 	h.Write([]byte(wrapped))
@@ -89,7 +107,7 @@ const (
 
 func loadCached(key string) (Program, bool) {
 	dir := CacheDir()
-	if dir == "" {
+	if dir == "" || key == "" {
 		return Program{}, false
 	}
 	path := filepath.Join(dir, key)
@@ -114,7 +132,7 @@ func loadCached(key string) (Program, bool) {
 
 func storeCached(key string, p Program) {
 	dir := CacheDir()
-	if dir == "" || len(p.Entry) > 0xffff {
+	if dir == "" || key == "" || len(p.Entry) > 0xffff {
 		return
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
