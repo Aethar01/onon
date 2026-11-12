@@ -405,17 +405,48 @@ func (a *App) copyBackdrop(renderer *sdl.Renderer, backdrop, target *sdl.Texture
 		src.Y += float32(m.viewport.Y)
 	}
 	// A box drawn into a layer shown scaled is over what the scaled box
-	// will cover, not what it would at rest.
+	// will cover, not what it would at rest. What the layers already hold
+	// is behind it too, such as its own shadow, which the frame does not
+	// have until they are drawn into it: it is laid over the frame's, so
+	// the box sees the same scaled as at rest.
+	type layerPart struct {
+		tex *sdl.Texture
+		src sdl.FRect
+	}
+	var parts []layerPart // innermost first
 	for i := len(m.scales) - 1; i >= 0; i-- {
 		l := m.scales[i]
+		parts = append(parts, layerPart{l.tex, sdl.FRect{X: src.X - float32(l.x0), Y: src.Y - float32(l.y0), W: src.W, H: src.H}})
 		src = sdl.FRect{X: l.x + (src.X-l.x)*l.k, Y: l.y + (src.Y-l.y)*l.k, W: src.W * l.k, H: src.H * l.k}
 	}
 	if !sdl.SetRenderTarget(renderer, backdrop) {
 		return false
 	}
 	sdl.RenderTextureRotated(renderer, s.frame, &src, nil, 0, nil, sdl.FlipVertical)
+	for i := len(parts) - 1; i >= 0; i-- {
+		copyFlipped(renderer, parts[i].tex, parts[i].src, float32(box.W), float32(box.H))
+	}
 	sdl.SetRenderTarget(renderer, target)
 	return true
+}
+
+// copyFlipped draws src of tex, as much of it as is in tex, over the
+// render target, which is w by h and takes all of src, bottom up.
+func copyFlipped(renderer *sdl.Renderer, tex *sdl.Texture, src sdl.FRect, w, h float32) {
+	var tw, th float32
+	if tex == nil || src.W <= 0 || src.H <= 0 || !sdl.GetTextureSize(tex, &tw, &th) {
+		return
+	}
+	x0, y0 := max(src.X, 0), max(src.Y, 0)
+	x1, y1 := min(src.X+src.W, tw), min(src.Y+src.H, th)
+	if x1 <= x0 || y1 <= y0 {
+		return
+	}
+	sx, sy := w/src.W, h/src.H
+	part := sdl.FRect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0}
+	dst := sdl.FRect{X: (x0 - src.X) * sx, W: part.W * sx, H: part.H * sy}
+	dst.Y = h - (y0-src.Y)*sy - dst.H
+	sdl.RenderTextureRotated(renderer, tex, &part, &dst, 0, nil, sdl.FlipVertical)
 }
 
 // blankTexture is a white pixel, drawn stretched under a shader that
