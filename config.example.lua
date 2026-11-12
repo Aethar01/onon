@@ -54,6 +54,8 @@ onon.options.scroll_off = 1 -- Minimum number of rows kept visible above and bel
 onon.options.scroll_step = 64 -- Keyboard and mouse scroll distance in pixels.
 onon.options.sequence_timeout_ms = 700 -- Maximum delay between keys in a binding sequence.
 onon.options.session_database = true -- Persist per-document view state, marks, and recent files.
+onon.options.shader_fps = 30 -- Most frames a second a theme's shader that reads iTime animates at while the window has focus; each frame draws the whole window again, so fewer cost less. 0 holds shaders still. A hidden, minimised or covered window animates none.
+onon.options.shader_fps_unfocused = 0 -- Most frames a second shaders animate at while the window does not have focus; 0 holds them still until it does.
 onon.options.shaders = false -- Experimental: run themes' GLSL shaders. They run only on SDL's GPU renderer, which renderer "auto" then uses where it can start, so it is read when onon starts; with it off, elements are drawn without their shaders.
 onon.options.smooth_scroll = { mouse = true, trackpad = true, keyboard = true } -- Animate scrolling for selected inputs; assignments update only specified mouse, trackpad, and keyboard fields.
 onon.options.smooth_scroll_dampening = 0.8 -- Catch-up factor for smooth scrolling per animation frame; higher values are more responsive and less damped; clamped to 0.01 through 1.

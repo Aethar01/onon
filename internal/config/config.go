@@ -13,6 +13,8 @@ type Config struct {
 	RenderMode            string
 	Renderer              string
 	Shaders               bool
+	ShaderFPS             int
+	ShaderFPSUnfocused    int
 	RenderOversample      float64
 	MinZoom               float64
 	MaxZoom               float64
