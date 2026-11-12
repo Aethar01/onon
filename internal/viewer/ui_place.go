@@ -204,10 +204,17 @@ func (a *App) withDocumentViewport(renderer *sdl.Renderer, draw func()) {
 		draw()
 		return
 	}
+	// Within a layer moved, the document's part moves with it.
+	m := &a.motion
+	old, had := m.viewport, m.hasViewport
 	r := a.documentRect()
 	rect := sdl.Rect{X: int32(r.X), Y: int32(r.Y), W: int32(r.W), H: int32(r.H)}
-	sdl.SetRenderViewport(renderer, &rect)
-	defer sdl.SetRenderViewport(renderer, nil)
+	if had {
+		rect.X += old.X
+		rect.Y += old.Y
+	}
+	a.setViewport(rect, true)
+	defer a.setViewport(old, had)
 	draw()
 }
 

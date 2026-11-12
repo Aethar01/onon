@@ -351,3 +351,24 @@ func TestGlideSpanStretchesAndSettles(t *testing.T) {
 		t.Fatalf("rect starts at %v, want where it came from", r)
 	}
 }
+
+func TestTabCover(t *testing.T) {
+	l := tabBarLayout{}
+	tab := sdl.FRect{X: 100, W: 50, H: 20}
+	for _, c := range []struct {
+		indicator sdl.FRect
+		want      float64
+	}{
+		{sdl.FRect{X: 100, W: 50, H: 20}, 1},
+		{sdl.FRect{X: 125, W: 50, H: 20}, 0.5},
+		{sdl.FRect{X: 0, W: 50, H: 20}, 0},
+	} {
+		if got := tabCover(l, c.indicator, tab); got != c.want {
+			t.Errorf("cover by %v = %v, want %v", c.indicator, got, c.want)
+		}
+	}
+	l.vertical = true
+	if got := tabCover(l, sdl.FRect{Y: 10, H: 20, W: 50}, sdl.FRect{Y: 20, H: 20, W: 50}); got != 0.5 {
+		t.Errorf("vertical cover = %v, want 0.5", got)
+	}
+}

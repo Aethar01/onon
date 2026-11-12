@@ -49,6 +49,8 @@ type motionState struct {
 	// when it was last read; see refreshReducedMotion.
 	osReading atomic.Bool
 	osReadAt  time.Time
+	// documentSwitch is the document of the tab shown before, going.
+	documentSwitch *documentSwitch
 }
 
 // tweenKey names something that moves: what it is, and the view or text

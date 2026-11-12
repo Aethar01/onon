@@ -49,6 +49,9 @@ const (
 	MotionCursor
 	MotionEdges
 	MotionTitleBar
+	MotionTabSelection
+	MotionHover
+	MotionDocument
 	MotionTargetCount
 )
 
@@ -85,6 +88,9 @@ var motionTargets = [MotionTargetCount]motionTargetInfo{
 	MotionCursor:            {"cursor", "The text cursor moving, as selection does.", change},
 	MotionEdges:             {"edges", "The status bar, tab bar and docked views coming in along the window's edges as they are shown and going as they are hidden, the page moving with them only where it must. The timing moves the page; the tracks follow it, a slide by default.", enterExit},
 	MotionTitleBar:          {"title_bar", "The window's buttons over the page appearing as the pointer reaches the top of the window.", enterExit},
+	MotionTabSelection:      {"tab_selection", "The shown tab's highlight moving to the tab shown next, as selection does: glide moves it there, each tab's own box clearing as it passes over, and other tracks bring the new one in and take the old one out.", change},
+	MotionHover:             {"hover", "A tab taking its hovered look as the pointer comes onto it, and losing it as the pointer goes; only its timing counts.", enterExit},
+	MotionDocument:          {"document", "The document going as another tab's is shown, the new one coming in under it: its tracks move the one before out, towards the start of the bar when the tab shown next is after it, and the new one in from the other side; fades only the one before.", change},
 }
 
 func (t MotionTarget) String() string { return motionTargets[t].name }
@@ -458,6 +464,9 @@ var defaultMotion = Motion{
 		MotionCursor:            changing(motionTransition(50, "ease-out", "glide")),
 		MotionEdges:             both(motionTransition(160, "ease-out", "slide")),
 		MotionTitleBar:          both(motionTransition(160, "linear", "fade")),
+		MotionTabSelection:      changing(motionTransition(120, "ease-out", "glide")),
+		MotionHover:             both(motionTransition(100, "ease-out", "fade")),
+		MotionDocument:          changing(motionTransition(120, "ease-out", "fade")),
 	},
 	Reduced: ReducedMotion{Base: "fade"},
 }

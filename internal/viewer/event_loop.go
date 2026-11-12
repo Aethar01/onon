@@ -316,6 +316,8 @@ func (a *App) handleSDLEvent(event *sdl.Event) error {
 		redraw = false
 	case sdl.EventSystemThemeChanged:
 		a.followSystemColors()
+	case sdl.EventWindowMouseLeave:
+		redraw = a.noteTabHover(0, 0, false)
 	case sdl.EventWindowFocusGained:
 		a.refreshReducedMotion()
 		a.noteLastWindow()
@@ -387,6 +389,9 @@ func (a *App) handleSDLEvent(event *sdl.Event) error {
 // needs drawing again.
 func (a *App) handleMouseMotionEvent(e *sdl.MouseMotionEvent) bool {
 	a.noteTitleBarPointer(float64(e.X), float64(e.Y), true)
+	if a.noteTabHover(e.X, e.Y, true) {
+		a.pendingRedraw = true
+	}
 	if a.handleTabBarMotion(e.X, e.Y) {
 		a.updateCursor()
 		return true
@@ -569,12 +574,7 @@ func (a *App) drawFrameContents() error {
 	a.drawing = true
 	defer func() { a.drawing, a.frameStatus = false, nil }()
 	message := a.message
-	a.withDocumentViewport(a.renderer, func() {
-		a.drawPages(a.renderer)
-		// An on-screen loader animates, so it asks for the next frame.
-		a.pendingRedraw = a.loaderVisible
-		a.drawLinkHints(a.renderer)
-	})
+	a.drawDocument(a.renderer)
 	if a.statusVisible() || a.edgeGhost(edgeStatus) {
 		err := a.drawOnEdge(edgeKey{kind: edgeStatus}, a.layoutEdges().status, func() error { return a.drawStatusBar(a.renderer) })
 		if err != nil {

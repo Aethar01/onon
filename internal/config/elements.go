@@ -45,6 +45,7 @@ const (
 	ElementTabBar
 	ElementTab
 	ElementTabSelected
+	ElementTabHover
 	ElementLoader
 	ElementAutoscrollMarker
 	ElementPage
@@ -95,7 +96,8 @@ var elementSpecs = [ElementCount]struct {
 	ElementTitleClose:        {"title_close", ElementTitleButton, slices.Concat(boxProps, []string{"text"}), "The close button under the pointer."},
 	ElementTabBar:            {"tab_bar", noElement, slices.Concat(boxProps, []string{"padding", "margin", "gap", "floating"}), "onon's tab bar, where tab_bar_position puts it and tab_bar_visible shows it, wherever the system draws no tabs of its own. Its padding surrounds the tabs, margin sets it off the window's edges, gap is the space between tabs, and floating draws it over the page instead of beside it, as the status bar's does; a theme with tab_bar_style = \"pill\" floats its tabs as pills. In the title row, floating tabs sit their top margin below the window's top, or centred on the window's buttons if that is lower. Border sides and margins are given as for a bar at the top, and turn with the bar: its bottom is the side facing the document."},
 	ElementTab:               {"tab", noElement, slices.Concat(boxProps, textProps, []string{"min_width", "max_width"}), "A tab in the tab bar, named for its document. Its secondary colour marks a tab with unsaved edits, and its padding sets the bar's height. min_width and max_width bound its width in a bar at the top or bottom; tab_width = \"fill\" ignores max_width. Its sides turn with the bar, as tab_bar's do."},
-	ElementTabSelected:       {"tab_selected", ElementTab, slices.Concat(boxProps, textProps, []string{"min_width", "max_width"}), "The tab shown."},
+	ElementTabSelected:       {"tab_selected", ElementTab, slices.Concat(boxProps, textProps, []string{"min_width", "max_width"}), "The tab shown. Its box is drawn over the tabs, gliding from tab to tab as motion's tab_selection says, each tab's own box clearing where it covers it."},
+	ElementTabHover:          {"tab_hover", ElementTab, slices.Concat(boxProps, textProps), "A tab under the pointer, other than the tab shown, fading in and out as motion's hover says."},
 	ElementLoader:            {"loader", noElement, []string{"fill", "opacity", "draw"}, "The drops bouncing on a page still rendering; its box is the page."},
 	ElementPage:              {"page", noElement, []string{"shape", "radius", "fill", "border", "shadow"}, "Each page of the document, its fill showing until the page renders. Pages turned other than by quarter turns are drawn plain."},
 	ElementAutoscrollMarker:  {"autoscroll_marker", noElement, []string{"fill", "border", "opacity", "width", "draw"}, "The marker where autoscroll started: its fill, its outline as its border, and its width."},
@@ -411,6 +413,11 @@ func elementDefaults(t *Theme, e Element) Style {
 			s.Fill = some(paletteColor("background", 1))
 			s.BorderWidth = some(2.0)
 			s.BorderSides = some(SideBottom)
+		}
+	case ElementTabHover:
+		s.Text = some(paletteColor("foreground", 1))
+		if !tabPills {
+			s.Fill = some(paletteColor("foreground", 0.06))
 		}
 	case ElementLoader:
 		s.Fill = some(paletteColor("muted", 1))
