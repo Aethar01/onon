@@ -192,6 +192,86 @@ func (a *App) glide(key tweenKey, target float64, anim config.Animation) float64
 	return a.animate(key, target, anim)
 }
 
+// glideSpan is the span lo to hi on its way to where it goes, as anim
+// glides it, each end gliding on its own, from fromLo and fromHi when it
+// was not drawn last frame (NaN for where it is). The end it heads
+// towards leads; with a stretch, the other sets off that much later, so
+// the span stretches as it goes and, under a spring, wobbles as it
+// settles. It also returns how much longer than at rest the span is, as
+// a factor, for what crosses it to squeeze by.
+func (a *App) glideSpan(key tweenKey, lo, hi, fromLo, fromHi float64, anim config.Animation) (float64, float64, float64) {
+	if !anim.Glide {
+		anim.Duration = 0
+	}
+	loKey, hiKey, lenKey := key, key, key
+	loKey.kind += " lo"
+	hiKey.kind += " hi"
+	lenKey.kind += " length"
+	if anim.Stretch <= 0 || anim.Duration <= 0 {
+		return a.animateFrom(loKey, fromLo, lo, anim), a.animateFrom(hiKey, fromHi, hi, anim), 1
+	}
+	// Which way it heads: towards its new place, or the way it was going.
+	dir := 0.0
+	m := &a.motion
+	if tw := m.tweens[loKey]; tw != nil && tw.seen+1 >= m.frame {
+		if tw.to != lo {
+			dir = lo - tw.to
+		} else if n := len(tw.segments); n > 0 {
+			dir = -tw.segments[n-1].delta
+		}
+	} else if !math.IsNaN(fromLo) {
+		dir = lo - fromLo
+	}
+	lead, trail := anim, anim
+	trail.Delay += anim.Stretch
+	loAnim, hiAnim := trail, lead // heading up, hi leads
+	if dir < 0 {
+		loAnim, hiAnim = lead, trail
+	}
+	gLo := a.animateFrom(loKey, fromLo, lo, loAnim)
+	gHi := a.animateFrom(hiKey, fromHi, hi, hiAnim)
+	fromLength := math.NaN()
+	if !math.IsNaN(fromLo) && !math.IsNaN(fromHi) {
+		fromLength = fromHi - fromLo
+	}
+	length := a.animateFrom(lenKey, fromLength, hi-lo, lead)
+	stretch := 1.0
+	if length > 0 && gHi > gLo {
+		stretch = (gHi - gLo) / length
+	}
+	return gLo, gHi, stretch
+}
+
+// squeeze is the span lo to hi narrowed about its middle as a liquid is
+// when stretched the other way by stretch, keeping about its area; a
+// span squashed, stretch under 1, widens.
+func squeeze(lo, hi, stretch float64) (float64, float64) {
+	if stretch == 1 || stretch <= 0 {
+		return lo, hi
+	}
+	mid, half := (lo+hi)/2, (hi-lo)/2/math.Sqrt(stretch)
+	return mid - half, mid + half
+}
+
+// glideRect is r on its way to where it goes, as anim glides it, each
+// side gliding on its own as glideSpan has them, from from if r was not
+// drawn last frame and from is given; it squeezes across as it stretches
+// along.
+func (a *App) glideRect(key tweenKey, r sdl.FRect, from *sdl.FRect, anim config.Animation) sdl.FRect {
+	fx0, fx1, fy0, fy1 := math.NaN(), math.NaN(), math.NaN(), math.NaN()
+	if from != nil {
+		fx0, fx1, fy0, fy1 = float64(from.X), float64(from.X+from.W), float64(from.Y), float64(from.Y+from.H)
+	}
+	kx, ky := key, key
+	kx.kind += " x"
+	ky.kind += " y"
+	x0, x1, sx := a.glideSpan(kx, float64(r.X), float64(r.X+r.W), fx0, fx1, anim)
+	y0, y1, sy := a.glideSpan(ky, float64(r.Y), float64(r.Y+r.H), fy0, fy1, anim)
+	x0, x1 = squeeze(x0, x1, sy)
+	y0, y1 = squeeze(y0, y1, sx)
+	return sdl.FRect{X: float32(x0), Y: float32(y0), W: float32(max(0, x1-x0)), H: float32(max(0, y1-y0))}
+}
+
 // animateFrom is animate for a value that, when not asked for last frame,
 // starts from from.
 func (a *App) animateFrom(key tweenKey, from, target float64, anim config.Animation) float64 {

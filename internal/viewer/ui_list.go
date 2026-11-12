@@ -924,10 +924,19 @@ func (a *App) drawUIListItems(renderer *sdl.Renderer, rect sdl.FRect, rows int, 
 			if item.index == view.selected && !item.heading {
 				anim := a.viewAnim(view, config.MotionSelection, config.MomentChange)
 				key := tweenKey{kind: "selection", view: view}
-				a.glide(key, float64(index), anim)
-				at := a.shiftTween(key, shift)
+				_, _, stretch := a.glideSpan(key, float64(index), float64(index+1), math.NaN(), math.NaN(), anim)
+				loKey, hiKey := key, key
+				loKey.kind += " lo"
+				hiKey.kind += " hi"
+				lo, hi := a.shiftTween(loKey, shift), a.shiftTween(hiKey, shift)
 				st := a.style(config.ElementRowSelected)
-				box := a.viewRowBox(view, rect, rowY(at), rowHeight)
+				box := a.viewRowBox(view, rect, rowY(lo), rowHeight)
+				if hi-lo != 1 {
+					// Stretched as it glides, and squeezed across.
+					box.H = float32(rowY(hi-1)+rowHeight) - box.Y
+					x0, x1 := squeeze(float64(box.X), float64(box.X+box.W), stretch)
+					box.X, box.W = float32(x0), float32(x1-x0)
+				}
 				ctx := layerCtx{rect: box, side: "left", auto: float64(box.W)}
 				in, prev, out, leaving := a.changeLayers(tweenKey{kind: "selection change", view: view}, item.index, anim, ctx)
 				if !leaving && in == restLayer && !rowsMove {

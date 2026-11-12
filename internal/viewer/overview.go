@@ -313,11 +313,11 @@ func (a *App) drawOverviewSelection(renderer *sdl.Renderer) {
 	// The outline glides to the selection as a menu's selected row does.
 	// It moves among the pages, so it stays with them as the grid scrolls.
 	anim := a.anim(config.MotionOverviewSelection, config.MomentChange)
-	glide := func(kind string, v, scroll float64) float64 {
-		return a.glide(tweenKey{kind: kind}, v+scroll, anim) - scroll
-	}
-	minX, maxX = glide("overview selection x0", minX, a.scrollX), glide("overview selection x1", maxX, a.scrollX)
-	minY, maxY = glide("overview selection y0", minY, a.scrollY), glide("overview selection y1", maxY, a.scrollY)
+	glided := a.glideRect(tweenKey{kind: "overview selection"}, sdl.FRect{
+		X: float32(minX + a.scrollX), Y: float32(minY + a.scrollY), W: float32(maxX - minX), H: float32(maxY - minY),
+	}, nil, anim)
+	minX, maxX = float64(glided.X)-a.scrollX, float64(glided.X+glided.W)-a.scrollX
+	minY, maxY = float64(glided.Y)-a.scrollY, float64(glided.Y+glided.H)-a.scrollY
 	// The padding is between the page and the inside of the border.
 	st := a.style(config.ElementOverviewSelection)
 	top, right, bottom, left := a.insets(st.Padding.V)

@@ -106,11 +106,15 @@ func MotionTargetNamed(name string) (MotionTarget, bool) {
 // what delay, eased how, and which tracks. Stagger delays each of several
 // things, such as rows, by that much more than the one before. Glide, for
 // a change, moves the thing itself to where it goes; without it the
-// tracks bring the new one in and take the old one out.
+// tracks bring the new one in and take the old one out. Stretch, for a
+// glide, sets the trailing edge off that much after the leading one, so
+// the thing stretches as it goes and, under a spring, wobbles as it
+// settles.
 type Animation struct {
 	Duration float64 // milliseconds; 0 for none
 	Delay    float64
 	Stagger  float64
+	Stretch  float64
 	Easing   Easing
 	Glide    bool
 	Tracks   []Track
@@ -299,12 +303,12 @@ func (a Animation) Track(prop string) (Track, bool) {
 // AnimationPatch is an animation as written: the parts given, to set over
 // another. A timing alone changes only the timing.
 type AnimationPatch struct {
-	None                     bool // no motion: it clears what it is set over
-	Duration, Delay, Stagger Opt[float64]
-	Easing                   *Easing
-	Glide                    Opt[bool]
-	Tracks                   []Track
-	SetTracks                bool
+	None                              bool // no motion: it clears what it is set over
+	Duration, Delay, Stagger, Stretch Opt[float64]
+	Easing                            *Easing
+	Glide                             Opt[bool]
+	Tracks                            []Track
+	SetTracks                         bool
 }
 
 // Apply sets p over a.
@@ -323,6 +327,9 @@ func (p *AnimationPatch) Apply(a Animation) Animation {
 	}
 	if p.Stagger.Set {
 		a.Stagger = p.Stagger.V
+	}
+	if p.Stretch.Set {
+		a.Stretch = p.Stretch.V
 	}
 	if p.Easing != nil {
 		a.Easing = *p.Easing
@@ -354,6 +361,9 @@ func (p *AnimationPatch) Then(q *AnimationPatch) *AnimationPatch {
 	if q.Stagger.Set {
 		r.Stagger = q.Stagger
 	}
+	if q.Stretch.Set {
+		r.Stretch = q.Stretch
+	}
 	if q.Easing != nil {
 		r.Easing = q.Easing
 	}
@@ -378,6 +388,9 @@ func wholePatch(a Animation) *AnimationPatch {
 	}
 	if a.Stagger > 0 {
 		p.Stagger = some(a.Stagger)
+	}
+	if a.Stretch > 0 {
+		p.Stretch = some(a.Stretch)
 	}
 	return p
 }
@@ -590,15 +603,18 @@ func parseAnimationText(raw string) (*AnimationPatch, error) {
 			return nil, fmt.Errorf("%q: unknown word %q; %s, with effects %s", raw, word, motionUsage, strings.Join(PresetNames(), ", "))
 		}
 		switch key {
-		case "delay", "stagger":
+		case "delay", "stagger", "stretch":
 			d, ok := parseDuration(value)
 			if !ok {
 				return nil, fmt.Errorf("%q: %s: expected a duration such as 40ms", raw, key)
 			}
-			if key == "delay" {
+			switch key {
+			case "delay":
 				p.Delay = some(d)
-			} else {
+			case "stagger":
 				p.Stagger = some(d)
+			default:
+				p.Stretch = some(d)
 			}
 		case "from":
 			if !slices.Contains(motionSides, value) {
@@ -630,7 +646,7 @@ func parseAnimationText(raw string) (*AnimationPatch, error) {
 		e := namedEasing("ease")
 		p.Easing = &e
 	}
-	if !p.Duration.Set && !p.SetTracks && p.Easing == nil && !p.Delay.Set && !p.Stagger.Set {
+	if !p.Duration.Set && !p.SetTracks && p.Easing == nil && !p.Delay.Set && !p.Stagger.Set && !p.Stretch.Set {
 		return nil, fmt.Errorf("%q: %s", raw, motionUsage)
 	}
 	if !p.Duration.Set && !p.SetTracks && p.Easing != nil {
@@ -794,7 +810,7 @@ func durationFromLua(name string, value lua.LValue) (float64, error) {
 
 // animationTableKeys are the keys an animation's table may have besides
 // its tracks.
-var animationTableKeys = []string{"duration", "delay", "stagger", "easing", "glide", "effect", "from"}
+var animationTableKeys = []string{"duration", "delay", "stagger", "stretch", "easing", "glide", "effect", "from"}
 
 // AnimationFromLua reads an animation: text, a number of milliseconds, or
 // a table of duration, delay, stagger, easing, glide, effect (text, as an
@@ -827,7 +843,7 @@ func animationFromTable(tbl *lua.LTable) (*AnimationPatch, error) {
 	} else if v := tbl.RawGetString("effect"); v != lua.LNil {
 		return nil, fmt.Errorf("effect: expected text such as \"fade rise\"")
 	}
-	for _, name := range []string{"duration", "delay", "stagger"} {
+	for _, name := range []string{"duration", "delay", "stagger", "stretch"} {
 		v := tbl.RawGetString(name)
 		if v == lua.LNil {
 			continue
@@ -843,6 +859,8 @@ func animationFromTable(tbl *lua.LTable) (*AnimationPatch, error) {
 			p.Delay = some(d)
 		case "stagger":
 			p.Stagger = some(d)
+		case "stretch":
+			p.Stretch = some(d)
 		}
 	}
 	if v := tbl.RawGetString("easing"); v != lua.LNil {
@@ -1106,6 +1124,9 @@ func animationText(p *AnimationPatch) (string, bool) {
 	if p.Stagger.Set && p.Stagger.V > 0 {
 		words = append(words, "stagger:"+formatNumber(p.Stagger.V)+"ms")
 	}
+	if p.Stretch.Set && p.Stretch.V > 0 {
+		words = append(words, "stretch:"+formatNumber(p.Stretch.V)+"ms")
+	}
 	if len(words) == 0 {
 		return "", false
 	}
@@ -1179,6 +1200,9 @@ func animationLit(p *AnimationPatch) motionLit {
 	}
 	if p.Stagger.Set && p.Stagger.V > 0 {
 		f = append(f, motionField{"stagger", litNum(p.Stagger.V)})
+	}
+	if p.Stretch.Set && p.Stretch.V > 0 {
+		f = append(f, motionField{"stretch", litNum(p.Stretch.V)})
 	}
 	if p.Easing != nil {
 		f = append(f, motionField{"easing", easingLit(*p.Easing)})

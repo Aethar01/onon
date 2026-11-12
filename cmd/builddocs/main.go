@@ -305,7 +305,7 @@ func renderMotionReference(b *strings.Builder) {
 	b.WriteString("\n### Motion\n\n")
 	b.WriteString("The `motion` table sets how the UI moves. Each thing that moves is a target, with an animation for each moment it moves at: `enter` as it comes, `exit` as it goes, or `change` as it moves to another place, as the selection does. By default everything moves, briefly: the selection, the cursor and the sides of the status bar glide to where they go, menus and messages fade in and out, and the bars and docked views slide in and out along the edges.\n\n")
 	b.WriteString("```lua\nonon.theme.motion = {\n  panel = { enter = \"fade rise zoom 160ms ease-out\", exit = \"fade 90ms\" },\n  rows = { enter = \"fade x:-6px 120ms ease-out stagger:15ms\" },\n  selection = \"crossfade 80ms\",\n  message = \"fade slide from:left 200ms spring(220, 22)\",\n  edges = \"240ms cubic-bezier(0.22, 1, 0.36, 1)\",\n}\n```\n\n")
-	b.WriteString("An animation written as text is a list of words in any order: effects and tracks, a duration and then a delay, an easing, and `delay:`, `stagger:` and `from:`. `\"none\"` turns it off. Written with no effects or tracks, as `\"140ms ease-out\"`, it changes only the timing and keeps the effects it had; a duration without an easing eases as CSS does by default, with `ease`. Set for a target, it is that target's animation at each of its moments; a table of `enter`, `exit` or `change` sets them one at a time.\n\n")
+	b.WriteString("An animation written as text is a list of words in any order: effects and tracks, a duration and then a delay, an easing, and `delay:`, `stagger:`, `stretch:` and `from:`. `\"none\"` turns it off. Written with no effects or tracks, as `\"140ms ease-out\"`, it changes only the timing and keeps the effects it had; a duration without an easing eases as CSS does by default, with `ease`. Set for a target, it is that target's animation at each of its moments; a table of `enter`, `exit` or `change` sets them one at a time.\n\n")
 	b.WriteString("| Word | Meaning |\n|---|---|\n")
 	for _, row := range [][2]string{
 		{"`fade`, `crossfade`", "Opacity from 0."},
@@ -318,11 +318,12 @@ func renderMotionReference(b *strings.Builder) {
 		{"`from:side`", "The side `slide` and `wipe` go to: `top`, `bottom`, `left` or `right`."},
 		{"`140ms`, `0.14s`", "The duration; a second one is the delay."},
 		{"`delay:40ms`, `stagger:15ms`", "Wait before starting; for rows, each waits that much longer than the one before."},
+		{"`stretch:40ms`", "For a glide: the trailing edge sets off that much after the leading one, so the thing stretches as it goes, narrowing across as a drop of liquid does, and with a springy easing wobbles as it settles."},
 		{"easings", "`linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out`, `cubic-bezier(x1, y1, x2, y2)`, `steps(n)`, or `spring(stiffness, damping)`, a spring that settles over the duration and overshoots when damping is low."},
 	} {
 		fmt.Fprintf(b, "| %s | %s |\n", row[0], row[1])
 	}
-	b.WriteString("\nAs a table, an animation has `duration`, `delay` and `stagger` (milliseconds, or text such as `\"140ms\"`), `easing` (text, or a Lua function from the time through the change, 0 to 1, to how far it is), `glide`, `effect` (text, as above), `from`, and its tracks, each a value as written after its name, `{ from, to }`, or a table with its own `duration`, `delay`, `easing` and `side`:\n\n")
+	b.WriteString("\nAs a table, an animation has `duration`, `delay`, `stagger` and `stretch` (milliseconds, or text such as `\"140ms\"`), `easing` (text, or a Lua function from the time through the change, 0 to 1, to how far it is), `glide`, `effect` (text, as above), `from`, and its tracks, each a value as written after its name, `{ from, to }`, or a table with its own `duration`, `delay`, `easing` and `side`:\n\n")
 	b.WriteString("```lua\nonon.theme.motion.panel = {\n  enter = {\n    opacity = 0,\n    y = \"16px\",\n    scale = { 0.9, 1, duration = 320, easing = \"spring(170, 18)\" },\n    duration = 160,\n    easing = function(t) return 1 - (1 - t) ^ 3 end,\n  },\n  exit = \"fade 90ms\",\n}\n```\n\n")
 	b.WriteString("Targets: ")
 	var targets []string

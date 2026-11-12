@@ -305,3 +305,49 @@ func TestClipOnTarget(t *testing.T) {
 		}
 	}
 }
+
+func TestGlideSpanStretchesAndSettles(t *testing.T) {
+	app := &App{tab: &tab{}}
+	app.config.Theme.Motion.Scale = 1
+	anim := config.Animation{Duration: 100, Stretch: 40, Glide: true, Easing: config.Easing{Name: "linear", Curve: [4]float64{0, 0, 1, 1}}}
+	key := tweenKey{kind: "span"}
+	start := time.Now()
+	stepMotion(app, start, 0)
+	app.glideSpan(key, 0, 10, math.NaN(), math.NaN(), anim)
+
+	// Heading down to 100..110, the end it heads towards leads and the
+	// span stretches, narrowing what crosses it.
+	stepMotion(app, start, 0)
+	app.glideSpan(key, 100, 110, math.NaN(), math.NaN(), anim)
+	stepMotion(app, start, 50*time.Millisecond)
+	lo, hi, stretch := app.glideSpan(key, 100, 110, math.NaN(), math.NaN(), anim)
+	if lo >= hi-10 || stretch <= 1 || !app.motion.animating {
+		t.Fatalf("mid-way = %v..%v stretched %v, want hi leading and a stretch over 1", lo, hi, stretch)
+	}
+	if x0, x1 := squeeze(0, 10, stretch); x1-x0 >= 10 || (x0+x1)/2 != 5 {
+		t.Fatalf("squeezed across to %v..%v", x0, x1)
+	}
+	// Heading back up, the other end leads.
+	stepMotion(app, start, 200*time.Millisecond)
+	app.glideSpan(key, 100, 110, math.NaN(), math.NaN(), anim)
+	stepMotion(app, start, 200*time.Millisecond)
+	app.glideSpan(key, 0, 10, math.NaN(), math.NaN(), anim)
+	stepMotion(app, start, 250*time.Millisecond)
+	if lo, hi, _ := app.glideSpan(key, 0, 10, math.NaN(), math.NaN(), anim); hi-lo <= 10 || lo >= 100-50+1 {
+		t.Fatalf("going up = %v..%v, want lo leading", lo, hi)
+	}
+	stepMotion(app, start, time.Second)
+	if lo, hi, stretch := app.glideSpan(key, 0, 10, math.NaN(), math.NaN(), anim); lo != 0 || hi != 10 || stretch != 1 {
+		t.Fatalf("settled at %v..%v stretched %v", lo, hi, stretch)
+	}
+
+	// A rect not drawn last frame glides from where it is said to come
+	// from, as the tab indicator does when the bar comes in.
+	from := sdl.FRect{X: 0, Y: 0, W: 20, H: 10}
+	stepMotion(app, start, 2*time.Second)
+	stepMotion(app, start, 2*time.Second)
+	r := app.glideRect(tweenKey{kind: "rect"}, sdl.FRect{X: 0, Y: 100, W: 20, H: 10}, &from, anim)
+	if r.Y != 0 {
+		t.Fatalf("rect starts at %v, want where it came from", r)
+	}
+}
