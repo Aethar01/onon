@@ -487,10 +487,23 @@ func (a *App) drawTabBar(renderer *sdl.Renderer) {
 	if a.drawBoxParts(renderer, &bar, l.bar, boxBody) {
 		defer a.drawBoxParts(renderer, &bar, l.bar, boxBorder)
 	}
-	// Tabs are clipped along the bar only, so the shadows of pills show.
-	clip := sdl.FRect{X: l.area.X, W: l.area.W, H: float32(a.winH)}
+	// Tabs are clipped along the bar only, so the shadows of pills show,
+	// and only at an end the tabs are scrolled past, so the glow of the
+	// first or last tab is not cut off at the area's edge.
+	start, room := l.along(l.area)
+	end := start + room
+	if l.scroll <= 0 {
+		start = 0
+	}
+	if l.scroll >= l.total-room {
+		end = float32(a.winW)
+		if l.vertical {
+			end = float32(a.winH)
+		}
+	}
+	clip := sdl.FRect{X: start, W: end - start, H: float32(a.winH)}
 	if l.vertical {
-		clip = sdl.FRect{Y: l.area.Y, W: float32(a.winW), H: l.area.H}
+		clip = sdl.FRect{Y: start, W: float32(a.winW), H: end - start}
 	}
 	_ = a.withClip(renderer, clip, func() error {
 		tabs := a.tabList()
