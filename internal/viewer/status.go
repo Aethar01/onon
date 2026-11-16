@@ -141,8 +141,12 @@ func (a *App) drawStatusBar(renderer *sdl.Renderer) error {
 	if err != nil {
 		return err
 	}
+	// The right text keeps its place in its side as the side glides, so
+	// it moves with it, as a tab's label does, rather than jumping to
+	// where the side will be.
+	rightX := l.rightX + int(math.Round(float64(rightBox.X-l.rightArea.X)))
 	drawRight := func() error {
-		return a.drawText(renderer, l.right, l.rightX, l.baseline, a.textColor(&rightStyle, false))
+		return a.drawText(renderer, l.right, rightX, l.baseline, a.textColor(&rightStyle, false))
 	}
 	if boxDrawn(&rightStyle) {
 		return a.withClip(renderer, rightBox, drawRight)
