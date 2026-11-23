@@ -130,17 +130,27 @@ func withSFTP(ctx context.Context, t target, op func(*sshConn) error) error {
 	}
 }
 
-// existingSFTP runs op only if t's host is already connected, for checks
-// that must not start ssh, and with it perhaps a password prompt, by
-// themselves.
+// existingSFTP runs op only if t's host has been connected, for checks that
+// must not start ssh, and with it perhaps a password prompt, by themselves.
+// A connection that dropped, as when the computer slept, is made again,
+// asking for a password if one is needed; if that fails or is cancelled,
+// the host is left unconnected, so is not asked again until next opened.
 func existingSFTP(t target, op func(*sshConn) error) (bool, error) {
 	h := hostFor(t)
 	if !h.mu.TryLock() {
 		return false, nil
 	}
 	conn := h.conn
+	if conn != nil && !conn.alive() {
+		conn.close()
+		h.conn = nil
+		if fresh, err := dialSSH(context.Background(), t); err == nil {
+			h.conn = fresh
+		}
+		conn = h.conn
+	}
 	h.mu.Unlock()
-	if conn == nil || !conn.alive() {
+	if conn == nil {
 		return false, nil
 	}
 	return true, op(conn)

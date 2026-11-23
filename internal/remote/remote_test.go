@@ -407,3 +407,51 @@ func TestSSHConnectError(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// A connection that drops, as when the computer sleeps, is made again by
+// the checks for changes, asking for a password as on opening; a refused
+// one leaves the host unconnected, so it is not asked again.
+func TestChangedReconnectsDroppedSSH(t *testing.T) {
+	useTempCache(t)
+	home, _ := useFakeSSH(t)
+	doc := filepath.Join(home, "a.pdf")
+	if err := os.WriteFile(doc, []byte("%PDF one"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	uri := "sftp://host/~/a.pdf"
+
+	// Never connected: a check starts nothing.
+	if _, connected, _ := Changed(uri); connected {
+		t.Fatal("check connected by itself")
+	}
+	if _, err := Fetch(context.Background(), uri, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	h := hostFor(mustTarget(uri))
+	drop := func() {
+		h.mu.Lock()
+		_ = h.conn.cmd.Process.Kill()
+		<-h.conn.done
+		h.mu.Unlock()
+	}
+	drop()
+	if _, connected, err := Changed(uri); err != nil || !connected {
+		t.Fatalf("after drop: connected=%t err=%v", connected, err)
+	}
+
+	// The new connection fails, as on a refused password: given up on.
+	drop()
+	old := SSHCommand
+	SSHCommand = "false"
+	defer func() { SSHCommand = old }()
+	if _, connected, _ := Changed(uri); connected {
+		t.Fatal("connected through a failing ssh")
+	}
+	h.mu.Lock()
+	gone := h.conn == nil
+	h.mu.Unlock()
+	if !gone {
+		t.Fatal("failed connection kept, so it would be tried again")
+	}
+}
