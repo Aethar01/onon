@@ -56,17 +56,17 @@ func TestLinkHintsFollowTypedLabel(t *testing.T) {
 	}
 }
 
-func TestHintLabelsSitOverTheirLinksCorner(t *testing.T) {
-	if box := hintBox(100, 100, 30, 20, 1000, 800, 1); box.X != 96 || box.Y != 92 {
-		t.Fatalf("label at %v, want nudged up and left of the corner", box)
+func TestHintLabelsSitClearOfTheirLink(t *testing.T) {
+	if box := hintBox(100, 100, 114, 30, 20, 1000, 800, 1); box.X != 96 || box.Y != 80 {
+		t.Fatalf("label at %v, want directly above the link and nudged left", box)
 	}
-	if box := hintBox(100, 100, 30, 20, 1000, 800, 2); box.X != 92 || box.Y != 84 {
+	if box := hintBox(100, 100, 128, 60, 40, 2000, 1600, 2); box.X != 92 || box.Y != 60 {
 		t.Fatalf("label at %v, want the nudge scaled with the UI", box)
 	}
-	if box := hintBox(1, 3, 30, 20, 1000, 800, 1); box.X != 2 || box.Y != 2 {
-		t.Fatalf("label at %v, want kept 2px inside the top-left edge", box)
+	if box := hintBox(1, 5, 19, 30, 20, 1000, 800, 1); box.X != 2 || box.Y != 19 {
+		t.Fatalf("label at %v, want flipped below a link at the top edge", box)
 	}
-	if box := hintBox(990, 795, 30, 20, 1000, 800, 1); box.X != 968 || box.Y != 778 {
-		t.Fatalf("label at %v, want kept 2px inside the bottom-right edge", box)
+	if box := hintBox(990, 795, 800, 30, 20, 1000, 800, 1); box.X != 968 || box.Y != 775 {
+		t.Fatalf("label at %v, want kept inside the bottom-right edge", box)
 	}
 }

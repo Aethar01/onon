@@ -140,9 +140,9 @@ func (a *App) drawLinkHints(renderer *sdl.Renderer) {
 		if !ok {
 			continue
 		}
-		minX, minY, _, _ := a.quadScreenBounds(rectQuad(hint.link.Bounds), hint.page, x, y)
+		minX, minY, _, maxY := a.quadScreenBounds(rectQuad(hint.link.Bounds), hint.page, x, y)
 		w := float64(measureText(face, hint.label)) + float64(padLeft+padRight)
-		box := hintBox(minX, minY, math.Round(w), math.Round(float64(ascent+descent)+float64(padTop+padBottom)), float64(viewportW), float64(viewportH), float64(a.px(1)))
+		box := hintBox(minX, minY, maxY, math.Round(w), math.Round(float64(ascent+descent)+float64(padTop+padBottom)), float64(viewportW), float64(viewportH), float64(a.px(1)))
 		box.X, box.Y = float32(math.Round(float64(box.X))), float32(math.Round(float64(box.Y)))
 		a.drawBox(renderer, &st, box)
 		left, baseline := int(box.X+padLeft), int(math.Round(float64(box.Y+padTop)))+ascent
@@ -152,13 +152,18 @@ func (a *App) drawLinkHints(renderer *sdl.Renderer) {
 	}
 }
 
-// hintBox places a w by h label over the top-left corner x, y of its link,
-// nudged up and left so it leaves the link text readable, and keeps it 2
-// logical pixels inside the viewport. scale is output pixels per logical one.
-func hintBox(x, y, w, h, viewportW, viewportH, scale float64) sdl.FRect {
+// hintBox places a w by h label above the top-left corner x, minY of its link
+// (or below maxY when there is no room above), nudged slightly left so it
+// leaves the link text uncovered and stays 2 logical pixels inside the
+// viewport. scale is output pixels per logical one.
+func hintBox(x, minY, maxY, w, h, viewportW, viewportH, scale float64) sdl.FRect {
 	margin := 2 * scale
 	x = math.Max(margin, math.Min(x-4*scale, viewportW-w-margin))
-	y = math.Max(margin, math.Min(y-8*scale, viewportH-h-margin))
+	y := minY - h
+	if y < margin && maxY+h <= viewportH-margin {
+		y = maxY
+	}
+	y = math.Max(margin, math.Min(y, viewportH-h-margin))
 	return sdl.FRect{X: float32(x), Y: float32(y), W: float32(w), H: float32(h)}
 }
 
