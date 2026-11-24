@@ -299,10 +299,29 @@ func TestClipOnTarget(t *testing.T) {
 		{sdl.Rect{X: 60, Y: 10, W: 20, H: 40}, sdl.Rect{X: -50, Y: -30, W: 200, H: 200}, sdl.Rect{X: 60, Y: 30, W: 20, H: 20}},
 		// Wholly before the edge: nothing shows.
 		{sdl.Rect{X: 0, Y: 0, W: 10, H: 10}, sdl.Rect{X: -50, Y: 0, W: 200, H: 200}, sdl.Rect{X: 50, Y: 0, W: 0, H: 10}},
+		// Negative dimensions clamp to empty rather than disabling clipping in SDL.
+		{sdl.Rect{X: 20, Y: 10, W: -8, H: 30}, sdl.Rect{W: 200, H: 200}, sdl.Rect{X: 20, Y: 10, W: 0, H: 30}},
+		{sdl.Rect{X: 20, Y: 10, W: 30, H: -4}, sdl.Rect{W: 200, H: 200}, sdl.Rect{X: 20, Y: 10, W: 30, H: 0}},
 	} {
 		if got := clipOnTarget(c.clip, c.vp); got != c.want {
 			t.Errorf("clipOnTarget(%v, %v) = %v, want %v", c.clip, c.vp, got, c.want)
 		}
+	}
+}
+
+func TestPushClipClampsEmptyRect(t *testing.T) {
+	app := &App{}
+	for _, rect := range []sdl.FRect{
+		{X: 48, Y: 100, W: -20, H: 30},
+		{X: 48.6, Y: 100, W: 0, H: 30},
+		{X: 48, Y: 100, W: 20, H: -5},
+	} {
+		app.pushClip(nil, rect)
+		got := app.clips[len(app.clips)-1]
+		if got.W != 0 || got.H != 0 {
+			t.Errorf("pushClip(%+v) = %+v, want empty clip with W=0, H=0", rect, got)
+		}
+		app.popClip(nil)
 	}
 }
 

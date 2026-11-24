@@ -115,6 +115,8 @@ func (a *App) drawStatusBar(renderer *sdl.Renderer) error {
 		y0, y1 := squeeze(float64(l.bar.Y), float64(l.bar.Y+l.bar.H), stretch)
 		return sdl.FRect{X: float32(x), Y: float32(y0), W: float32(w), H: float32(y1 - y0)}
 	}
+	leftW = max(0, leftW)
+	rightW = max(0, rightW)
 	leftBox := side(float64(l.bar.X), leftW, leftStretch)
 	rightBox := side(float64(l.bar.X+l.bar.W)-rightW, rightW, rightStretch)
 	a.drawBox(renderer, &leftStyle, leftBox)
@@ -130,7 +132,15 @@ func (a *App) drawStatusBar(renderer *sdl.Renderer) error {
 	if boxDrawn(&leftStyle) {
 		end = min(end, leftBox.X+leftBox.W-padRight)
 	}
-	textBox := sdl.FRect{X: float32(l.textX), Y: l.bar.Y, W: end - float32(l.textX) + a.hairline(), H: l.bar.H}
+	textW := end - float32(l.textX)
+	if textW > 0 {
+		textW += a.hairline()
+	} else if a.promptInBar() && textW >= 0 {
+		textW = a.hairline()
+	} else {
+		textW = 0
+	}
+	textBox := sdl.FRect{X: float32(l.textX), Y: l.bar.Y, W: textW, H: l.bar.H}
 	err := a.withClip(renderer, textBox, func() error {
 		if !a.promptInBar() {
 			return a.drawStatusMessage(renderer, l, &leftStyle)
@@ -157,7 +167,7 @@ func (a *App) drawStatusBar(renderer *sdl.Renderer) error {
 // boxDrawn reports whether st draws anything for its box, so that what
 // is inside the box should stay inside it.
 func boxDrawn(st *config.Style) bool {
-	return st.Fill.V.Alpha > 0 || st.BorderWidth.V > 0 || st.Shadow.V.N > 0 || st.Draw.V != nil
+	return st.Fill.V.Alpha > 0 || st.BorderWidth.V > 0 || st.Shadow.V.N > 0 || st.Shader.V != "" || st.Draw.V != nil
 }
 
 // drawPromptText draws the open prompt's line: its text, selection and
@@ -402,7 +412,10 @@ func (a *App) statusToken(name string) (string, bool) {
 	case "search":
 		return a.searchStatusCounter(), true
 	case "document":
-		return a.docName, true
+		if a.docName == "" {
+			return "", true
+		}
+		return a.tabDisplayName(a.tab), true
 	case "modified":
 		return boolWord(a.unsaved, "[+] ", ""), true
 	}

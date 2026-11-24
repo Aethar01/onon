@@ -667,13 +667,15 @@ func (a *App) withClip(renderer *sdl.Renderer, rect sdl.FRect, draw func() error
 }
 
 // pushClip limits drawing to rect, inside any clip already in place,
-// until popClip.
+// until popClip. Empty or inverted rects produce a zero-sized clip rather
+// than negative dimensions, which SDL treats as disabling clipping.
 func (a *App) pushClip(renderer *sdl.Renderer, rect sdl.FRect) {
-	clip := sdl.Rect{
-		X: int32(math.Floor(float64(rect.X))),
-		Y: int32(math.Floor(float64(rect.Y))),
-		W: int32(math.Ceil(float64(rect.X+rect.W))) - int32(math.Floor(float64(rect.X))),
-		H: int32(math.Ceil(float64(rect.Y+rect.H))) - int32(math.Floor(float64(rect.Y))),
+	x0 := int32(math.Floor(float64(rect.X)))
+	y0 := int32(math.Floor(float64(rect.Y)))
+	clip := sdl.Rect{X: x0, Y: y0}
+	if rect.W > 0 && rect.H > 0 {
+		clip.W = max(0, int32(math.Ceil(float64(rect.X+rect.W)))-x0)
+		clip.H = max(0, int32(math.Ceil(float64(rect.Y+rect.H)))-y0)
 	}
 	n := len(a.clips)
 	if n > 0 {
@@ -714,6 +716,7 @@ func setClip(renderer *sdl.Renderer, clip *sdl.Rect) {
 // clipOnTarget is clip, within viewport vp, less any part before the
 // target's left and top edges.
 func clipOnTarget(clip, vp sdl.Rect) sdl.Rect {
+	clip.W, clip.H = max(0, clip.W), max(0, clip.H)
 	if vp.X+clip.X >= 0 && vp.Y+clip.Y >= 0 {
 		return clip
 	}

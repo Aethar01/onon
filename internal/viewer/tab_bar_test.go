@@ -1,6 +1,7 @@
 package viewer
 
 import (
+	"slices"
 	"testing"
 
 	"onon/internal/config"
@@ -296,4 +297,95 @@ func TestPillThemesFloatTheirTabsOverThePage(t *testing.T) {
 	if l := app.layoutEdges(); l.doc.X != 0 || l.tabBar.W == 0 {
 		t.Fatalf("floating sidebar moved the document to %v", l.doc)
 	}
+}
+
+func TestDisambiguateTabNames(t *testing.T) {
+	makeTab := func(path string) *tab {
+		tb := newTab(0)
+		tb.docPath = path
+		tb.docName = config.DocumentName(path)
+		return tb
+	}
+
+	t.Run("unique filenames stay plain", func(t *testing.T) {
+		tabs := []*tab{makeTab("/work/a/intro.pdf"), makeTab("/work/b/appendix.pdf")}
+		got := disambiguateTabNames(tabs)
+		want := []string{"intro.pdf", "appendix.pdf"}
+		if !slices.Equal(got, want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("same filename prepends parent dir and walks up when parents collide", func(t *testing.T) {
+		tabs := []*tab{
+			makeTab("/work/qcoqs/main.pdf"),
+			makeTab("/work/adapt-vqd-extended/paper/main.pdf"),
+			makeTab("/work/adapt-vqd-3d/paper/main.pdf"),
+			makeTab("/work/other/notes.pdf"),
+		}
+		got := disambiguateTabNames(tabs)
+		want := []string{
+			"qcoqs/main.pdf",
+			"adapt-vqd-extended/paper/main.pdf",
+			"adapt-vqd-3d/paper/main.pdf",
+			"notes.pdf",
+		}
+		if !slices.Equal(got, want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("remote sftp and http URIs include dirs and host when needed", func(t *testing.T) {
+		tabs := []*tab{
+			makeTab("sftp://tex/~/Projects/QCoQS_continued/main.pdf"),
+			makeTab("sftp://tex/home/tex/Projects/adapt-vqd-extended/paper/main.pdf"),
+			makeTab("sftp://tex/home/tex/Projects/adapt-vqd-3d/paper/main.pdf"),
+		}
+		got := disambiguateTabNames(tabs)
+		want := []string{
+			"QCoQS_continued/main.pdf",
+			"adapt-vqd-extended/paper/main.pdf",
+			"adapt-vqd-3d/paper/main.pdf",
+		}
+		if !slices.Equal(got, want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+
+		samePathDiffHosts := []*tab{
+			makeTab("sftp://alpha/paper/main.pdf"),
+			makeTab("sftp://beta/paper/main.pdf"),
+		}
+		gotHosts := disambiguateTabNames(samePathDiffHosts)
+		wantHosts := []string{"alpha/paper/main.pdf", "beta/paper/main.pdf"}
+		if !slices.Equal(gotHosts, wantHosts) {
+			t.Fatalf("got %v, want %v", gotHosts, wantHosts)
+		}
+	})
+
+	t.Run("identical paths and blank tabs do not over-expand", func(t *testing.T) {
+		tabs := []*tab{
+			makeTab("/Users/alice/Projects/foo/main.pdf"),
+			makeTab("/Users/alice/Projects/foo/main.pdf"),
+			newTab(0),
+			newTab(0),
+		}
+		got := disambiguateTabNames(tabs)
+		want := []string{"main.pdf", "main.pdf", "New Tab", "New Tab"}
+		if !slices.Equal(got, want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("status document token uses disambiguated tab name", func(t *testing.T) {
+		t1 := makeTab("/work/alpha/main.pdf")
+		t2 := makeTab("/work/beta/main.pdf")
+		app := &App{tab: t1, tabs: []*tab{t1, t2}}
+		if got := app.formatStatusBar("{document}"); got != "alpha/main.pdf" {
+			t.Fatalf("{document} = %q, want alpha/main.pdf", got)
+		}
+		app.tabs = []*tab{t1}
+		if got := app.formatStatusBar("{document}"); got != "main.pdf" {
+			t.Fatalf("single tab {document} = %q, want main.pdf", got)
+		}
+	})
 }

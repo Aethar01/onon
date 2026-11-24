@@ -102,18 +102,25 @@ func (a *App) setWindowTitle() {
 		return
 	}
 	a.showWindowDocument()
+	if a.nativeTabsOn() {
+		users := a.userTabs()
+		names := a.tabDisplayNames()
+		for i, u := range users {
+			if u.w.window != nil {
+				sdl.SetWindowTitle(u.w.window, names[i]) // as its tab shows it
+			}
+		}
+		return
+	}
 	name := a.docName
 	if name == "" && a.pendingPath != "" {
 		name = config.DocumentName(a.pendingPath)
 	}
-	switch {
-	case a.nativeTabsOn():
-		sdl.SetWindowTitle(a.window, a.tab.tabName()) // as its tab shows it
-	case name == "":
+	if name == "" {
 		sdl.SetWindowTitle(a.window, "onon")
-	default:
-		sdl.SetWindowTitle(a.window, name+" - onon")
+		return
 	}
+	sdl.SetWindowTitle(a.window, a.tabDisplayName(a.tab)+" - onon")
 }
 
 // showWindowDocument tells the system which file the window shows and

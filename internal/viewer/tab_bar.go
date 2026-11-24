@@ -349,9 +349,14 @@ func (a *App) tabWidths(tabs []*tab, room, gap float32) []float32 {
 		}
 		return widths
 	}
+	names := disambiguateTabNames(tabs)
 	total := gap * float32(len(tabs)-1)
 	for i, t := range tabs {
-		w := float32(measureText(a.fontFace, a.tabLabel(t))) + padLeft + padRight
+		label := names[i]
+		if t.unsaved {
+			label = unsavedMark + label
+		}
+		w := float32(measureText(a.fontFace, label)) + padLeft + padRight
 		if width.Mode == "" && width.Size.Value > 0 {
 			w = float32(math.Round(a.uiLength(width.Size, float64(a.winW))))
 		}
@@ -395,10 +400,11 @@ func (a *App) revealShownTab(l *tabBarLayout) {
 // tabLabel is what a tab shows: its name, marked when it has unsaved
 // edits.
 func (a *App) tabLabel(t *tab) string {
+	name := a.tabDisplayName(t)
 	if t.unsaved {
-		return unsavedMark + t.tabName()
+		return unsavedMark + name
 	}
-	return t.tabName()
+	return name
 }
 
 // tabAt is the index of the tab at x, y in render pixels, or -1.
@@ -581,8 +587,9 @@ func (a *App) drawTabBar(renderer *sdl.Renderer) {
 				return a.drawLayer(in, indicator, func() error { a.drawBox(renderer, &st, indicator); return nil })
 			})
 		}
+		names := disambiguateTabNames(tabs)
 		for _, i := range order {
-			_ = a.drawLayer(pressed[i], rects[i], func() error { a.drawTabText(renderer, tabs[i], rects[i], cover(i)); return nil })
+			_ = a.drawLayer(pressed[i], rects[i], func() error { a.drawTabText(renderer, tabs[i], names[i], rects[i], cover(i)); return nil })
 		}
 		return nil
 	})
@@ -679,7 +686,7 @@ func (a *App) drawTabBox(renderer *sdl.Renderer, t *tab, r sdl.FRect, cover floa
 // drawTabText draws t's name in r, its colour going from a tab's to a
 // hovered tab's as far as it is hovered, and to the shown tab's as far as
 // the indicator covers it.
-func (a *App) drawTabText(renderer *sdl.Renderer, t *tab, r sdl.FRect, cover float64) {
+func (a *App) drawTabText(renderer *sdl.Renderer, t *tab, displayName string, r sdl.FRect, cover float64) {
 	base := a.barStyle(config.ElementTab)
 	hovered := a.barStyle(config.ElementTabHover)
 	shown := a.barStyle(config.ElementTabSelected)
@@ -702,7 +709,7 @@ func (a *App) drawTabText(renderer *sdl.Renderer, t *tab, r sdl.FRect, cover flo
 		x += mark
 		room -= mark
 	}
-	name := truncateText(a.fontFace, t.tabName(), room)
+	name := truncateText(a.fontFace, displayName, room)
 	_ = a.drawTextFace(renderer, name, x, baseline, colour(false), st.Bold.V)
 }
 

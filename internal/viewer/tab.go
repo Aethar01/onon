@@ -3,6 +3,9 @@ package viewer
 import (
 	"cmp"
 	"fmt"
+	"net/url"
+	"path"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -65,6 +68,163 @@ func (t *tab) tabName() string {
 		return remote.Name(t.remoteTask.uri)
 	}
 	return "New Tab"
+}
+
+// tabPath is the document path or remote URI associated with t, or "" for a
+// blank tab.
+func (t *tab) tabPath() string {
+	if p := cmp.Or(t.docPath, t.pendingPath); p != "" {
+		return p
+	}
+	if t.remoteTask != nil {
+		return t.remoteTask.uri
+	}
+	return ""
+}
+
+// tabPathDirs returns the ancestor directory names of p from nearest parent
+// outward, so colliding filenames can be told apart with as few parent
+// directories as needed. For remote URIs the host is appended last so the same
+// path on two hosts can still be distinguished.
+func tabPathDirs(p string) []string {
+	if p == "" {
+		return nil
+	}
+	if remote.IsURI(p) {
+		u, err := url.Parse(p)
+		if err != nil {
+			return nil
+		}
+		cleaned := strings.Trim(path.Clean(u.Path), "/")
+		var dirs []string
+		if cleaned != "" && cleaned != "." {
+			parts := strings.Split(cleaned, "/")
+			for i := len(parts) - 2; i >= 0; i-- {
+				if parts[i] != "" && parts[i] != "." {
+					dirs = append(dirs, parts[i])
+				}
+			}
+		}
+		if u.Host != "" {
+			dirs = append(dirs, u.Host)
+		}
+		return dirs
+	}
+	cleaned := filepath.Clean(p)
+	vol := filepath.VolumeName(cleaned)
+	var dirs []string
+	for dir := filepath.Dir(cleaned); dir != "" && dir != "."; {
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break // reached filesystem root
+		}
+		if base := filepath.Base(dir); base != "" && base != "." && base != string(filepath.Separator) {
+			dirs = append(dirs, base)
+		}
+		dir = parent
+	}
+	if vol != "" {
+		dirs = append(dirs, vol)
+	}
+	return dirs
+}
+
+// disambiguateTabNames returns the display name for each tab in tabs. Tabs
+// whose base filename is unique keep that name; when multiple tabs share a
+// base filename, parent directories are prepended (walking outward as needed)
+// until their names differ.
+func disambiguateTabNames(tabs []*tab) []string {
+	names := make([]string, len(tabs))
+	counts := make(map[string]int, len(tabs))
+	dup := false
+	for i, t := range tabs {
+		name := t.tabName()
+		names[i] = name
+		counts[name]++
+		if counts[name] > 1 {
+			dup = true
+		}
+	}
+	if !dup {
+		return names
+	}
+	dirs := make([][]string, len(tabs))
+	depths := make([]int, len(tabs))
+	for i, t := range tabs {
+		if counts[names[i]] > 1 {
+			dirs[i] = tabPathDirs(t.tabPath())
+		}
+	}
+	for {
+		groups := make(map[string][]int, len(tabs))
+		for i, name := range names {
+			groups[name] = append(groups[name], i)
+		}
+		changed := false
+		for _, idxs := range groups {
+			if len(idxs) < 2 {
+				continue
+			}
+			// Do not expand tabs that all refer to the exact same path (or blank tabs).
+			firstDirs := dirs[idxs[0]]
+			allSame := true
+			for _, idx := range idxs[1:] {
+				if !slices.Equal(dirs[idx], firstDirs) {
+					allSame = false
+					break
+				}
+			}
+			if allSame {
+				continue
+			}
+			for _, idx := range idxs {
+				if depths[idx] < len(dirs[idx]) {
+					names[idx] = dirs[idx][depths[idx]] + "/" + names[idx]
+					depths[idx]++
+					changed = true
+				}
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	return names
+}
+
+// tabDisplayNames returns the disambiguated display names for the window's
+// tabs, in the order of userTabs.
+func (a *App) tabDisplayNames() []string {
+	users := a.userTabs()
+	tabs := make([]*tab, len(users))
+	for i, u := range users {
+		tabs[i] = u.t
+	}
+	return disambiguateTabNames(tabs)
+}
+
+// tabDisplayName returns the disambiguated display name for t among the
+// window's tabs.
+func (a *App) tabDisplayName(t *tab) string {
+	if t == nil {
+		return "New Tab"
+	}
+	users := a.userTabs()
+	if len(users) <= 1 {
+		return t.tabName()
+	}
+	tabs := make([]*tab, len(users))
+	target := -1
+	for i, u := range users {
+		tabs[i] = u.t
+		if u.t == t {
+			target = i
+		}
+	}
+	if target < 0 {
+		return t.tabName()
+	}
+	return disambiguateTabNames(tabs)[target]
 }
 
 // withTab runs fn with t in place of the tab shown, for work on a tab in
@@ -376,6 +536,7 @@ func (a *App) removeTab(t, next *tab) {
 		a.tab = next
 		a.enterTab(-1)
 	} else {
+		a.setWindowTitle()
 		a.relayoutWithViewportAnchor(nil) // the tab bar may have gone
 	}
 	a.pendingRedraw = true
@@ -600,6 +761,7 @@ func (a *App) restoreTabs(w config.WindowTabs) {
 		tabs = append(tabs, t)
 	}
 	a.tabs = tabs
+	a.setWindowTitle()
 	a.relayoutWithViewportAnchor(nil) // below the tab bar
 }
 
@@ -629,6 +791,7 @@ func (a *App) restoreNativeTabs(w config.WindowTabs) {
 	}
 	platform.SelectTab(a.window)
 	a.windowGroup().focus(a)
+	a.setWindowTitle()
 }
 
 // rememberTabs records the window's tabs as it closes, for restoreTabs:
@@ -662,11 +825,12 @@ func (a *App) rememberTabs() {
 // Tabs describes the window's tabs, for onon.tabs.
 func (a *App) Tabs() []config.TabInfo {
 	tabs := a.userTabs()
+	names := a.tabDisplayNames()
 	infos := make([]config.TabInfo, len(tabs))
 	for i, u := range tabs {
 		t := u.t
 		infos[i] = config.TabInfo{
-			Path: cmp.Or(t.docPath, t.pendingPath), Name: t.tabName(), PageCount: t.pageCount,
+			Path: cmp.Or(t.docPath, t.pendingPath), Name: names[i], PageCount: t.pageCount,
 			Modified: t.unsaved, Active: u.w == a && t == a.tab,
 		}
 		if t.pageCount > 0 {

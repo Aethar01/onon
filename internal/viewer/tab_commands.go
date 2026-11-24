@@ -159,10 +159,11 @@ func (a *App) toggleTabsMenu() {
 		return
 	}
 	tabs := a.userTabs()
+	names := a.tabDisplayNames()
 	rows := make([]uiRow, len(tabs))
 	for i, u := range tabs {
 		t := u.t
-		name := t.tabName()
+		name := names[i]
 		if t.unsaved {
 			name = unsavedMark + name
 		}
