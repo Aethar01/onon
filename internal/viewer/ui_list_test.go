@@ -69,6 +69,23 @@ func TestUIViewCloseClearsFilterBeforeClosing(t *testing.T) {
 	}
 }
 
+func TestSplitSearchDetailLocatesQuerySpan(t *testing.T) {
+	before, prefix, text, after, ok := splitSearchDetail("by name  /model  2/10", "model")
+	if !ok || before != "by name  " || prefix != "/" || text != "model" || after != "  2/10" {
+		t.Fatalf("got (%q, %q, %q, %q, %v)", before, prefix, text, after, ok)
+	}
+	// Empty query right after pressing "/".
+	before, prefix, text, after, ok = splitSearchDetail("/  10/10", "")
+	if !ok || before != "" || prefix != "/" || text != "" || after != "  10/10" {
+		t.Fatalf("empty query got (%q, %q, %q, %q, %v)", before, prefix, text, after, ok)
+	}
+	// Earlier slash in a path detail is preserved in before, not mistaken for the search prefix.
+	before, prefix, text, after, ok = splitSearchDetail("~/docs/a  /a  1/3", "a")
+	if !ok || before != "~/docs/a  " || prefix != "/" || text != "a" || after != "  1/3" {
+		t.Fatalf("path detail got (%q, %q, %q, %q, %v)", before, prefix, text, after, ok)
+	}
+}
+
 func TestResolvedWheelHonorsFlippedDirection(t *testing.T) {
 	app, _ := testListApp(10)
 	normal := app.resolveWheel(&sdl.MouseWheelEvent{Y: 1})

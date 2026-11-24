@@ -730,7 +730,7 @@ func (a *App) drawUIViewContent(renderer *sdl.Renderer, view *uiView, rect sdl.F
 		a.drawPromptHeader(renderer, view, rect, len(items), len(view.rows))
 	case !view.headless:
 		title, detail := view.headerText(a, len(items))
-		if err := a.drawModalListHeader(renderer, rect, title, detail); err != nil {
+		if err := a.drawModalListHeader(renderer, view, rect, title, detail); err != nil {
 			return err
 		}
 	}

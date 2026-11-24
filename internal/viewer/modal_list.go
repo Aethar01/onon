@@ -2,6 +2,7 @@ package viewer
 
 import (
 	"math"
+	"strings"
 	"unicode/utf8"
 
 	"onon/internal/config"
@@ -58,7 +59,9 @@ func (a *App) drawPanel(renderer *sdl.Renderer, element config.Element, rect sdl
 
 // drawModalListHeader draws a panel's title at its top, below the panel's
 // padding, with detail such as a count after it in the secondary colour.
-func (a *App) drawModalListHeader(renderer *sdl.Renderer, rect sdl.FRect, title, detail string) error {
+// While view is in search input mode, its "/" query is highlighted with an
+// accent prefix, active text colour, and a text cursor.
+func (a *App) drawModalListHeader(renderer *sdl.Renderer, view *uiView, rect sdl.FRect, title, detail string) error {
 	st := a.style(config.ElementHeader)
 	height := a.modalListHeaderHeight()
 	top := rect.Y + float32(a.modalListHeadHeight()-height)
@@ -73,13 +76,86 @@ func (a *App) drawModalListHeader(renderer *sdl.Renderer, rect sdl.FRect, title,
 	if err := a.drawTextFace(renderer, title, x, baseline, a.textColor(&st, false), st.Bold.V); err != nil {
 		return err
 	}
-	if detail != "" {
-		x += measureText(face, title) + gap
-		if err := a.drawText(renderer, detail, x, baseline, a.textColor(&st, true)); err != nil {
+	if detail == "" {
+		return nil
+	}
+	x += measureText(face, title) + gap
+	if view != nil && view.searching && a.keyView() == view {
+		return a.drawModalSearchDetail(renderer, view, &st, detail, x, baseline)
+	}
+	return a.drawText(renderer, detail, x, baseline, a.textColor(&st, true))
+}
+
+// drawModalSearchDetail draws a menu header's detail while search input is
+// active, highlighting the "/" prefix and query and placing a cursor at the
+// end of the query so input mode stands apart from navigation mode.
+func (a *App) drawModalSearchDetail(renderer *sdl.Renderer, view *uiView, st *config.Style, detail string, x, baseline int) error {
+	muted := a.textColor(st, true)
+	active := a.textColor(st, false)
+	promptSt := a.style(config.ElementPrompt)
+	promptClr := a.textColor(&promptSt, false)
+
+	drawCursor := func(cx int) {
+		m := a.fontFace.Metrics()
+		ascent := m.Ascent.Ceil()
+		lineH := ascent + m.Descent.Ceil()
+		cy := float32(baseline - ascent)
+		cst := a.style(config.ElementCursor)
+		a.drawBox(renderer, &cst, sdl.FRect{
+			X: float32(cx),
+			Y: cy,
+			W: a.lineWidth(cst.Width.V),
+			H: float32(lineH),
+		})
+		a.placeTextInputArea(float32(cx), cy, lineH)
+	}
+
+	before, prefix, queryText, after, ok := splitSearchDetail(detail, view.query)
+	if !ok {
+		if err := a.drawText(renderer, detail, x, baseline, active); err != nil {
+			return err
+		}
+		drawCursor(x + measureText(a.fontFace, detail))
+		return nil
+	}
+	if before != "" {
+		if err := a.drawText(renderer, before, x, baseline, muted); err != nil {
+			return err
+		}
+		x += measureText(a.fontFace, before)
+	}
+	if err := a.drawText(renderer, prefix, x, baseline, promptClr); err != nil {
+		return err
+	}
+	x += measureText(a.fontFace, prefix)
+	if queryText != "" {
+		if err := a.drawText(renderer, queryText, x, baseline, active); err != nil {
+			return err
+		}
+		x += measureText(a.fontFace, queryText)
+	}
+	drawCursor(x)
+	if after != "" {
+		if err := a.drawText(renderer, after, x, baseline, muted); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// splitSearchDetail splits a modal list's detail into the muted text before
+// its "/" search query, the "/" prefix, the query text itself, and the muted
+// text (such as the match count) after it.
+func splitSearchDetail(detail, query string) (before, prefix, text, after string, ok bool) {
+	token := "/" + query
+	i := strings.LastIndex(detail, token+"  ")
+	if i < 0 {
+		i = strings.LastIndex(detail, token)
+	}
+	if i < 0 {
+		return "", "", "", "", false
+	}
+	return detail[:i], "/", query, detail[i+len(token):], true
 }
 
 // fitHeader shortens a header's title and detail, drawn in titleFace and
