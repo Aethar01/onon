@@ -15,7 +15,7 @@ Built on [MuPDF](https://mupdf.com/) and SDL3, configured in Lua, for macOS, Lin
 <br />
 
 <p align="center">
-  <img src="https://ononreader.com/screenshots/hero.png" alt="onon reading Oliver Byrne's Elements of Euclid in dual-page spread with the default moss theme and title-bar tabs" width="100%" />
+  <img src="https://ononreader.com/screenshots/hero.webp" alt="Animated demo of onon: dual-page spreads, tabs, live outline preview, dark mode, link hints and page overview in the default moss theme" width="100%" />
 </p>
 
 ## What is onon?
