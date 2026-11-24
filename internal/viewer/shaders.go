@@ -522,14 +522,19 @@ func (a *App) cutToShape(renderer *sdl.Renderer, cut, target *sdl.Texture, box s
 
 // backdrop is a texture w by h for a box's backdrop.
 func (s *shaderService) backdrop(renderer *sdl.Renderer, w, h int32) *sdl.Texture {
+	// A size used more than once in a frame takes a texture of its own, each
+	// being drawn from only once the frame is sent; reuse any slot of the
+	// same size from an earlier frame before allocating another.
 	size := [2]int32{w, h}
-	if b, ok := s.backdrops[size]; ok && b.used != s.count {
-		b.used = s.count
-		return b.texture
-	}
-	// A size used twice in a frame takes a texture of its own, each being
-	// drawn from only once the frame is sent.
-	for ; s.backdrops[size] != nil; size[0] += 1 << 16 {
+	for ; ; size[0] += 1 << 16 {
+		b, ok := s.backdrops[size]
+		if !ok {
+			break
+		}
+		if b.used != s.count {
+			b.used = s.count
+			return b.texture
+		}
 	}
 	tex := sdl.CreateTexture(renderer, sdl.PixelFormatRGBA32, sdl.TextureAccessTarget, w, h)
 	if tex == nil {
