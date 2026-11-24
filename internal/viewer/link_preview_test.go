@@ -11,7 +11,7 @@ import (
 )
 
 func TestLinkPreviewAppearsAfterDelayAndRequestsTiles(t *testing.T) {
-	app := testPrefetchApp(5, 1)
+	app := testPrefetchApp(5, 3)
 	app.config.LinkPreview, app.config.LinkPreviewDelayMS = true, 400
 	link := mupdf.Link{Page: 3, Y: 50, HasY: true}
 
@@ -65,7 +65,7 @@ func TestLinkPreviewAppearsAfterDelayAndRequestsTiles(t *testing.T) {
 }
 
 func TestLinkPreviewPaddingInsetsPageAndCorners(t *testing.T) {
-	app := testPrefetchApp(5, 1)
+	app := testPrefetchApp(5, 3)
 	app.config.LinkPreview, app.config.LinkPreviewDelayMS = true, 0
 	lp := &app.config.Theme.Elements[config.ElementLinkPreview]
 	lp.Padding = config.Opt[config.Insets]{V: config.Insets{Top: 8, Right: 8, Bottom: 8, Left: 8}, Set: true}
@@ -112,5 +112,48 @@ func TestLinkPreviewPaddingInsetsPageAndCorners(t *testing.T) {
 	app.styles = nil
 	if got := c.boxOutline(inner); got != nil {
 		t.Fatalf("expected square inner corners (nil outline) when radius == padding, got %d points", len(got))
+	}
+}
+
+func TestLinkPreviewClampsToPageEdgesAndFitsSmallPages(t *testing.T) {
+	// Zoomed-in page (700x1400) inside a 1000x800 viewport -> popup 500x280.
+	app := testPrefetchApp(5, 7)
+	app.config.LinkPreview, app.config.LinkPreviewDelayMS = true, 0
+	lp := &app.config.Theme.Elements[config.ElementLinkPreview]
+	lp.Padding = config.Opt[config.Insets]{V: config.Insets{Top: 8, Right: 8, Bottom: 8, Left: 8}, Set: true}
+	app.styles = nil
+
+	// Link near the top-left edge: page sits flush with inner top-left, no blank gap above/left.
+	app.hoverLinkPreview(mupdf.Link{Page: 1, X: 0, HasX: true, Y: 0, HasY: true}, true, 100, 100)
+	popup, x, y := app.previewPlacement()
+	if x != float64(popup.X+8) || y != float64(popup.Y+8) {
+		t.Fatalf("top-left link origin=(%.1f, %.1f), want flush at (%.1f, %.1f)", x, y, popup.X+8, popup.Y+8)
+	}
+
+	// Link near the bottom-right edge: page sits flush with inner bottom-right, no blank void.
+	app.hoverLinkPreview(mupdf.Link{Page: 1, X: 95, HasX: true, Y: 195, HasY: true}, true, 100, 100)
+	popup, x, y = app.previewPlacement()
+	pageW, pageH := 100*app.scale, 200*app.scale
+	innerRight, innerBottom := float64(popup.X+popup.W-8), float64(popup.Y+popup.H-8)
+	if got := x + pageW; got != innerRight {
+		t.Fatalf("bottom-right link page right=%.1f, want inner right %.1f", got, innerRight)
+	}
+	if got := y + pageH; got != innerBottom {
+		t.Fatalf("bottom-right link page bottom=%.1f, want inner bottom %.1f", got, innerBottom)
+	}
+
+	// Zoomed-out page (100x200) smaller than 50%x35% (500x280): popup shrinks to page + padding.
+	small := testPrefetchApp(5, 1)
+	small.config.LinkPreview, small.config.LinkPreviewDelayMS = true, 0
+	smallLP := &small.config.Theme.Elements[config.ElementLinkPreview]
+	smallLP.Padding = config.Opt[config.Insets]{V: config.Insets{Top: 8, Right: 8, Bottom: 8, Left: 8}, Set: true}
+	small.styles = nil
+	small.hoverLinkPreview(mupdf.Link{Page: 1, Y: 180, HasY: true}, true, 100, 100)
+	popup, x, y = small.previewPlacement()
+	if popup.W != 116 || popup.H != 216 {
+		t.Fatalf("small page popup=%.0fx%.0f, want 116x216 (page + padding)", popup.W, popup.H)
+	}
+	if x != float64(popup.X+8) || y != float64(popup.Y+8) {
+		t.Fatalf("small page origin=(%.1f, %.1f), want (%.1f, %.1f)", x, y, popup.X+8, popup.Y+8)
 	}
 }

@@ -96,13 +96,18 @@ func (a *App) showLinkPreview() {
 }
 
 // previewPlacement returns the popup rect and the screen origin at which to
-// draw the target page so its destination sits near the popup's top left.
+// draw the target page so its destination sits near the popup's top left,
+// clamped to the page's edges so the preview box stays filled with page
+// content rather than blank space.
 func (a *App) previewPlacement() (popup sdl.FRect, x, y float64) {
 	viewportW, viewportH := a.viewportSize()
 	link := a.preview.link
 	m := a.pageMetrics[link.Page]
-	popup.W = float32(math.Min(float64(viewportW)*0.5, m.width*a.scale))
-	popup.H = float32(float64(viewportH) * 0.35)
+	minX, minY, maxX, maxY := rotatedBounds(m.bounds, a.rotation)
+	pageW, pageH := (maxX-minX)*a.scale, (maxY-minY)*a.scale
+	top, right, bottom, left := a.insets(a.style(config.ElementLinkPreview).Padding.V)
+	popup.W = float32(math.Min(float64(viewportW)*0.5, pageW+float64(left+right)))
+	popup.H = float32(math.Min(float64(viewportH)*0.35, pageH+float64(top+bottom)))
 	popup.X = min(max(0, a.preview.anchor.X-popup.W/2), float32(viewportW)-popup.W)
 	popup.Y = a.preview.anchor.Y + 20
 	if popup.Y+popup.H > float32(viewportH) {
@@ -117,14 +122,25 @@ func (a *App) previewPlacement() (popup sdl.FRect, x, y float64) {
 		destY = link.Y
 	}
 	dx, dy := newPageTransform(m.bounds, a.scale, a.rotation).toScreen(destX, destY)
-	top, right, _, left := a.insets(a.style(config.ElementLinkPreview).Padding.V)
-	innerX := popup.X + left
-	innerY := popup.Y + top
-	innerW := max(0, popup.W-left-right)
+	innerX, innerY := float64(popup.X+left), float64(popup.Y+top)
+	innerW := math.Max(0, float64(popup.W-left-right))
+	innerH := math.Max(0, float64(popup.H-top-bottom))
 	const inset = 16
-	screenX := float64(innerX + innerW/2) // centre the page when x is not given
+	screenX := innerX + innerW/2 // centre the page when x is not given
 	if link.HasX {
-		screenX = float64(innerX) + inset
+		screenX = innerX + inset
 	}
-	return popup, screenX - dx, float64(innerY) + inset - dy
+	x = screenX - dx
+	y = innerY + inset - dy
+	if pageW <= innerW {
+		x = innerX + (innerW-pageW)/2
+	} else {
+		x = clampFloat(x, innerX+innerW-pageW, innerX)
+	}
+	if pageH <= innerH {
+		y = innerY + (innerH-pageH)/2
+	} else {
+		y = clampFloat(y, innerY+innerH-pageH, innerY)
+	}
+	return popup, x, y
 }
