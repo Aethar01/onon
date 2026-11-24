@@ -1,6 +1,6 @@
 //go:build !darwin && !windows
 
-package viewer
+package platform
 
 import (
 	"os"

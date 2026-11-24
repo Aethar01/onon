@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"onon/internal/config"
+	"onon/internal/platform"
 	"onon/internal/remote"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
@@ -29,7 +30,7 @@ func initSDL() error {
 	if !sdl.Init(sdl.InitVideo) {
 		return fmt.Errorf("SDL init failed: %s", sdl.GetError())
 	}
-	watchKeyModifiers()
+	platform.WatchKeyModifiers()
 	return nil
 }
 
@@ -73,11 +74,11 @@ func (a *App) openWindow() error {
 	// opens its first window, so its windows never mix the two.
 	g := a.windowGroup()
 	if g.nativeTabs == nil {
-		on := nativeTabsAvailable && a.config.NativeTabs
+		on := platform.NativeTabsAvailable && a.config.NativeTabs
 		g.nativeTabs = &on
 	}
 	a.nativeTabbing = *g.nativeTabs
-	configureNativeTabbing(window, a.nativeTabbing)
+	platform.ConfigureTabbing(window, a.nativeTabbing)
 	// Frames are presented in step with the display, so animations move
 	// once per refresh rather than when a timer happens to fire.
 	if !sdl.SetRenderVSync(renderer, 1) {

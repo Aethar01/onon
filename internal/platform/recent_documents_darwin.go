@@ -1,6 +1,6 @@
 //go:build darwin
 
-package viewer
+package platform
 
 /*
 #cgo LDFLAGS: -framework Cocoa
@@ -11,9 +11,9 @@ import "C"
 
 import "unsafe"
 
-// noteSystemRecentDocument adds path to the recent documents macOS lists
-// in the Dock menu and the menu bar's Open Recent.
-func noteSystemRecentDocument(path string) {
+// NoteRecentDocument adds path to the recent documents macOS lists in the
+// Dock menu and the menu bar's Open Recent.
+func NoteRecentDocument(path string) {
 	text := C.CString(path)
 	defer C.free(unsafe.Pointer(text))
 	C.ononNoteRecentDocument(text)

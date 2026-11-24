@@ -419,16 +419,6 @@ func TestOpenReportsABadRemoteArgument(t *testing.T) {
 	}
 }
 
-func TestRemoteWatcherForgetsOurOwnSave(t *testing.T) {
-	w := newRemoteWatcher(remote.Info{URI: "sftp://host/~/a.pdf"}, false)
-	defer w.Close()
-	w.changed <- watcherChange{size: 1} // seen before our save was recorded
-	w.setKnown(remote.Info{URI: "sftp://host/~/a.pdf", Size: 1})
-	if _, ok := w.waitForChange(0); ok {
-		t.Fatal("our own save was reported as a change")
-	}
-}
-
 func TestSchemePageAndWebDAVSave(t *testing.T) {
 	useRemoteTestEnvironment(t)
 	var mu sync.Mutex

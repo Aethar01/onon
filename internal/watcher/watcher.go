@@ -1,4 +1,4 @@
-package viewer
+package watcher
 
 import (
 	"os"
@@ -12,12 +12,20 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-type documentWatcher struct {
+// Change describes an observed file modification.
+type Change struct {
+	Mod  time.Time
+	Size int64
+}
+
+// Document watches a local document file for modifications, debouncing
+// writes until the file stays unchanged for the configured delay.
+type Document struct {
 	path    string
 	mod     time.Time
 	size    int64
 	changed chan struct{}
-	pending watcherChange
+	pending Change
 	delay   atomic.Int64 // the time.Duration writes must settle for
 
 	watcher   *fsnotify.Watcher
@@ -27,18 +35,14 @@ type documentWatcher struct {
 	started   bool
 }
 
-type watcherChange struct {
-	mod  time.Time
-	size int64
-}
-
-func newDocumentWatcher(path string, delay time.Duration) (*documentWatcher, error) {
+// NewDocument creates a watcher for path's directory with the given debounce delay.
+func NewDocument(path string, delay time.Duration) (*Document, error) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
 	}
 
-	dw := &documentWatcher{
+	dw := &Document{
 		path:    path,
 		watcher: w,
 		done:    make(chan struct{}),
@@ -58,7 +62,13 @@ func newDocumentWatcher(path string, delay time.Duration) (*documentWatcher, err
 	return dw, nil
 }
 
-func (dw *documentWatcher) record(path string) {
+// SetDelay updates how long writes must settle before a change is reported.
+func (dw *Document) SetDelay(delay time.Duration) {
+	dw.delay.Store(int64(delay))
+}
+
+// Record updates the baseline stat for path and starts the watcher loop if not yet running.
+func (dw *Document) Record(path string) {
 	dw.mu.Lock()
 	dw.path = path
 	dw.mu.Unlock()
@@ -80,7 +90,7 @@ func (dw *documentWatcher) record(path string) {
 	}
 }
 
-func (dw *documentWatcher) loop() {
+func (dw *Document) loop() {
 	debounce := time.NewTimer(0)
 	if !debounce.Stop() {
 		<-debounce.C
@@ -113,11 +123,11 @@ func (dw *documentWatcher) loop() {
 	}
 }
 
-func (dw *documentWatcher) isRelevantEvent(event fsnotify.Event) bool {
+func (dw *Document) isRelevantEvent(event fsnotify.Event) bool {
 	return event.Has(fsnotify.Write) || event.Has(fsnotify.Chmod) || event.Has(fsnotify.Create) || event.Has(fsnotify.Rename)
 }
 
-func (dw *documentWatcher) checkAndNotify() {
+func (dw *Document) checkAndNotify() {
 	dw.mu.Lock()
 	defer dw.mu.Unlock()
 
@@ -133,9 +143,9 @@ func (dw *documentWatcher) checkAndNotify() {
 
 	dw.mod = mod
 	dw.size = size
-	dw.pending = watcherChange{
-		mod:  mod,
-		size: size,
+	dw.pending = Change{
+		Mod:  mod,
+		Size: size,
 	}
 
 	select {
@@ -144,17 +154,18 @@ func (dw *documentWatcher) checkAndNotify() {
 	}
 }
 
-func (dw *documentWatcher) waitForChange(timeout time.Duration) (watcherChange, bool) {
+// WaitForChange returns any pending change, waiting up to timeout when positive.
+func (dw *Document) WaitForChange(timeout time.Duration) (Change, bool) {
 	if timeout <= 0 {
 		select {
 		case <-dw.changed:
 			dw.mu.Lock()
 			change := dw.pending
-			dw.pending = watcherChange{}
+			dw.pending = Change{}
 			dw.mu.Unlock()
 			return change, true
 		default:
-			return watcherChange{}, false
+			return Change{}, false
 		}
 	}
 
@@ -165,49 +176,53 @@ func (dw *documentWatcher) waitForChange(timeout time.Duration) (watcherChange, 
 	case <-dw.changed:
 		dw.mu.Lock()
 		change := dw.pending
-		dw.pending = watcherChange{}
+		dw.pending = Change{}
 		dw.mu.Unlock()
 		return change, true
 	case <-timer.C:
-		return watcherChange{}, false
+		return Change{}, false
 	}
 }
 
-func (dw *documentWatcher) Close() {
+// Close stops watching and releases underlying resources.
+func (dw *Document) Close() {
 	dw.closeOnce.Do(func() {
 		close(dw.done)
 		dw.watcher.Close()
 	})
 }
 
-// remoteWatcher checks a document on an SSH host or WebDAV server for
-// changes every remote.PollInterval. It never asks for a password: an SSH
-// host is asked only over a connection already open, and a WebDAV server
-// only with a login already given.
-//
-// It checks only while enabled, which follows auto_reload, since a change
-// would wait unread anyway.
-type remoteWatcher struct {
+// Remote checks a document on an SSH host or WebDAV server for changes every
+// remote.PollInterval. It checks only while enabled, which follows auto_reload,
+// since a change would wait unread anyway.
+type Remote struct {
 	uri     string
-	changed chan watcherChange
+	changed chan Change
 	done    chan struct{}
 	enabled atomic.Bool
 
 	mu    sync.Mutex
 	known remote.Info
-	saves int // setKnown calls, to tell a check made across one
+	saves int // SetKnown calls, to tell a check made across one
 }
 
-func newRemoteWatcher(info remote.Info, enabled bool) *remoteWatcher {
-	w := &remoteWatcher{uri: info.URI, known: info, changed: make(chan watcherChange, 1), done: make(chan struct{})}
+// NewRemote starts polling a remote document for version changes.
+func NewRemote(info remote.Info, enabled bool) *Remote {
+	w := &Remote{uri: info.URI, known: info, changed: make(chan Change, 1), done: make(chan struct{})}
 	w.enabled.Store(enabled)
 	go w.loop()
 	return w
 }
 
-// setKnown records info as the file's version, as after our own save, and
+// URI returns the watched remote URI.
+func (w *Remote) URI() string { return w.uri }
+
+// SetEnabled turns remote polling on or off.
+func (w *Remote) SetEnabled(on bool) { w.enabled.Store(on) }
+
+// SetKnown records info as the file's version, as after our own save, and
 // drops a change already seen, which may have been that save.
-func (w *remoteWatcher) setKnown(info remote.Info) {
+func (w *Remote) SetKnown(info remote.Info) {
 	w.mu.Lock()
 	w.known = info
 	w.saves++
@@ -218,7 +233,7 @@ func (w *remoteWatcher) setKnown(info remote.Info) {
 	w.mu.Unlock()
 }
 
-func (w *remoteWatcher) loop() {
+func (w *Remote) loop() {
 	ticker := time.NewTicker(remote.PollInterval)
 	defer ticker.Stop()
 	for {
@@ -237,7 +252,7 @@ func (w *remoteWatcher) loop() {
 		if !connected || err != nil {
 			continue
 		}
-		// Under the lock, so setKnown cannot fall between the comparison
+		// Under the lock, so SetKnown cannot fall between the comparison
 		// and the report. A check that began before our own save may have
 		// seen the file from before it, so is dropped.
 		w.mu.Lock()
@@ -247,21 +262,23 @@ func (w *remoteWatcher) loop() {
 			case <-w.changed: // a newer change replaces one not yet taken
 			default:
 			}
-			w.changed <- watcherChange{mod: now.ModTime, size: now.Size}
+			w.changed <- Change{Mod: now.ModTime, Size: now.Size}
 		}
 		w.mu.Unlock()
 	}
 }
 
-func (w *remoteWatcher) waitForChange(time.Duration) (watcherChange, bool) {
+// WaitForChange returns any pending remote change without blocking.
+func (w *Remote) WaitForChange(time.Duration) (Change, bool) {
 	select {
 	case change := <-w.changed:
 		return change, true
 	default:
-		return watcherChange{}, false
+		return Change{}, false
 	}
 }
 
-func (w *remoteWatcher) Close() {
+// Close stops polling.
+func (w *Remote) Close() {
 	close(w.done)
 }

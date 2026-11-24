@@ -12,6 +12,7 @@ import (
 	"unsafe"
 
 	"onon/internal/config"
+	"onon/internal/platform"
 	"onon/internal/shader"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
@@ -50,7 +51,7 @@ var renderStateSymbols = sync.OnceValue(func() bool {
 		"SDL_DestroyGPURenderState":             &sdlDestroyGPURenderState,
 		"SDL_ComposeCustomBlendMode":            &sdlComposeCustomBlendMode,
 	} {
-		if err := loadSDLSymbol(name, dst); err != nil {
+		if err := platform.LoadSDLSymbol(name, dst); err != nil {
 			log.Printf("shaders unavailable: %s: %v", name, err)
 			return false
 		}

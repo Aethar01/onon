@@ -143,7 +143,7 @@ func (a *App) pressUIControl(view *uiView, x, y float32) bool {
 	press := func(l *textLayout, input *textInput) {
 		if l.face != nil && len(l.lines) > 0 {
 			pressText(l, input, x, y, false)
-			input.mouseSelecting = true
+			input.MouseSelecting = true
 		}
 	}
 	switch target {

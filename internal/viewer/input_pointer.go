@@ -17,15 +17,15 @@ func (a *App) handleInputMouseButton(e *sdl.MouseButtonEvent) bool {
 		}
 		a.editInput(func(input *textInput) {
 			input.SetCursor(pos, false)
-			input.mouseSelecting = true
+			input.MouseSelecting = true
 		})
 		return true
 	}
-	if e.Type == sdl.EventMouseButtonUp && a.input.mouseSelecting {
+	if e.Type == sdl.EventMouseButtonUp && a.input.MouseSelecting {
 		pos, _ := a.inputPositionAt(float64(e.X), float64(e.Y), true)
 		a.editInput(func(input *textInput) {
 			input.SetCursor(pos, true)
-			input.mouseSelecting = false
+			input.MouseSelecting = false
 		})
 		return true
 	}
@@ -33,11 +33,11 @@ func (a *App) handleInputMouseButton(e *sdl.MouseButtonEvent) bool {
 }
 
 func (a *App) handleInputMouseMotion(e *sdl.MouseMotionEvent) bool {
-	if a.mode == modeNormal || !a.input.mouseSelecting {
+	if a.mode == modeNormal || !a.input.MouseSelecting {
 		return false
 	}
 	if uint32(e.State)&uint32(sdl.ButtonLMask) == 0 {
-		a.input.mouseSelecting = false
+		a.input.MouseSelecting = false
 		return false
 	}
 	pos, _ := a.inputPositionAt(float64(e.X), float64(e.Y), true)

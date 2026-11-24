@@ -4,6 +4,8 @@ import (
 	"math"
 	"time"
 
+	"onon/internal/platform"
+
 	"github.com/jupiterrider/purego-sdl3/sdl"
 )
 
@@ -46,7 +48,7 @@ type touchState struct {
 // touchIsScreen reports whether a touch device is a screen, whose fingers
 // are where they touch; tests replace it.
 var touchIsScreen = func(id sdl.TouchID) bool {
-	if sdlGetTouchDeviceType == nil && loadSDLSymbol("SDL_GetTouchDeviceType", &sdlGetTouchDeviceType) != nil {
+	if sdlGetTouchDeviceType == nil && platform.LoadSDLSymbol("SDL_GetTouchDeviceType", &sdlGetTouchDeviceType) != nil {
 		return false
 	}
 	return sdlGetTouchDeviceType(id) == sdl.TouchDeviceDirect

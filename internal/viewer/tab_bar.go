@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"onon/internal/config"
+	"onon/internal/platform"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
 )
@@ -74,7 +75,7 @@ func (a *App) tabBarSide() string {
 // such a row, the system's title band on macOS or the buttons onon draws
 // on Windows.
 func (a *App) tabBarWantsTitleRow() bool {
-	return a.config.TabBarPosition == "title" && (windowTitleBand > 0 || a.titleBarActive())
+	return a.config.TabBarPosition == "title" && (platform.WindowTitleBand > 0 || a.titleBarActive())
 }
 
 // tabBarVertical reports whether the tabs sit one under another, in a bar
@@ -189,7 +190,7 @@ func (a *App) tabBarWidth() config.UISize {
 // titleBand is the height of the band the system keeps at the top of the
 // window for its title bar, in render pixels, which the tabs sit below.
 func (a *App) titleBand() int {
-	return int(math.Round(windowTitleBand * a.displayScale()))
+	return int(math.Round(platform.WindowTitleBand * a.displayScale()))
 }
 
 // tabBarBand is the band at the top of bar the tabs keep clear of the
@@ -298,7 +299,7 @@ func (a *App) tabBarLayout() tabBarLayout {
 	if inTitleRow {
 		// Leave the window's buttons their room, and room to drag the
 		// window by however many tabs there are.
-		lead := a.px(windowButtonsLeading)
+		lead := a.px(platform.WindowButtonsLeading)
 		l.area.X += lead
 		l.area.W -= lead
 		if a.titleBarActive() {
@@ -877,7 +878,7 @@ func (a *App) handleTabBarWheel(w wheelInput) bool {
 // native tabs the system's.
 func (a *App) toggleTabBar() {
 	if a.nativeTabsOn() {
-		toggleNativeTabBar(a.window)
+		platform.ToggleTabBar(a.window)
 		return
 	}
 	shown := !a.tabBarShown()
@@ -892,7 +893,7 @@ func (a *App) toggleTabBar() {
 // system's.
 func (a *App) tabBarOn() bool {
 	if a.nativeTabsOn() {
-		return nativeTabBarVisible(a.window)
+		return platform.TabBarVisible(a.window)
 	}
 	return a.tabBarShown()
 }

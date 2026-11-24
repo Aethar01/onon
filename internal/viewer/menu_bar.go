@@ -4,10 +4,11 @@ import (
 	"maps"
 
 	"onon/internal/menubar"
+	"onon/internal/platform"
 )
 
 // On systems with a menu bar, the viewer shows the one menubar describes,
-// each item with a key bound to its action. setNativeMenuBar draws it again
+// each item with a key bound to its action. platform.SetMenuBar draws it again
 // whenever the bindings change, and the items chosen go through
 // chooseSystemAction. When a menu opens, the system's menu code asks
 // menuItemState how to show each item.
@@ -18,7 +19,7 @@ func (a *App) installMenuBar() {
 }
 
 // drawMenuBar draws the menu bar; tests replace it to count the draws.
-var drawMenuBar = setNativeMenuBar
+var drawMenuBar = platform.SetMenuBar
 
 // menuBarBindings are the bindings the menu bar was last drawn with, for
 // the bar is the process's, and drawing it again replaces every menu in

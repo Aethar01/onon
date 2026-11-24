@@ -5,6 +5,7 @@ import (
 	"os"
 	"slices"
 
+	"onon/internal/platform"
 	"onon/internal/remote"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
@@ -32,9 +33,9 @@ func (a *App) nativeTabApps() []*App {
 		return []*App{a}
 	}
 	var apps []*App
-	for _, native := range nativeTabWindows(a.window) {
+	for _, native := range platform.TabWindows(a.window) {
 		for _, w := range a.windowGroup().windows {
-			if w.window != nil && cocoaWindow(w.window) == native {
+			if w.window != nil && platform.CocoaWindow(w.window) == native {
 				apps = append(apps, w)
 			}
 		}
@@ -76,7 +77,7 @@ func (a *App) showTab(i int) {
 	}
 	u := tabs[i]
 	if u.w != a {
-		selectNativeTab(u.w.window)
+		platform.SelectTab(u.w.window)
 		u.w.windowGroup().focus(u.w)
 		u.w.loadPendingTab()
 		return
@@ -96,7 +97,7 @@ func (a *App) openNativeTab(path string, page int) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	addNativeTab(a.window, w.window)
+	platform.AddTab(a.window, w.window)
 	w.emitTabListChanged("opened", w.userTabIndex())
 	return w, nil
 }
@@ -111,7 +112,7 @@ func (a *App) updateNativeInset() {
 	if density <= 0 {
 		density = 1
 	}
-	inset := int(math.Round(nativeTabBarInset(a.window) * density))
+	inset := int(math.Round(platform.TabBarInset(a.window) * density))
 	if inset != a.nativeInset {
 		a.relayoutWithViewportAnchor(func() { a.nativeInset = inset })
 		a.pendingRedraw = true

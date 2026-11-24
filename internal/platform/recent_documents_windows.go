@@ -1,6 +1,6 @@
 //go:build windows
 
-package viewer
+package platform
 
 import (
 	"unsafe"
@@ -12,9 +12,9 @@ var procSHAddToRecentDocs = windows.NewLazySystemDLL("shell32.dll").NewProc("SHA
 
 const shardPathW = 3 // SHARD_PATHW
 
-// noteSystemRecentDocument adds path to the recent documents Windows lists
-// in onon's jump list and in Quick Access.
-func noteSystemRecentDocument(path string) {
+// NoteRecentDocument adds path to the recent documents Windows lists in
+// onon's jump list and in Quick Access.
+func NoteRecentDocument(path string) {
 	name, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return

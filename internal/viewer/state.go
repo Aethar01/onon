@@ -9,10 +9,13 @@ import (
 	"onon/internal/instance"
 	"onon/internal/mupdf"
 	"onon/internal/remote"
+	"onon/internal/textinput"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
 	"golang.org/x/image/font"
 )
+
+type textInput = textinput.Input
 
 type mode int
 

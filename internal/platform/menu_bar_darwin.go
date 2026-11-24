@@ -1,6 +1,6 @@
 //go:build darwin
 
-package viewer
+package platform
 
 /*
 #cgo LDFLAGS: -framework Cocoa
@@ -22,7 +22,6 @@ import (
 // item's tag less one; a tag of 0 is a system item.
 var menuBarActions []string
 
-// cocoaMenu and cocoaItem are the menus as the Objective-C side builds them.
 type cocoaMenu struct {
 	Title string      `json:"title"`
 	Role  string      `json:"role,omitempty"`
@@ -40,7 +39,8 @@ type cocoaItem struct {
 	Shift bool   `json:"shift,omitempty"`
 }
 
-func setNativeMenuBar(menus []menubar.Menu, bindings map[string]string) {
+// SetMenuBar installs menus as the macOS menu bar with shortcuts from bindings.
+func SetMenuBar(menus []menubar.Menu, bindings map[string]string) {
 	var actions []string
 	cocoa := make([]cocoaMenu, 0, len(menus))
 	for _, menu := range menus {
@@ -68,7 +68,6 @@ func setNativeMenuBar(menus []menubar.Menu, bindings map[string]string) {
 	C.ononSetMenuBar(text)
 }
 
-// setKey shows key as the item's key equivalent, if Cocoa can show it.
 func (i *cocoaItem) setKey(key keys.Key) {
 	name, ok := cocoaKeyEquivalent(key.Name)
 	if !ok {
@@ -81,8 +80,6 @@ func (i *cocoaItem) setKey(key keys.Key) {
 	i.Shift = key.Mod&keys.Shift != 0
 }
 
-// cocoaKeyEquivalent returns the character Cocoa writes a key as in a menu.
-// A capital letter stands for the letter with Shift, as in keys.
 func cocoaKeyEquivalent(name string) (string, bool) {
 	if len([]rune(name)) == 1 {
 		return name, true
@@ -97,7 +94,6 @@ func cocoaKeyEquivalent(name string) (string, bool) {
 	return "", false
 }
 
-// cocoaNamedKeys are the characters NSEvent.h gives named keys.
 var cocoaNamedKeys = map[string]rune{
 	"CR":    '\r',
 	"Esc":   0x1b,
@@ -118,21 +114,18 @@ var cocoaNamedKeys = map[string]rune{
 
 //export ononMenuBarChose
 func ononMenuBarChose(tag C.int) {
-	if i := int(tag) - 1; i >= 0 && i < len(menuBarActions) {
-		chooseSystemAction(menuBarActions[i])
+	if i := int(tag) - 1; i >= 0 && i < len(menuBarActions) && hooks.OnAction != nil {
+		hooks.OnAction(menuBarActions[i])
 	}
 }
 
-// ononMenuBarItemState returns how to show the item of a tag, as a menu
-// opens: 1 when it can be chosen, plus 2 when it is checked.
-//
 //export ononMenuBarItemState
 func ononMenuBarItemState(tag C.int) C.int {
 	i := int(tag) - 1
-	if i < 0 || i >= len(menuBarActions) || nativeApp == nil {
+	if i < 0 || i >= len(menuBarActions) || hooks.OnMenuItemState == nil {
 		return 1
 	}
-	enabled, checked := nativeApp.menuItemState(menuBarActions[i])
+	enabled, checked := hooks.OnMenuItemState(menuBarActions[i])
 	state := C.int(0)
 	if enabled {
 		state |= 1

@@ -3,6 +3,8 @@ package viewer
 import (
 	"fmt"
 
+	"onon/internal/platform"
+
 	"github.com/jupiterrider/purego-sdl3/sdl"
 )
 
@@ -30,7 +32,7 @@ func setSDLClipboardText(text string) error {
 }
 
 func loadSDLSetClipboardText() error {
-	if err := loadSDLSymbol("SDL_SetClipboardText", &sdlSetClipboardText); err != nil {
+	if err := platform.LoadSDLSymbol("SDL_SetClipboardText", &sdlSetClipboardText); err != nil {
 		return fmt.Errorf("SDL_SetClipboardText unavailable: %w", err)
 	}
 	return nil

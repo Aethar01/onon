@@ -233,11 +233,11 @@ func (a *App) handleUIEditKey(view *uiView, key keys.Key, name string) bool {
 // reports whether one was.
 func (a *App) dragUIField(view *uiView, x, y float32, done bool) bool {
 	drag := func(l *textLayout, input *textInput) bool {
-		if !input.mouseSelecting || len(l.lines) == 0 {
+		if !input.MouseSelecting || len(l.lines) == 0 {
 			return false
 		}
 		pressText(l, input, x, y, true)
-		input.mouseSelecting = !done
+		input.MouseSelecting = !done
 		a.pendingRedraw = true
 		return true
 	}

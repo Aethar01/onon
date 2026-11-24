@@ -1,9 +1,9 @@
 //go:build !darwin
 
-package viewer
+package platform
 
 // LaunchDocuments returns the documents the system launched onon to open
 // without passing them as arguments. Only macOS does that.
-func LaunchDocuments(verbose bool) []string {
+func LaunchDocuments(initSDL func() error, verbose bool) []string {
 	return nil
 }

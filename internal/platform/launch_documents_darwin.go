@@ -1,6 +1,6 @@
 //go:build darwin
 
-package viewer
+package platform
 
 /*
 #cgo LDFLAGS: -framework Cocoa -framework CoreServices
@@ -19,15 +19,13 @@ import (
 	"github.com/jupiterrider/purego-sdl3/sdl"
 )
 
-// launchDocumentsWait bounds how long startup waits to learn which documents
-// macOS launched onon for. A request that comes later still arrives as a drop.
 const launchDocumentsWait = 2 * time.Second
 
 // LaunchDocuments returns the documents macOS launched onon to open. Finder
 // and `open` send them in an Apple Event rather than as arguments, and it
 // arrives once the application has finished launching, so this starts SDL; it
 // must run once, before anything else does.
-func LaunchDocuments(verbose bool) []string {
+func LaunchDocuments(initSDL func() error, verbose bool) []string {
 	start := time.Now()
 	C.ononWatchLaunch()
 	if err := initSDL(); err != nil {

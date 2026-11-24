@@ -1,6 +1,6 @@
 //go:build !darwin && !windows
 
-package viewer
+package platform
 
 import (
 	"bufio"
@@ -12,10 +12,10 @@ import (
 	"time"
 )
 
-// osReducesMotion reports whether the desktop has turned animations off:
+// ReducesMotion reports whether the desktop has turned animations off:
 // GNOME's enable-animations, which other GTK desktops share, or KDE's
 // animation speed set to instant.
-func osReducesMotion() bool {
+func ReducesMotion() bool {
 	return gnomeAnimationsOff() || kdeAnimationsOff()
 }
 

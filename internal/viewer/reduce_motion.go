@@ -1,6 +1,10 @@
 package viewer
 
-import "time"
+import (
+	"time"
+
+	"onon/internal/platform"
+)
 
 // The OS's setting for less motion, as macOS's Reduce motion or GNOME's
 // animations switch, turns the theme's reduced motion on, as
@@ -13,7 +17,7 @@ import "time"
 const osMotionReadInterval = 5 * time.Second
 
 // readOSMotion reads the OS's setting; tests replace it.
-var readOSMotion = osReducesMotion
+var readOSMotion = platform.ReducesMotion
 
 // refreshReducedMotion reads the OS's setting again, unless it is being
 // read or was read lately.

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"onon/internal/menubar"
+	"onon/internal/platform"
 )
 
 func TestMenuItemStateFollowsTheViewer(t *testing.T) {
@@ -68,7 +69,7 @@ func TestMenuBarRedrawnOnlyForNewBindings(t *testing.T) {
 	draws := 0
 	drawMenuBar = func([]menubar.Menu, map[string]string) { draws++ }
 	menuBarBindings = nil
-	t.Cleanup(func() { drawMenuBar, menuBarBindings = setNativeMenuBar, nil })
+	t.Cleanup(func() { drawMenuBar, menuBarBindings = platform.SetMenuBar, nil })
 
 	app := tabsApp(t, testPages(t, 2))
 	app.installMenuBar()

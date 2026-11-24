@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"onon/internal/instance"
+	"onon/internal/platform"
 	"onon/internal/remote"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
@@ -123,7 +124,7 @@ func (g *windowGroup) handleEvent(event *sdl.Event) error {
 	if event.Type() == sdl.EventWindowFocusGained {
 		if previous := g.focused; w != previous {
 			g.focus(w)
-			if w.nativeTabsOn() && previous != nil && previous.window != nil && sameNativeTabGroup(previous.window, w.window) {
+			if w.nativeTabsOn() && previous != nil && previous.window != nil && platform.SameTabGroup(previous.window, w.window) {
 				defer w.emitTabChanged(slices.IndexFunc(w.userTabs(), func(u userTab) bool { return u.w == previous }))
 			}
 		}

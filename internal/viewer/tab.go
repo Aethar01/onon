@@ -10,6 +10,7 @@ import (
 	"onon/internal/config"
 	"onon/internal/instance"
 	"onon/internal/mupdf"
+	"onon/internal/platform"
 	"onon/internal/remote"
 )
 
@@ -445,7 +446,7 @@ func (a *App) closeOtherTabs(force bool) {
 func (a *App) moveTab(to int) {
 	if a.nativeTabsOn() {
 		to = clampInt(to, 0, len(a.userTabs())-1)
-		moveNativeTab(a.window, to)
+		platform.MoveTab(a.window, to)
 		a.emitTabListChanged("moved", to)
 		return
 	}
@@ -620,13 +621,13 @@ func (a *App) restoreNativeTabs(w config.WindowTabs) {
 		tab.pendingPath = path
 		tab.withTab(tab.tab, tab.rebindInstanceServer)
 		tab.setWindowTitle()
-		addNativeTab(a.window, tab.window)
+		platform.AddTab(a.window, tab.window)
 		order = append(order, tab)
 	}
 	for i, tab := range order {
-		moveNativeTab(tab.window, i)
+		platform.MoveTab(tab.window, i)
 	}
-	selectNativeTab(a.window)
+	platform.SelectTab(a.window)
 	a.windowGroup().focus(a)
 }
 

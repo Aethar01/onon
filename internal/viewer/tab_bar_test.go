@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"onon/internal/config"
+	"onon/internal/platform"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
 )
@@ -229,7 +230,7 @@ func TestTabsInTheTitleRowLeaveRoomToDragTheWindow(t *testing.T) {
 	if app.titleRowTakes(grab, y, true) || !app.titleRowTakes(l.tabs[app.tabIndex()].X+2, y, false) {
 		t.Fatal("the drag space takes presses, or the shown tab does not")
 	}
-	if l.area.X < app.px(windowButtonsLeading) {
+	if l.area.X < app.px(platform.WindowButtonsLeading) {
 		t.Fatalf("tabs start at %v, over the window's buttons", l.area.X)
 	}
 	setOption(t, app, "tab_bar_drag_space", "0")

@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"onon/internal/config"
+	"onon/internal/platform"
 	"onon/internal/remote"
 
 	"github.com/jupiterrider/purego-sdl3/sdl"
@@ -123,7 +124,7 @@ func (a *App) showWindowDocument() {
 		if remote.IsURI(file) {
 			file = "" // no local file for the proxy icon
 		}
-		setNativeWindowDocument(a.window, file, a.unsaved)
+		platform.SetWindowDocument(a.window, file, a.unsaved)
 	}
 }
 

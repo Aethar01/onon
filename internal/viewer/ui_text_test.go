@@ -103,8 +103,8 @@ view:show()`)
 		t.Fatalf("mid-drag the field selected %q, want cde", text)
 	}
 	app.viewMouseButton(view, &sdl.MouseButtonEvent{Type: sdl.EventMouseButtonUp, Button: uint8(sdl.ButtonLeft), X: at(6), Y: y})
-	if text, _ := f.input.SelectedText(); text != "cdef" || f.input.mouseSelecting {
-		t.Fatalf("dragged across the field selected %q, still selecting %v", text, f.input.mouseSelecting)
+	if text, _ := f.input.SelectedText(); text != "cdef" || f.input.MouseSelecting {
+		t.Fatalf("dragged across the field selected %q, still selecting %v", text, f.input.MouseSelecting)
 	}
 }
 

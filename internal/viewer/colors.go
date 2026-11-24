@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"onon/internal/config"
+	"onon/internal/platform"
 )
 
 func (a *App) statusVisible() bool {
@@ -47,7 +48,7 @@ func (a *App) showWindowColors(bg color.RGBA) {
 		return
 	}
 	a.windowColors = colors
-	setNativeWindowColors(a.window, bg, border)
+	platform.SetWindowColors(a.window, bg, border, !isLight(bg))
 }
 
 func rgb(c [3]uint8) color.RGBA {

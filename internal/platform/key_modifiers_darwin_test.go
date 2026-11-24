@@ -1,6 +1,6 @@
 //go:build darwin
 
-package viewer
+package platform
 
 import (
 	"testing"

@@ -6,16 +6,18 @@ import (
 
 	"onon/internal/config"
 	"onon/internal/mupdf"
+	"onon/internal/platform"
 	"onon/internal/remote"
+	"onon/internal/watcher"
 )
 
 const documentReloadRetry = time.Second
 
 type documentSession struct {
-	watcher    *documentWatcher
-	remote     *remoteWatcher // in place of watcher for a document on an SSH host
-	pollRemote bool           // auto_reload: whether remote watches check at all
-	delay      time.Duration  // how long writes must settle before a change is reported
+	watcher    *watcher.Document
+	remote     *watcher.Remote // in place of watcher for a document on an SSH host
+	pollRemote bool            // auto_reload: whether remote watches check at all
+	delay      time.Duration   // how long writes must settle before a change is reported
 	mod        time.Time
 	size       int64
 
@@ -32,13 +34,13 @@ func (s *documentSession) record(path string) {
 	s.stopWatching()
 	s.pending = nil
 	s.lastAttempt = time.Time{}
-	watcher, err := newDocumentWatcher(path, s.delay)
+	w, err := watcher.NewDocument(path, s.delay)
 	if err != nil {
 		// Fall back gracefully if watcher can't be created
 		return
 	}
-	s.watcher = watcher
-	s.watcher.record(path)
+	s.watcher = w
+	s.watcher.Record(path)
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() {
 		s.mod = time.Time{}
@@ -56,13 +58,13 @@ func (s *documentSession) recordRemote(info remote.Info) {
 	s.pending = nil
 	s.lastAttempt = time.Time{}
 	s.mod, s.size = info.ModTime, info.Size
-	if s.remote != nil && s.remote.uri == info.URI {
-		s.remote.setKnown(info) // our own save is not an outside change
+	if s.remote != nil && s.remote.URI() == info.URI {
+		s.remote.SetKnown(info) // our own save is not an outside change
 		return
 	}
 	s.stopWatching()
 	if remote.Watchable(info.URI) {
-		s.remote = newRemoteWatcher(info, s.pollRemote)
+		s.remote = watcher.NewRemote(info, s.pollRemote)
 	}
 }
 
@@ -70,7 +72,7 @@ func (s *documentSession) recordRemote(info remote.Info) {
 func (s *documentSession) setRemotePolling(on bool) {
 	s.pollRemote = on
 	if s.remote != nil {
-		s.remote.enabled.Store(on)
+		s.remote.SetEnabled(on)
 	}
 }
 
@@ -87,7 +89,7 @@ func (s *documentSession) stopWatching() {
 
 func (s *documentSession) poll(now time.Time) (documentChange, bool) {
 	var source interface {
-		waitForChange(time.Duration) (watcherChange, bool)
+		WaitForChange(time.Duration) (watcher.Change, bool)
 	}
 	switch {
 	case s.watcher != nil:
@@ -106,14 +108,14 @@ func (s *documentSession) poll(now time.Time) (documentChange, bool) {
 		return *s.pending, true
 	}
 
-	change, ok := source.waitForChange(0)
+	change, ok := source.WaitForChange(0)
 	if !ok {
 		return documentChange{}, false
 	}
 
 	s.pending = &documentChange{
-		mod:  change.mod,
-		size: change.size,
+		mod:  change.Mod,
+		size: change.Size,
 	}
 	s.lastAttempt = now
 	return *s.pending, true
@@ -122,7 +124,7 @@ func (s *documentSession) poll(now time.Time) (documentChange, bool) {
 func (s *documentSession) setDelay(delay time.Duration) {
 	s.delay = delay
 	if s.watcher != nil {
-		s.watcher.delay.Store(int64(delay))
+		s.watcher.SetDelay(delay)
 	}
 }
 
@@ -306,7 +308,7 @@ func (a *App) recordRecentFile(path string) {
 	}
 	_ = config.RecordRecentFile(path, a.config.RecentFilesMax)
 	if !remote.IsURI(path) {
-		noteSystemRecentDocument(path) // the system's lists hold local files
+		platform.NoteRecentDocument(path) // the system's lists hold local files
 	}
 }
 
