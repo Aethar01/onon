@@ -72,9 +72,11 @@ func (a *App) showLinkPreview() {
 	popup, x, y := a.previewPlacement()
 	ox, oy := a.viewportOrigin()
 	scale := float64(a.px(1))
-	// The page drawn from x, y puts the destination near the popup's top
-	// left; the point at its top left is where the drawing starts.
-	from := a.pageTransform(link.Page).toPage(float64(popup.X)-x, float64(popup.Y)-y)
+	pad := a.style(config.ElementLinkPreview).Padding.V
+	top, _, _, left := a.insets(pad)
+	// The page drawn from x, y puts the destination near the inner page
+	// area's top left; the point at its top left is where drawing starts.
+	from := a.pageTransform(link.Page).toPage(float64(popup.X+left)-x, float64(popup.Y+top)-y)
 	view := &uiView{
 		id: "core:link-preview", owner: "core", headless: true, element: config.ElementLinkPreview,
 		place: viewPlacement{
@@ -82,7 +84,10 @@ func (a *App) showLinkPreview() {
 			height: config.UISize{Value: float64(popup.H) / scale},
 		}.atPoint(config.UIPoint{X: (ox + float64(popup.X)) / scale, Y: (oy + float64(popup.Y)) / scale}, "top_left"),
 		drawBody: func(a *App, c *elementCanvas, state config.DrawState) (bool, error) {
-			c.Page(link.Page, 0, 0, state.W, state.H, &config.PageArea{X: from.X, Y: from.Y, Zoom: 1})
+			// uiViewBody already insets Y by pad.Top for headless views.
+			w := max(0, state.W-pad.Left-pad.Right)
+			h := max(0, state.H-pad.Bottom)
+			c.Page(link.Page, pad.Left, 0, w, h, &config.PageArea{X: from.X, Y: from.Y, Zoom: 1})
 			return false, nil
 		},
 	}
@@ -112,10 +117,14 @@ func (a *App) previewPlacement() (popup sdl.FRect, x, y float64) {
 		destY = link.Y
 	}
 	dx, dy := newPageTransform(m.bounds, a.scale, a.rotation).toScreen(destX, destY)
+	top, right, _, left := a.insets(a.style(config.ElementLinkPreview).Padding.V)
+	innerX := popup.X + left
+	innerY := popup.Y + top
+	innerW := max(0, popup.W-left-right)
 	const inset = 16
-	screenX := float64(popup.X + popup.W/2) // centre the page when x is not given
+	screenX := float64(innerX + innerW/2) // centre the page when x is not given
 	if link.HasX {
-		screenX = float64(popup.X) + inset
+		screenX = float64(innerX) + inset
 	}
-	return popup, screenX - dx, float64(popup.Y) + inset - dy
+	return popup, screenX - dx, float64(innerY) + inset - dy
 }

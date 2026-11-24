@@ -90,7 +90,7 @@ var elementSpecs = [ElementCount]struct {
 	ElementCheck:             {"check", noElement, boxProps, "The mark in a checked check box, drawn in the box; a check box's box is an input."},
 	ElementHint:              {"hint", noElement, slices.Concat(boxProps, textProps), "A link hint label. Its secondary colour is for the letters already typed."},
 	ElementOverviewSelection: {"overview_selection", noElement, slices.Concat(boxProps, []string{"padding"}), "The outline around the overview's selected page; padding is its distance from the page."},
-	ElementLinkPreview:       {"link_preview", noElement, []string{"radius", "fill", "border", "shadow", "opacity", "shader", "draw"}, "The popup previewing a link's target, a rect with corners rounded by its radius. Its fill shows while the page renders."},
+	ElementLinkPreview:       {"link_preview", noElement, []string{"radius", "fill", "border", "shadow", "opacity", "padding", "shader", "draw"}, "The popup previewing a link's target, a rect with corners rounded by its radius. Its fill and shader show while the page renders, and around the page where padding insets it."},
 	ElementTitleBar:          {"title_bar", noElement, slices.Concat(boxProps, []string{"text"}), "Behind the window buttons onon draws where the system draws no title bar, as on Windows. Its text colour draws the buttons' symbols."},
 	ElementTitleButton:       {"title_button", noElement, slices.Concat(boxProps, []string{"text"}), "A window button under the pointer, drawn a little fainter while pressed."},
 	ElementTitleClose:        {"title_close", ElementTitleButton, slices.Concat(boxProps, []string{"text"}), "The close button under the pointer."},

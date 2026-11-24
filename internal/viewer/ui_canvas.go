@@ -563,7 +563,7 @@ func (c *elementCanvas) pageArea(page int, box sdl.FRect, area config.PageArea) 
 	}
 	var outline []point32
 	if normalizeRotation(a.rotation) == 0 {
-		outline = c.panelOutline()
+		outline = c.boxOutline(box)
 	}
 	alpha := a.styleColor(config.Color{RGB: [3]uint8{0xff, 0xff, 0xff}, Alpha: 1}, c.style.Opacity.V).A
 	a.withClip(c.renderer, box, func() error {
@@ -688,6 +688,17 @@ func (c *elementCanvas) panelOutline() []point32 {
 	if c.view == nil {
 		return nil
 	}
+	frame, _ := c.view.frameGeometry(c.app)
+	return c.boxOutline(frame)
+}
+
+// boxOutline is box cut to corners concentric with the canvas's view's panel:
+// each corner's radius is reduced by how far box sits inside that corner's
+// edges, or nil where all four corners are square.
+func (c *elementCanvas) boxOutline(box sdl.FRect) []point32 {
+	if c.view == nil {
+		return nil
+	}
 	a := c.app
 	frame, _ := c.view.frameGeometry(a)
 	st := a.style(c.view.element)
@@ -696,11 +707,21 @@ func (c *elementCanvas) panelOutline() []point32 {
 	if shape.radius == [4]float32{} {
 		return nil
 	}
-	var radius config.Corners
-	for i, r := range shape.radius {
-		radius[i] = float64(r)
+	br := pixelRect(box)
+	left := float64(max(0, br.X-pr.X))
+	top := float64(max(0, br.Y-pr.Y))
+	right := float64(max(0, (pr.X+pr.W)-(br.X+br.W)))
+	bottom := float64(max(0, (pr.Y+pr.H)-(br.Y+br.H)))
+	radius := config.Corners{
+		math.Max(0, float64(shape.radius[0])-math.Max(top, left)),
+		math.Max(0, float64(shape.radius[1])-math.Max(top, right)),
+		math.Max(0, float64(shape.radius[2])-math.Max(bottom, right)),
+		math.Max(0, float64(shape.radius[3])-math.Max(bottom, left)),
 	}
-	return flattenPath(config.RoundedRectPath(float64(pr.X), float64(pr.Y), float64(pr.W), float64(pr.H), radius), pathPlacer(0, 0, 0, 0, 1))[0]
+	if radius == (config.Corners{}) {
+		return nil
+	}
+	return flattenPath(config.RoundedRectPath(float64(br.X), float64(br.Y), float64(br.W), float64(br.H), radius), pathPlacer(0, 0, 0, 0, 1))[0]
 }
 
 // drawClippedTexture draws texture over dst, only where it falls inside

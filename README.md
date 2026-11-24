@@ -201,7 +201,7 @@ Every available option and default binding is listed in [`config.example.lua`](.
 
 ### Themes and plugins
 
-- **Themes**: Three built-in themes (`moss`, `birch`, `classic`) can be previewed live with `:theme`. Seven more — `brutalist`, `gameboy`, `glass`, `manuscript`, `phosphor`, `synthwave` and `vampire`, each with optional GLSL shaders — live in [onon-themes](https://github.com/Aethar01/onon-themes).
+- **Themes**: Three built-in themes (`moss`, `birch`, `classic`) can be previewed live with `:theme`. Eight more — `brutalist`, `forest-rain`, `gameboy`, `glass`, `manuscript`, `phosphor`, `synthwave` and `vampire`, each with optional GLSL shaders — live in [onon-themes](https://github.com/Aethar01/onon-themes).
 - **Plugins**: Add new commands, actions, events, background jobs and custom UI panels. Example plugins (`file-browser` and `synctex`) live in [onon-plugins](https://github.com/Aethar01/onon-plugins).
 
 On Linux and macOS, clone either repository into your config directory and link it in:
