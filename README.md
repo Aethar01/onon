@@ -1,47 +1,99 @@
+<div align="center">
+
+<img src="./assets/onon.svg" alt="onon logo" width="84" />
+
 # onon
 
-A quiet reader for the keyboard, built on MuPDF and configured with Lua.
+**A quiet reader for the keyboard.**
 
-onon provides Vim-style navigation, continuous and single-page layouts, dual-page spreads, text search and selection, outlines, links, persistent sessions and marks, themes, commands, and scriptable keybindings without a permanent toolbar.
+Built on [MuPDF](https://mupdf.com/) and SDL3, configured in Lua, for macOS, Linux and Windows.
 
-## Quick Start
+[Website](https://ononreader.com/) · [Documentation](https://ononreader.com/docs/) · [Releases](https://github.com/Aethar01/onon/releases/latest) · [Themes](https://github.com/Aethar01/onon-themes) · [Plugins](https://github.com/Aethar01/onon-plugins)
 
-```bash
-onon file.pdf
-```
+</div>
 
-If no file is provided, onon reopens the most recently viewed document.
+<br />
 
-Useful defaults:
+<p align="center">
+  <img src="https://ononreader.com/screenshots/hero.png" alt="onon reading Oliver Byrne's Elements of Euclid in dual-page spread with the default moss theme and title-bar tabs" width="100%" />
+</p>
 
-| Key | Action |
-|---|---|
-| `j` / `k` | Scroll down / up |
-| `J` / `K` | Next / previous page |
-| `/` / `?` | Search forward / backward |
-| `n` / `N` | Next / previous match |
-| `o` | Open the document outline |
-| `O` | Page overview grid |
-| `F5` | Presentation mode |
-| `H` | Highlight the selection (pick a colour) |
-| `u` / `U` | Undo / redo edits |
-| `x` | Delete the annotation under the pointer (right-click for more) |
-| `F` | Follow a link by typing its hint |
-| `gr` | Open recent files |
-| `:` | Open the command prompt |
-| `F1` / `g?` | Help: commands, keys, search modifiers and options |
-| `q` | Quit |
+## What is onon?
 
-The usual shortcuts of each system work as well: on macOS Cmd-F to search, Cmd-Z to undo and Cmd-= to zoom, with the menu bar listing the actions and their keys, and on Windows and Linux Ctrl-F, Ctrl-Z, Ctrl-= and F11.
+Most document viewers surround the page with toolbars, sidebars and ribbons, and expect a pointer for every step. **onon** *(said oh-non)* stays out of the way: pages on a calm canvas, a single status bar you can hide, and keyboard controls shaped around how Vim moves through text.
+
+It opens at the exact page, scroll position and zoom where you left off. Navigation, search, outlines, link following, annotations, tabs and settings are all reachable from a few keys — while the usual macOS, Linux and Windows shortcuts, menu bar, drag-to-select, trackpad pinch-zoom and printing still work whenever your hand is already on the mouse.
+
+Under the hood, onon pairs **MuPDF** for fast, sharp rendering (PDF, EPUB, XPS, MOBI, FictionBook, CBZ/CBT comic archives and images) with a **Lua** runtime that lets you configure anything from a single option or accent colour to custom keybindings, URI schemes, GLSL shaders and full plugins with their own panels.
+
+## At a glance
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="https://ononreader.com/screenshots/outline.png" alt="Document outline and search highlights on the EHT M87* paper in moss theme" width="100%" />
+      <br />
+      <sub><strong>Outline &amp; search</strong> — filterable table of contents (<code>o</code>) with live background previews and Vim-style search (<code>/</code>).</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="https://ononreader.com/screenshots/hints.png" alt="Link hints and PDF highlights on the LIGO GW150914 paper in moss theme" width="100%" />
+      <br />
+      <sub><strong>Link hints &amp; highlights</strong> — follow any link from the keyboard (<code>F</code>) and save highlights (<code>H</code>) straight into the PDF.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="https://ononreader.com/screenshots/overview.png" alt="Page overview thumbnail grid of Oliver Byrne's Euclid in moss theme" width="100%" />
+      <br />
+      <sub><strong>Page overview</strong> — browse every page as a grid (<code>O</code>) and jump straight to any leaf.</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="https://ononreader.com/screenshots/dark.png" alt="Alternate dark colour mode on the EHT M87* black hole paper keeping images in full colour" width="100%" />
+      <br />
+      <sub><strong>Alternate colours</strong> — switch to dark moss (<code>Ctrl-R</code>) with recoloured pages that keep raster images in their own colours.</sub>
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  <sub>
+    Screenshots use default settings with the built-in <code>moss</code> theme. Documents shown:
+    <a href="https://github.com/jemmybutton/byrne-euclid">Oliver Byrne's <em>Elements of Euclid</em></a> (CC BY-SA 4.0),
+    <a href="https://arxiv.org/abs/1906.11238">EHT Collaboration (2019)</a> (CC BY 3.0), and
+    <a href="https://arxiv.org/abs/1602.03837">LIGO Scientific &amp; Virgo Collaborations (2016)</a> (CC BY 4.0).
+  </sub>
+</p>
+
+## Features
+
+- **Keyboard-first reading** — Vim motions (`j`/`k` scroll, `J`/`K` pages, `gg`/`G`, numeric counts), a persistent jump list (`Ctrl-O`/`Ctrl-I`), per-document marks (`"` and `'`), continuous or single-page layouts, dual-page spreads (`d`), margin trimming, hover link previews, home-row link hints (`F`), and presentation mode (`F5`).
+- **Vim-style search & outlines** — Search forward (`/`) and backward (`?`) with inline modifiers for case (`\C`), whole words (`\<word\>`), Go regular expressions (`\v`), and current-page scope (`\%.p`). Browse all matches (`gm`) or filter the folding document outline (`o`) while previewing destinations live.
+- **Annotations, forms & sessions** — Select text, highlight in customisable colours (`H`), edit or delete annotations (`x` or right-click), undo/redo (`u`/`U`), fill PDF forms, and write changes directly back into the PDF (`:w`). Every document's place, zoom, marks, recent history and open tabs persist in SQLite.
+- **Tabs & editor workflows** — Open multiple documents in tabs along the title row, top, bottom or a resizable sidebar (or use native macOS window tabs with `native_tabs = true`). Documents reload automatically when LaTeX, Typst or another tool rebuilds them, and `--unique --goto PAGE:X:Y` lets editors such as Neovim and VS Code drive an open window directly.
+- **Remote documents** — Open files over HTTP/HTTPS, SSH/SFTP (`me@host:paper.pdf`) and WebDAV (`davs://`), complete with in-app credential prompts, caching, auto-reload, `#page=N` fragments, and `:w` saving edits back over SSH or WebDAV. Register shorthand schemes of your own in Lua (`onon arxiv:2401.12345`).
+- **Lua configuration, themes & plugins** — Start with zero configuration, or open `config.lua` with `:config` and reload live with `:reload-config`. Choose built-in themes (`moss`, `birch`, `classic`) via `:theme`, restyle any UI element down to SVG paths and experimental GLSL shaders, or add plugins and custom interactive panels with `onon.ui.create`.
 
 ## Installation
 
-Download a package for Linux, macOS, or Windows from the [latest release](https://github.com/Aethar01/onon/releases/latest).
+Download a release for macOS, Linux or Windows from the [latest release](https://github.com/Aethar01/onon/releases/latest), or install via a package manager:
 
 <details open>
-<summary>Linux</summary>
+<summary><strong>macOS</strong> (macOS 12+)</summary>
 
-The release packages run on Ubuntu 22.04, Fedora 36, Debian 12 and anything newer. They bundle MuPDF and SDL3, so only GTK 3 has to come from the system.
+Install with [Homebrew](https://brew.sh/):
+
+```bash
+brew install aethar01/tap/onon
+```
+
+Or download the `.dmg` for Apple silicon or Intel from the [latest release](https://github.com/Aethar01/onon/releases/latest) and drag `onon.app` into Applications.
+
+</details>
+
+<details>
+<summary><strong>Linux</strong></summary>
+
+Release packages run on Ubuntu 22.04, Fedora 36, Debian 12 and newer. They bundle MuPDF and SDL3, so only GTK 3 comes from the system.
 
 Debian and Ubuntu:
 
@@ -59,16 +111,16 @@ Any distribution, without installing:
 
 ```bash
 chmod +x onon-*-linux-x86_64.AppImage
-./onon-*-linux-x86_64.AppImage file.pdf
+./onon-*-linux-x86_64.AppImage paper.pdf
 ```
 
-Or unpack the tarball into `~/.local`, which puts `onon` in `~/.local/bin`:
+Or unpack the tarball into `~/.local` (places `onon` in `~/.local/bin`):
 
 ```bash
 tar -xzf onon-*-linux-x86_64.tar.gz -C ~/.local --strip-components=1
 ```
 
-Arch-based systems can install [onon-git from the AUR](https://aur.archlinux.org/packages/onon-git):
+Arch-based systems can install [`onon-git`](https://aur.archlinux.org/packages/onon-git) from the AUR:
 
 ```bash
 yay -S onon-git
@@ -77,315 +129,136 @@ yay -S onon-git
 </details>
 
 <details>
-<summary>macOS</summary>
+<summary><strong>Windows</strong></summary>
 
-Install the release matching Intel or Apple silicon, or use Homebrew:
-
-```bash
-brew install aethar01/tap/onon
-```
+Download the installer (with optional PDF file association) or the portable `.zip` from the [latest release](https://github.com/Aethar01/onon/releases/latest).
 
 </details>
 
-<details>
-<summary>Windows</summary>
+## Quick start
 
-The release provides an installer with optional PDF file association and a portable zip.
-
-</details>
-
-## Usage
+Open a document from your file manager, drop it onto the window, or launch from the terminal:
 
 ```bash
-onon /path/to/file.pdf      # open a document
-onon --goto 20 file.pdf     # start on page 20
-onon --config custom.lua file.pdf
-onon --no-config file.pdf   # built-in defaults only
-onon --no-plugins file.pdf  # skip plugin loading
-onon -v                     # print version
-onon -V                     # enable verbose logs
+onon paper.pdf                              # open a document (no args reopens the last session)
+onon --goto 20 paper.pdf                    # start on page 20
+onon --unique --goto 42:100:250 paper.pdf   # reuse the window showing paper.pdf (SyncTeX / editors)
+onon --tab notes.pdf                        # open in a new tab of the last focused window
+onon https://example.com/paper.pdf#page=12  # open from the web at page 12
+onon me@host:papers/paper.pdf               # open over SSH (and :w saves edits back)
 ```
 
-Use `F1`, `g?` or `:help` to browse commands, key bindings, search modifiers and options; choosing a row runs it or fills in the prompt. `:keybinds` edits key bindings, and `:options` the options.
+### Essential keys
 
-### Remote documents
+Counts work as in Vim (`10j`, `3J`). System shortcuts (`Cmd`/`Ctrl` + `F`, `Z`, `=`, `T`, `W`, `S`) work alongside these:
 
-onon opens documents from a web server or over SSH, on the command line and with `:open`:
+| Key | Action |
+|---|---|
+| `j` / `k` | Scroll down / up |
+| `J` / `K` | Next / previous page |
+| `gg` / `G` | First / last page |
+| `d` / `m` | Toggle dual-page spreads / single-page mode |
+| `/` / `?` | Search forward / backward (`n` / `N` for next / previous match) |
+| `o` / `O` | Document outline / page overview grid |
+| `F` | Follow a link by typing its hint |
+| `Ctrl-O` / `Ctrl-I` | Jump back / forward in jump history |
+| `Ctrl-R` | Toggle alternate (dark) colours |
+| `H` / `x` / `u` / `U` | Highlight selection / delete annotation / undo / redo |
+| `gt` / `gT` | Next / previous tab (`Ctrl-T` / `Cmd-T` for new tab) |
+| `gr` | Recent files |
+| `F5` | Presentation mode |
+| `:` | Command prompt (`:w`, `:theme`, `:options`, `:keybinds`, `:open`, …) |
+| `F1` / `g?` | Interactive help: every command, key, search modifier and option |
+| `q` | Close tab or quit (`:qa` quits all tabs) |
 
-```bash
-onon https://example.com/paper.pdf
-onon sftp://me@host/srv/docs/paper.pdf     # /srv/docs/paper.pdf on host
-onon sftp://me@host/~/paper.pdf            # paper.pdf in the home directory
-onon me@host:papers/paper.pdf              # scp style, relative to the home
-onon davs://cloud.example.com/remote.php/dav/files/me/paper.pdf   # WebDAV
-onon 'https://example.com/paper.pdf#page=12'   # open at page 12
-```
+## Configuration, themes & plugins
 
-`ssh://` and `scp://` mean the same as `sftp://`, and a port goes after the host as in `sftp://host:2222/...`. A path after the host is absolute, as in curl and GNOME and KDE file managers. If no file is there, onon looks for it in the home directory, so `ssh://host/paper.pdf` finds `~/paper.pdf`. In scp style, a local file of the same name wins, as it does for scp; write `./host:file` to mean a local one.
-
-`davs://` and `dav://` (or `webdavs://` and `webdav://`) name a file on a WebDAV server, such as Nextcloud, ownCloud or a NAS, fetched over https or http. A `#page=N` at the end of a URI, as in links to papers, opens at that page unless `--goto` says otherwise.
-
-The document is downloaded to the cache directory and opened from there. Sessions, marks and recent files keep the URI, so reopening one returns to where you were and downloads it again only if it has changed. The status bar shows the download, and `Esc` cancels it. `:open name` from a remote document opens `name` beside it on the same host.
-
-SSH goes through the system's `ssh`, so `~/.ssh/config`, host aliases, `ProxyJump`, the agent and `known_hosts` all apply. onon is its own `SSH_ASKPASS`: a password, a key's passphrase or a new host key is asked about in the status bar, whether onon was started from a terminal or not. Esc refuses. This needs OpenSSH 8.4 or later, which current Linux, macOS and Windows 11 have; an older ssh still asks on the terminal when onon was started from one. The host needs an SFTP server, which OpenSSH has by default. One connection per host stays open while onon runs.
-
-A web server that asks for a login, as a browser shows a login dialog for, is answered with a login from the URL (`https://me:pass@host/...`), then one in `~/.netrc` (`machine host login me password ...`, as curl and wget read it), and then by asking for a user name and password in the status bar. A login that works is kept in memory for the rest of the session, by host; none is saved, and a password in a URL is left out of the URI that sessions and recent files keep.
-
-For an API token or any other header, set `http_headers` in `config.lua`, by host, `host:port` or `*.domain`. Taking the value from the environment keeps it out of the file:
+onon needs no configuration. When you want to change defaults, run `:config` (or `Cmd-,` on macOS) to open `config.lua` in your editor, and `:reload-config` to apply edits without restarting. Only include what you want to override:
 
 ```lua
-onon.options.http_headers = {
-  ["api.example.com"] = { Authorization = "Bearer " .. os.getenv("EXAMPLE_TOKEN") },
-  ["*.internal.example"] = { ["X-Api-Key"] = os.getenv("INTERNAL_KEY") },
-}
+-- Options (onon.options or onon.o)
+onon.o.dual_page = true
+onon.o.fit_mode = "page"
+onon.o.tab_bar_position = "title" -- "title", "top", "bottom", "left", or "right"
+
+-- Themes: tweak fields on top of whichever theme is picked with :theme
+onon.theme.font = { family = "Iosevka", size = 14 }
+onon.theme.status_bar_style = "pill"
+
+-- Bind keys to built-in actions or Lua functions
+onon.bind("<C-d>", onon.next_page)
+onon.bind("r", function()
+  onon.rotation(onon.rotation() + 90)
+end)
+
+-- Register custom document schemes (e.g. `onon arxiv:2401.12345`)
+onon.register_scheme("arxiv", function(id)
+  return "https://arxiv.org/pdf/" .. id
+end)
 ```
 
-The headers go only to the host they are set for, including after a redirect, and `:set` shows their names but not their values. Logins that a web page asks for in a form, such as single sign-on, need a browser; a shared or signed download link works instead. Such a link is kept in recent files as given, since opening it again needs it, but messages and logs leave out its query, where its token is.
+Every available option and default binding is listed in [`config.example.lua`](./config.example.lua) and can be browsed or edited live inside onon with `:options` and `:keybinds`.
 
-`:w` saves edits back to a WebDAV server too, with a `PUT` the server refuses if the file changed since it was opened (by its ETag), so `:w` and `:w!` work as they do over SSH. With `auto_reload`, a WebDAV document is checked for changes every few seconds, using the login already given.
+### Themes and plugins
 
-`:w` saves edits back over SSH: the file is written beside the original under a temporary name and renamed over it, keeping its permissions. If the file changed on the host since it was opened, `:w` refuses and `:w!` saves over it anyway. With `auto_reload`, a document on an SSH host is checked for changes every few seconds. Documents from a web server are read-only; `:w ~/paper.pdf` saves a local copy.
+- **Themes**: Three built-in themes (`moss`, `birch`, `classic`) can be previewed live with `:theme`. Seven more — `brutalist`, `gameboy`, `glass`, `manuscript`, `phosphor`, `synthwave` and `vampire`, each with optional GLSL shaders — live in [onon-themes](https://github.com/Aethar01/onon-themes).
+- **Plugins**: Add new commands, actions, events, background jobs and custom UI panels. Example plugins (`file-browser` and `synctex`) live in [onon-plugins](https://github.com/Aethar01/onon-plugins).
 
-Other names for documents can be added in `config.lua` with `onon.register_scheme`. The function is given what follows the scheme and returns the URL or path to open, which may end in `#page=N`:
-
-```lua
-onon.register_scheme("arxiv", function(id) return "https://arxiv.org/pdf/" .. id end)
-onon.register_scheme("papers", function(name) return "davs://cloud.example.com/dav/papers/" .. name .. ".pdf" end)
-```
-
-Then `onon arxiv:2401.12345` or `:open papers:smith2024` opens it. A local file of the same name wins.
-
-### Tabs
-
-A window holds several documents as tabs, each with its own view, edits and
-session. onon draws a tab bar, styled by the theme's `tab_bar`, `tab` and
-`tab_selected` elements, while more than one document is open. `:tabnew file.pdf`
-opens one, and `:tabnew` alone opens a blank tab. A file dropped on the window,
-or sent by Finder or `open`, opens in a new tab; `open_documents` sets `window`
-or `replace` instead.
-
-onon's tab bar can sit along any edge. By default it is in the title row,
-beside the window's own buttons, keeping `tab_bar_drag_space` (48) clear at
-its end to drag the window by however many tabs are open; `0` gives that up.
-`tab_bar_position = "top"` puts it in a row of its own below, and `"bottom"`
-above the status bar; `"left"` or `"right"` make a sidebar of tabs, one under
-another, whose inner edge drags to resize it. On Linux, where the system draws
-the title bar, `"title"` is the same as `"top"`.
-
-`tab_width` sizes tabs: `"fit"` (as wide as their names), `"fill"` (sharing the
-bar equally), or a width such as `160` or `"20%"`, which for a sidebar is its
-width. The `tab` element's `min_width` and `max_width` bound them, and a sidebar
-is `max_width` wide unless given a width. `tab_bar_visible` is `"auto"` (two or
-more tabs), `"always"` or `"never"`. `"never"` turns tabs off, and onon works
-as it did before it had them: a document Finder, `open` or the command line
-sends opens in a new window, one dropped on the window replaces its document,
-`:tabnew` and `Cmd+T`/`Ctrl+T` open a new window, and no tabs are restored.
-View ▸ Tab Bar, `toggle_tab_bar` or `:tabbar [on|off]` only shows or hides a
-window's bar, as the status bar's do, keeping its tabs. Drag
-a tab to move it (`tab_drag = false` turns that off), middle-click to close it,
-and double-click the bar to open a new one.
-
-Where the bar meets the status bar and docked panels is set by order, lower
-nearer the window's edge: `status_bar_order` (10), `tab_bar_order` (20), and a
-docked view's `order` (30). So `tab_bar_order = 5` with a sidebar makes it the
-window's full height, the status bar beside it.
-
-On macOS, `native_tabs = true` uses the system's window tabs instead, as other
-Mac apps do, with the tab bar's +, Merge All Windows and Move Tab to New Window
-in the Window menu, whatever the `tab_bar` options say. The system draws them
-in a row of their own below the title bar, and `toggle_tab_bar` shows or hides
-it. Restart onon for a change to `native_tabs` to take effect.
-
-| Keys | Action |
-|---|---|
-| `gt`, `Ctrl+Tab`, `Ctrl+PgDn` (macOS also `Cmd+Shift+]`) | Next tab |
-| `gT`, `Ctrl+Shift+Tab`, `Ctrl+PgUp` (macOS also `Cmd+Shift+[`) | Previous tab |
-| `Ctrl+T` (macOS `Cmd+T`) | New tab |
-| `Ctrl+W` (macOS `Cmd+W`) | Close the tab, and the window with its last |
-
-The commands follow Vim's: `:tabnext [N]`, `:tabprevious`, `:tabfirst`,
-`:tablast`, `:tabclose [N]`, `:tabonly`, `:tabmove [N|+N|-N]`, `:tabdo
-<command>` and `:tabs`, which lists the tabs to choose one. `:q` closes the tab,
-`:qa` quits, `:wa` saves every tab and `:wqa` saves them and quits.
-
-Started with no document named, onon opens the tabs the window last closed
-with, showing the same one; the others open their documents when first
-shown. `restore_tabs = false` opens only that one. In Lua, `onon.tabs` lists,
-opens, shows and closes tabs, and plugins hear `tab_changed` when another tab
-is shown and `tab_list_changed` when one opens, closes, moves or gains unsaved
-edits.
-
-### Single instance
-
-Instances are per document. Each tab is reachable by anything that opens the
-same file, which brings that tab forward.
-
-```bash
-onon --unique file.pdf                  # reuse the window showing file.pdf
-onon --unique --goto 42 file.pdf        # ... and go to page 42
-onon --unique --goto 42:100:250 f.pdf   # ... to a point on page 42
-onon --goto 42 file.pdf                 # always a new window, opened at 42
-onon --unique --command "reload-config" f.pdf   # run a command in that window
-onon --tab file.pdf                     # a new tab in the window focused last
-onon --blank                            # a window with no document
-```
-
-`X` and `Y` are points from the page's top-left corner. `--command` takes a
-viewer command as typed after `:`, including commands registered by plugins,
-and exits non-zero if the command is unrecognised.
-
-With no window showing the document, `--unique` opens one and applies any
-`--goto` and `--command` as it starts. On macOS one onon process opens every window, so the
-system can gather them into tabs: a document named on the command line goes
-to the running onon, as one Finder sends does, and `open_documents` says
-where it opens. `--tab` opens the document in a new tab of
-the window focused last, started with the same `--config`, `--no-config` and
-`--no-plugins`, even when another tab shows it; with `--unique` too, the tab
-showing it wins. With no document, `--tab` opens an empty tab there. A different document is a different
-instance, so two files give two windows. The address follows the document: a
-tab that switches files becomes reachable under the new one.
-
-Sockets live under `$XDG_RUNTIME_DIR/onon` on Linux, the per-user temporary
-directory on macOS, and `%LOCALAPPDATA%\onon` on Windows. They are mode 0600
-and named by a hash of the document path. A socket left by a crash is reclaimed
-on the next start.
-
-## Configuration
-
-Configuration is optional and written in Lua. Start with [`config.example.lua`](./config.example.lua), or create a small file containing only the values and bindings you want to change. `:config`, or Settings… (Cmd-,) on macOS, opens the file in your text editor, creating it if there is none. Reload it with `:reload-config`.
-
-The first existing configuration file for the current platform is loaded:
-
-| Platform | Location |
-|---|---|
-| Any | Path passed with `--config` |
-| Linux | `~/.config/onon/config.lua` |
-| Linux | `$XDG_CONFIG_HOME/onon/config.lua` |
-| Linux | Each `$XDG_CONFIG_DIRS/onon/config.lua` |
-| Linux | `/etc/xdg/onon/config.lua` |
-| macOS | `~/Library/Application Support/onon/config.lua` |
-| macOS | `~/.config/onon/config.lua` |
-| Windows | `%APPDATA%\onon\config.lua` |
-
-Plugins and theme files are looked for in every one of these directories, with `NAME` being `plugins` or `themes`, so those in different directories are all found; where two share a name, the first wins. Theme files beside `config.lua`, in `themes/`, come before all of them.
-
-| Platform | Directory |
-|---|---|
-| Linux | `/usr/lib/onon/NAME` |
-| Linux | `$XDG_DATA_HOME/onon/NAME` or `~/.local/share/onon/NAME` |
-| Linux | `$XDG_CONFIG_HOME/onon/NAME` |
-| Linux | `~/.config/onon/NAME` |
-| Linux | Each `$XDG_CONFIG_DIRS/onon/NAME` |
-| macOS | `~/Library/Application Support/onon/NAME` |
-| macOS | `~/.config/onon/NAME` |
-| Windows | `%LOCALAPPDATA%\onon\NAME` |
-| Windows | `%APPDATA%\onon\NAME` |
-
-Example plugins and themes live in [onon-plugins](https://github.com/Aethar01/onon-plugins) and [onon-themes](https://github.com/Aethar01/onon-themes). Clone them into your onon directory and link their `plugins` and `themes` directories beside them:
+On Linux and macOS, clone either repository into your config directory and link it in:
 
 ```bash
 cd ~/.config/onon
-git clone https://github.com/Aethar01/onon-plugins
 git clone https://github.com/Aethar01/onon-themes
-ln -s onon-plugins/plugins plugins
+git clone https://github.com/Aethar01/onon-plugins
 ln -s onon-themes/themes themes
+ln -s onon-plugins/plugins plugins
 ```
 
-Themes then appear in `:theme`. Plugins run once `config.lua` requires them; each plugin's README shows how. On Windows, or with `plugins` and `themes` directories of your own, copy in what you want instead.
-
-### Themes
-
-Colours, the UI font and the shape of panels come from one table, `onon.theme`. Fields left out keep the values of the base theme, so a theme can be as small as you like:
-
-```lua
-onon.theme = {
-  base = "birch",              -- moss (the default), birch or classic
-  accent = "#335533",
-  alt = { accent = "#88aa88" }, -- colours for alternate-color mode
-  font = { family = "Iosevka", size = 14 },
-  status_bar_style = "pill",   -- float the status bar over the page
-  tab_bar_style = "pill",      -- and the tabs
-  motion = { scale = 0 },      -- no animation
-}
-```
-
-The quickest way to change the theme is `:theme`, which lists the built-in themes and the theme files, those in `themes/` beside `config.lua` and in the theme directories above, and in the directories under them, showing each as you move to it; Enter keeps the one selected and onon remembers it. A theme file returns its table:
-
-```lua
--- themes/forest.lua, next to config.lua
-return { base = "moss", accent = "#2f5d3a", alt = { accent = "#8fbf8f" } }
-```
-
-Choose it with `:theme forest`, or name it in `config.lua` with `onon.theme = require("themes.forest")`; `require` looks beside `config.lua` first, with dots naming directories. A theme assigned in `config.lua` replaces the one picked with `:theme` each time onon starts, while fields set one at a time apply to whichever is picked.
-
-Tweak a single field with `onon.theme.radius = 0` or, at runtime, `:set theme.radius=0`. With no `font.family` the UI uses the system's interface font. The [reference](https://ononreader.com/) lists every field.
-
-To go further, each piece of the UI, such as a panel, a menu row, the status bar or a link hint, is an element with its own fill, border, shadows, padding and shape. A shape can be any path, written as SVG path data or drawn by a Lua function, and an element's `draw` function can draw its box however it likes:
-
-```lua
-onon.theme.elements = {
-  panel = { radius = 14, shadow = "0 8 24 shadow" },
-  row_selected = { fill = "accent", text = "panel" },
-  status_left = { shape = "M0,0 H100%-8 L100%,50% L100%-8,100% H0 Z" },
-  hint = {
-    draw = function(canvas, box, state)
-      canvas:default()
-      canvas:stroke("M0,100% H100%", "accent", 2) -- underline each hint
-    end,
-  },
-}
-```
-
-Session data, such as each document's place, recent files, prompt history and keybindings changed in the keybind editor, is stored in `session.sqlite` under the platform application-data directory. Keybindings changed in the editor apply before `config.lua`, so explicit user configuration takes precedence. Older versions kept them in `autogen.lua`; onon moves one it finds into the database and renames it `autogen.lua.bak`.
-
-| Platform | Location |
-|---|---|
-| Linux | `$XDG_DATA_HOME/onon` or `~/.local/share/onon` |
-| macOS | `~/Library/Application Support/onon` |
-| Windows | `%APPDATA%\onon` |
+Themes appear in `:theme` immediately; plugins load once your `config.lua` requires them. See the [themes guide](https://ononreader.com/docs/themes/) and [plugins guide](https://ononreader.com/docs/plugins/) for platform paths and Windows instructions.
 
 ## Documentation
 
-The [documentation site](https://ononreader.com/) covers:
+Full guides and generated reference documentation live at **[ononreader.com/docs](https://ononreader.com/docs/)**:
 
-- Configuration options and defaults
-- Commands and search modifiers
-- Lua functions and tables
-- Bindable actions and default keys
+- [Getting started](https://ononreader.com/docs/) — installation and first steps
+- [Reading](https://ononreader.com/docs/reading/) — navigation, search modifiers, links, marks, highlights and presentation mode
+- [Remote documents](https://ononreader.com/docs/remote/) — HTTP/HTTPS, SSH/SFTP, WebDAV, credentials, headers and custom schemes
+- [Configuration](https://ononreader.com/docs/configuration/) — config paths, options, tabs, status bar templates and keybindings
+- [Themes](https://ononreader.com/docs/themes/) — palettes, fonts, element styling, SVG shapes and shaders
+- [Scripting with Lua](https://ononreader.com/docs/scripting/) — custom functions, document inspection and `onon.ui.create` panels & forms
+- [Plugins](https://ononreader.com/docs/plugins/) — installing and writing plugins
+- [Command line and editors](https://ononreader.com/docs/command-line/) — flags, single-instance sockets and LaTeX / SyncTeX integration
+- [Full reference](https://ononreader.com/docs/reference/) — every option, command, action and Lua API, generated from source via `go generate ./...`
 
-The site provides documentation for the current `git` branch and an immutable snapshot for each tagged release. Reference content and the example configuration are generated from the same registrations used by the application:
+## Building from source
 
-```bash
-go generate ./...
-```
+<details>
+<summary>Requirements and platform build commands</summary>
 
-## Building
-
-Requirements:
+### Requirements
 
 - Go 1.25+
 - MuPDF 1.25.6+
 - SDL3 3.4+
-- glslang, which compiles themes' shaders
-- SPIRV-Cross, on macOS and Windows, which translates them for Metal and Direct3D; Linux does not need it
-- On Windows, `dxcompiler.dll` from Microsoft's [DirectX Shader Compiler](https://github.com/microsoft/DirectXShaderCompiler/releases) beside `onon.exe`, to run shaders on Direct3D 12; without it elements are drawn without their shaders
-- pkg-config/pkgconf
-- A C and C++ compiler supported by CGO
+- `glslang` (compiles theme shaders)
+- `SPIRV-Cross` on macOS and Windows (translates shaders for Metal and Direct3D; Linux does not need it)
+- On Windows, `dxcompiler.dll` from Microsoft's [DirectX Shader Compiler](https://github.com/microsoft/DirectXShaderCompiler/releases) beside `onon.exe` to run shaders on Direct3D 12 (without it, elements render without shaders)
+- `pkg-config` / `pkgconf` and a C/C++ compiler supported by CGO
+
+### Build and test
 
 ```bash
 go build
 go test ./...
 ```
 
-Packagers can set the version and name their package manager, so that `:check-updates` tells users to upgrade with it rather than download the release:
+Reference documentation and [`config.example.lua`](./config.example.lua) are generated from the same registries the application uses:
 
 ```bash
-go build -ldflags "-X onon/internal/config.Version=1.2.3 -X onon/internal/config.InstallMethod=aur"
+go generate ./...
 ```
 
-The message then says "update it with <name>". A version from `git describe --long --tags`, such as `0.9.4-3-g49e499b`, or in the form AUR `-git` packages give it, such as `0.9.4.r3.g49e499b`, is checked for newer commits on main rather than a newer release. Builds with any other version are not checked.
-
-On macOS, install the dependencies with Homebrew and point CGO at them:
+### macOS (Homebrew)
 
 ```bash
 brew install go sdl3 mupdf glslang spirv-cross
@@ -395,19 +268,29 @@ export DYLD_LIBRARY_PATH="$(brew --prefix)/lib:$DYLD_LIBRARY_PATH"
 go build
 ```
 
-On Windows, install the dependencies from MSYS2 UCRT64:
+### Windows (MSYS2 UCRT64)
 
 ```bash
 pacman -S --needed mingw-w64-ucrt-x86_64-go mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-sdl3 mingw-w64-ucrt-x86_64-mupdf mingw-w64-ucrt-x86_64-glslang mingw-w64-ucrt-x86_64-spirv-cross
 go build -o onon.exe
 ```
 
+### Packaging
+
+Packagers can embed the version and package manager name so `:check-updates` suggests upgrading with the package manager instead of downloading a release:
+
+```bash
+go build -ldflags "-X onon/internal/config.Version=1.2.3 -X onon/internal/config.InstallMethod=aur"
+```
+
+Versions matching `git describe --long --tags` (e.g. `0.9.4-3-g49e499b`) or AUR `-git` format (`0.9.4.r3.g49e499b`) check for newer commits on `main` rather than tagged releases.
+
+</details>
+
 ## The name
 
-onon (said oh-non) is named after Onon, an island in the West Reach of Ursula K. Le Guin's Earthsea, as it appears on her map of the archipelago.
+onon *(said oh-non)* is named after Onon, an island in the West Reach of Ursula K. Le Guin's *Earthsea*, as it appears on her map of the archipelago.
 
 ## License
 
-onon is licensed under the [AGPL](./LICENSE).
-
-It links against [MuPDF](https://mupdf.com/), which is licensed under the AGPL unless you have a separate commercial license.
+onon is licensed under the [GNU AGPLv3](./LICENSE). It links against [MuPDF](https://mupdf.com/), which is licensed under the AGPL unless you hold a separate commercial licence.
